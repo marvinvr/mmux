@@ -232,14 +232,26 @@ pub fn tree_rows(files: &[FileEntry]) -> Vec<TreeRow> {
     let mut root = Node::default();
     for (idx, f) in files.iter().enumerate() {
         let parts: Vec<&str> = f.path.split('/').filter(|s| !s.is_empty()).collect();
-        let Some((leaf, dirs)) = parts.split_last() else {
+        if parts.is_empty() {
             continue;
-        };
-        let mut node = &mut root;
-        for c in dirs {
-            node = node.dirs.entry(c.to_string()).or_default();
         }
-        node.files.push((leaf.to_string(), idx));
+        let mut node = &mut root;
+        if f.path.ends_with('/') {
+            // A whole directory git wouldn't descend into: an untracked dir in the
+            // default mode, or an embedded repo / un-init'd submodule even under `-uall`.
+            // It has no file leaf, so materialise every component as a directory node —
+            // the folder renders as a named, collapsed `dir/` row instead of a nameless
+            // checkbox (the empty-row bug).
+            for c in &parts {
+                node = node.dirs.entry(c.to_string()).or_default();
+            }
+        } else {
+            let (leaf, dirs) = parts.split_last().unwrap(); // non-empty: checked above
+            for c in dirs {
+                node = node.dirs.entry(c.to_string()).or_default();
+            }
+            node.files.push((leaf.to_string(), idx));
+        }
     }
     /// (staged, total) changed files in a subtree, for the aggregate checkbox.
     fn tally(node: &Node, files: &[FileEntry]) -> (usize, usize) {
@@ -404,6 +416,21 @@ mod tests {
                 assert_eq!(label, "src/app/view")
             }
             _ => panic!("unexpected tree shape"),
+        }
+    }
+
+    /// A directory git won't descend into arrives as a trailing-slash path with no file
+    /// leaf (an embedded repo, or an untracked dir when git collapses it). It must render
+    /// as a named, collapsed directory row — never the nameless file row that was the bug.
+    #[test]
+    fn trailing_slash_dir_is_named_not_nameless() {
+        let rows = tree_rows(&[fe("embedded/")]);
+        match &rows[..] {
+            [TreeRow::Root { .. }, TreeRow::Dir { label, path, depth: 1, .. }] => {
+                assert_eq!(label, "embedded");
+                assert_eq!(path, "embedded");
+            }
+            _ => panic!("expected a single named Dir row for a trailing-slash entry"),
         }
     }
 
