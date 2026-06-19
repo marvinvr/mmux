@@ -63,6 +63,19 @@ impl Recipe {
             env: BTreeMap::new(),
         }
     }
+
+    /// An editor opening `rel` (relative to `dir`): `$VISUAL`/`$EDITOR` if set,
+    /// else `micro`, else `nano`. Mirrors the user's Ctrl+P-opens-micro habit.
+    pub fn editor(dir: &Path, rel: &str) -> Recipe {
+        let (cmd, mut args) = editor_command();
+        args.push(rel.to_string());
+        Recipe {
+            cmd,
+            args,
+            cwd: dir.to_path_buf(),
+            env: BTreeMap::new(),
+        }
+    }
 }
 
 pub struct Session {
@@ -74,6 +87,10 @@ pub struct Session {
     /// Index of the workspace project (see [`crate::app`]) this session belongs to.
     /// Drives which sidebar group it lands in; the lifecycle is identical regardless.
     pub project: usize,
+    /// A throwaway session opened from a special command (e.g. the Ctrl+P editor):
+    /// once its program exits, the row is pruned rather than kept as an "exited"
+    /// husk. Plain terminals stay `false` and linger until explicitly closed.
+    pub ephemeral: bool,
 }
 
 impl Session {
@@ -85,6 +102,7 @@ impl Session {
             error: None,
             recipe,
             project,
+            ephemeral: false,
         }
     }
 
@@ -179,4 +197,26 @@ pub fn resolve(dir: &Path, cwd: &Option<String>) -> PathBuf {
 /// starts interactively, so a plain terminal needs no extra args.
 pub fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+}
+
+/// Resolve the editor command + any leading args: `$VISUAL` then `$EDITOR` (split
+/// on whitespace so `"code -w"` works), else `micro` if on `PATH`, else `nano`.
+fn editor_command() -> (String, Vec<String>) {
+    for var in ["VISUAL", "EDITOR"] {
+        if let Ok(v) = std::env::var(var) {
+            let mut it = v.split_whitespace().map(str::to_string);
+            if let Some(cmd) = it.next() {
+                return (cmd, it.collect());
+            }
+        }
+    }
+    let cmd = if on_path("micro") { "micro" } else { "nano" };
+    (cmd.to_string(), Vec::new())
+}
+
+/// Whether `bin` is found in any `PATH` entry.
+fn on_path(bin: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|p| p.join(bin).is_file()))
+        .unwrap_or(false)
 }

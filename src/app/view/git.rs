@@ -10,6 +10,7 @@
 //! [`super::pane`] and stores the row maps [`render_git`] returns.
 
 use crate::app::git::{GitPanel, Overlay, PromptKind, Section};
+use crate::app::picker::Picker;
 use crate::git::{Branch, Commit, FileEntry, Stage, TreeRow};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -165,12 +166,11 @@ fn render_branches(
         f.render_widget(dim_line("  no branches"), inner);
         return;
     }
-    let avail = inner.width.saturating_sub(3) as usize; // bar + dot + space
     let (start, count) = window(git.branches.len(), git.branch_cursor, inner.height as usize);
     let mut lines = Vec::with_capacity(count);
     for off in 0..count {
         let i = start + off;
-        lines.push(branch_row(&git.branches[i], active && i == git.branch_cursor, avail));
+        lines.push(branch_row(&git.branches[i], active && i == git.branch_cursor, inner.width));
         hit.push((inner.y + off as u16, i));
     }
     f.render_widget(Paragraph::new(lines), inner);
@@ -192,6 +192,17 @@ fn render_recent(f: &mut Frame, area: Rect, git: &GitPanel) {
     f.render_widget(Paragraph::new(lines), inner);
 }
 
+/// Pad a selected row with trailing spaces and paint the highlight background so the
+/// selection bar spans the full column width (matching the sidebar's `entry_line`),
+/// rather than stopping at the end of the name.
+fn fill_selection(line: &mut Line<'static>, width: u16) {
+    let pad = width.saturating_sub(line.width() as u16);
+    if pad > 0 {
+        line.spans.push(Span::raw(" ".repeat(pad as usize)));
+    }
+    line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+}
+
 /// A directory (or the whole-repo root) row: selection bar, indentation, an aggregate
 /// staging checkbox, then the (possibly chain-compressed) name with a trailing slash.
 fn node_row(label: &str, depth: usize, staged: Stage, selected: bool, width: u16) -> Line<'static> {
@@ -207,7 +218,7 @@ fn node_row(label: &str, depth: usize, staged: Stage, selected: bool, width: u16
         Span::styled(format!(" {name}/"), Style::default().fg(Color::Blue)),
     ]);
     if selected {
-        line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+        fill_selection(&mut line, width);
     }
     line
 }
@@ -234,7 +245,7 @@ fn file_row(file: &FileEntry, depth: usize, selected: bool, width: u16) -> Line<
         Span::styled(format!(" {name}"), Style::default().fg(change_color(file))),
     ]);
     if selected {
-        line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+        fill_selection(&mut line, width);
     }
     line
 }
@@ -261,7 +272,8 @@ fn change_color(file: &FileEntry) -> Color {
     }
 }
 
-fn branch_row(b: &Branch, selected: bool, avail: usize) -> Line<'static> {
+fn branch_row(b: &Branch, selected: bool, width: u16) -> Line<'static> {
+    let avail = (width as usize).saturating_sub(3); // bar + dot + space
     let bar = if selected { "▌" } else { " " };
     let dot = if b.current { "●" } else { " " };
     let name_style = if b.current {
@@ -282,7 +294,7 @@ fn branch_row(b: &Branch, selected: bool, avail: usize) -> Line<'static> {
     }
     let mut line = Line::from(spans);
     if selected {
-        line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+        fill_selection(&mut line, width);
     }
     line
 }
@@ -319,7 +331,86 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
     match ov {
         Overlay::Prompt { title, buf, kind } => render_prompt(f, area, title, buf, *kind),
         Overlay::Confirm { title, body, .. } => render_confirm(f, area, title, body),
+        Overlay::Picker(p) => render_picker(f, area, p),
     }
+}
+
+/// The Ctrl+P fuzzy file picker: a query line, the ranked match list (the
+/// selection scrolled into view and highlighted), and a hint/count footer.
+fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
+    let w = area.width.saturating_sub(6).clamp(24, 90);
+    let h = area.height.saturating_sub(4).clamp(6, 20);
+    let rect = centered(area, w, h);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Open file ")
+        .border_style(Style::default().fg(Color::Magenta));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    if inner.width == 0 || inner.height < 3 {
+        return;
+    }
+
+    // Rows: query line on top, hint on the bottom, the list between.
+    let query_y = inner.y;
+    let hint_y = inner.y + inner.height - 1;
+    let list_y = inner.y + 1;
+    let list_h = hint_y.saturating_sub(list_y) as usize;
+    let width = inner.width as usize;
+
+    // Query line: `> typed query`.
+    let query = Line::from(vec![
+        Span::styled("> ", Style::default().fg(Color::Magenta)),
+        Span::styled(p.query.clone(), Style::default().fg(Color::White)),
+    ]);
+    f.render_widget(
+        Paragraph::new(query),
+        Rect { x: inner.x, y: query_y, width: inner.width, height: 1 },
+    );
+
+    // Scroll the list so the selection stays on screen.
+    let sel = p.sel();
+    let scroll = if list_h > 0 && sel >= list_h { sel + 1 - list_h } else { 0 };
+    let mut lines: Vec<Line> = Vec::new();
+    for row in scroll..(scroll + list_h) {
+        let Some(path) = p.path_at(row) else { break };
+        let selected = row == sel;
+        // When too long, keep the tail (filename) visible behind a leading ellipsis.
+        let mut text = path.to_string();
+        let count = text.chars().count();
+        if count > width {
+            let skip = count - width.saturating_sub(1);
+            text = format!("…{}", text.chars().skip(skip).collect::<String>());
+        }
+        let style = if selected {
+            // Pad to the full width so the highlight bar spans the row.
+            let pad = width.saturating_sub(text.chars().count());
+            text.push_str(&" ".repeat(pad));
+            Style::default().fg(Color::Black).bg(Color::Magenta)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect { x: inner.x, y: list_y, width: inner.width, height: list_h as u16 },
+    );
+
+    // Footer: match count + the key hints.
+    let hint = format!(
+        "{} matches · ↑↓ move · ⏎ open · esc cancel",
+        p.match_count()
+    );
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray)))),
+        Rect { x: inner.x, y: hint_y, width: inner.width, height: 1 },
+    );
+
+    // Park the cursor at the end of the query (after the `> ` prompt).
+    let cx = inner.x + 2 + (p.query.chars().count() as u16).min(inner.width.saturating_sub(3));
+    f.set_cursor_position((cx, query_y));
 }
 
 /// A destructive-action confirmation: the question, then `y discard · n cancel`. Red

@@ -22,6 +22,14 @@ impl App {
             self.overlay_key(k);
             return;
         }
+        // Global Ctrl+P raises the fuzzy file picker from anywhere. This deliberately
+        // shadows an in-pane Ctrl+P (shell/readline previous-command) — the chosen
+        // tradeoff for matching the user's shell muscle memory.
+        if k.code == KeyCode::Char('p') && k.modifiers.contains(KeyModifiers::CONTROL) {
+            self.pending_leader = false; // don't leave a half-entered Ctrl-b chord armed
+            self.open_picker();
+            return;
+        }
         match self.focus {
             Focus::Sidebar => self.key_sidebar(k),
             Focus::Terminal => self.key_pane(k),
@@ -137,8 +145,46 @@ impl App {
             Close,
             Submit(PromptKind, String),
             Confirm(Confirmed),
+            OpenFile(usize, String),
         }
+        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         let act = match &mut self.overlay {
+            // The fuzzy file picker: type to filter, ↑/↓ (or Ctrl-p/n, Ctrl-k/j) to
+            // move, ⏎ opens the highlighted file, Esc cancels.
+            Some(Overlay::Picker(p)) => match k.code {
+                KeyCode::Esc => Act::Close,
+                KeyCode::Enter => match p.selected() {
+                    Some(path) => Act::OpenFile(p.project, path.to_string()),
+                    None => Act::Close,
+                },
+                KeyCode::Up => {
+                    p.move_sel(-1);
+                    Act::None
+                }
+                KeyCode::Down => {
+                    p.move_sel(1);
+                    Act::None
+                }
+                KeyCode::Char('p') | KeyCode::Char('k') if ctrl => {
+                    p.move_sel(-1);
+                    Act::None
+                }
+                KeyCode::Char('n') | KeyCode::Char('j') if ctrl => {
+                    p.move_sel(1);
+                    Act::None
+                }
+                KeyCode::Backspace => {
+                    p.query.pop();
+                    p.recompute();
+                    Act::None
+                }
+                KeyCode::Char(c) if !ctrl => {
+                    p.query.push(c);
+                    p.recompute();
+                    Act::None
+                }
+                _ => Act::None,
+            },
             Some(Overlay::Prompt { buf, kind, .. }) => match k.code {
                 KeyCode::Esc => Act::Close,
                 KeyCode::Enter => Act::Submit(*kind, buf.clone()),
@@ -171,6 +217,10 @@ impl App {
             Act::Confirm(action) => {
                 self.overlay = None;
                 self.overlay_confirm(action);
+            }
+            Act::OpenFile(pi, path) => {
+                self.overlay = None;
+                self.open_in_editor(pi, path);
             }
         }
     }

@@ -287,6 +287,8 @@ pub(crate) enum Overlay {
         body: String,
         action: Confirmed,
     },
+    /// The Ctrl+P fuzzy file picker (state in [`super::picker`]).
+    Picker(super::picker::Picker),
 }
 
 #[derive(Clone, Copy)]

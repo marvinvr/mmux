@@ -13,6 +13,7 @@ mod input;
 mod keymap;
 mod lifecycle;
 mod nav;
+mod picker;
 mod session;
 mod view;
 
@@ -77,8 +78,8 @@ pub(crate) struct App {
     regions: Regions,  // per-frame hit rects + sidebar row map
     drag: Option<Selection>, // in-progress mouse drag-to-copy selection
 
-    /// An active modal overlay (commit prompt / branch switcher), drawn over the
-    /// whole UI and eating all keys while open. Raised by the git panel.
+    /// An active modal overlay (commit prompt / branch switcher / Ctrl+P file
+    /// picker), drawn over the whole UI and eating all keys while open.
     overlay: Option<Overlay>,
 
     // Notifications.
@@ -177,6 +178,9 @@ impl App {
     /// any finished background pull/push jobs (flashing the result) and give the
     /// visible panel a throttled refresh so external commits show up.
     pub(crate) fn tick(&mut self) {
+        // Reap finished throwaway panes (the Ctrl+P editor) before anything reads the
+        // selection, so a just-quit editor row is gone this frame.
+        self.prune_ephemeral();
         if let Some(n) = self.current_nav() {
             if let Some(p) = self.project_of(n) {
                 self.active = p;

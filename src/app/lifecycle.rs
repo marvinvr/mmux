@@ -1,9 +1,10 @@
 //! Session lifecycle driven from the sidebar: spawning new agents/terminals,
 //! the start/stop/restart key actions, and the live config reload.
 
-use super::git::GitPanel;
+use super::git::{GitPanel, Overlay};
 use super::nav::Nav;
-use super::session::{Kind, Recipe, Session};
+use super::picker::Picker;
+use super::session::{Kind, Recipe, Session, Status};
 use super::{App, Focus};
 use crate::config::Config;
 use std::path::PathBuf;
@@ -31,6 +32,34 @@ impl App {
         s.spawn(rows, cols);
         self.sessions.push(s);
         self.select_session(self.sessions.len() - 1);
+    }
+
+    /// Raise the Ctrl+P fuzzy file picker over the active project. Listing happens
+    /// up front in [`Picker::new`]; the modal then eats keys until Enter/Esc.
+    pub(crate) fn open_picker(&mut self) {
+        let dir = self.projects[self.active].cfg.dir.clone();
+        self.overlay = Some(Overlay::Picker(Picker::new(self.active, dir)));
+    }
+
+    /// Open `rel` (relative to project `pi`'s dir) in the user's editor as a new
+    /// terminal-kind session, then focus it — so it takes over the main pane. Reuses
+    /// the same spawn path as [`spawn_terminal`](Self::spawn_terminal); the editor
+    /// row reads as a normal terminal and can be closed/returned-to like any other.
+    pub(crate) fn open_in_editor(&mut self, pi: usize, rel: String) {
+        let dir = self.projects[pi].cfg.dir.clone();
+        let recipe = Recipe::editor(&dir, &rel);
+        let base = std::path::Path::new(&rel)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| rel.clone());
+        let name = format!("✎ {base}");
+        let (rows, cols) = self.last_inner;
+        let mut s = Session::new(name, Kind::Terminal, recipe, pi);
+        s.ephemeral = true; // vanish once the editor quits (see prune_ephemeral)
+        s.spawn(rows, cols);
+        self.sessions.push(s);
+        self.select_session(self.sessions.len() - 1);
+        self.focus = Focus::Terminal;
     }
 
     /// Open the current row: spawn launchers, (re)start dead sessions, focus the pane.
@@ -95,6 +124,35 @@ impl App {
         let navlen = self.build_nav().len();
         self.sel = self.sel.min(navlen.saturating_sub(1));
         self.focus = Focus::Sidebar;
+    }
+
+    /// Drop any ephemeral session (the Ctrl+P editor) whose program has exited, so
+    /// quitting the editor makes its row vanish instead of leaving an "exited" husk.
+    /// Called once per loop from [`tick`](super::App::tick).
+    pub(crate) fn prune_ephemeral(&mut self) {
+        let dead: Vec<usize> = self
+            .sessions
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.ephemeral && matches!(s.status(), Status::Exited))
+            .map(|(i, _)| i)
+            .collect();
+        if dead.is_empty() {
+            return;
+        }
+        // If we're sitting in one of the dying panes, fall back to the sidebar.
+        let focused_dead = self.focus == Focus::Terminal
+            && matches!(self.current_nav(), Some(Nav::Session(i)) if dead.contains(&i));
+        // Remove back-to-front so the earlier indices stay valid.
+        for &i in dead.iter().rev() {
+            self.sessions[i].kill();
+            self.sessions.remove(i);
+        }
+        if focused_dead {
+            self.focus = Focus::Sidebar;
+        }
+        let navlen = self.build_nav().len();
+        self.sel = self.sel.min(navlen.saturating_sub(1));
     }
 
     pub(crate) fn do_restart(&mut self) {
