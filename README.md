@@ -23,7 +23,8 @@ Needs `tmux` on your PATH (and `lazygit` if you use the default right panel).
 brew install marvinvr/mmux/mmux
 ```
 
-Builds from source; Rust is pulled in automatically as a build dependency.
+Installs a prebuilt binary on macOS (arm64 / x86_64) and Linux (x86_64). Other
+platforms fall back to building from source (Rust is pulled in automatically).
 
 ### From source
 
