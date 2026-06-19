@@ -317,19 +317,27 @@ impl App {
         }
     }
 
-    /// Held-drag: extend the armed selection to the cell under the cursor.
+    /// Held-drag: extend the armed selection to the cell under the cursor, and arm
+    /// edge auto-scroll — dragging at/over the top edge reveals older lines, the
+    /// bottom edge newer ones. The actual scrolling repeats from `tick` so it keeps
+    /// going while the button is held still at the edge (no further mouse events).
     fn on_left_drag(&mut self, c: u16, r: u16) {
-        if let Some(sel) = self.drag.as_mut() {
-            let cell = clamp_cell(sel.inner, c, r);
-            if cell != sel.anchor {
-                sel.moved = true;
-            }
-            sel.head = cell;
-        }
+        let Some(inner) = self.regions.main_inner else { return };
+        self.drag_scroll = if inner.height == 0 || self.drag.is_none() {
+            0
+        } else if r <= inner.y {
+            1 // top edge → reveal older history
+        } else if r + 1 >= inner.y + inner.height {
+            -1 // bottom edge → back toward the present
+        } else {
+            0
+        };
+        self.update_drag_head(inner, c, r);
     }
 
     /// Release: a real drag copies its contents; a plain click just clears.
     fn on_left_up(&mut self) {
+        self.drag_scroll = 0;
         if let Some(sel) = self.drag.take() {
             if sel.moved {
                 self.copy_selection(sel);
@@ -337,24 +345,71 @@ impl App {
         }
     }
 
-    /// Anchor a selection at `(c, r)` inside the target pane's content rect.
+    /// Anchor a selection at `(c, r)` inside the target pane's content rect, in the
+    /// pane's current scrollback frame of reference.
     fn arm_selection(&mut self, target: SelTarget, c: u16, r: u16) {
         let Some(inner) = self.regions.main_inner else { return };
-        let cell = clamp_cell(inner, c, r);
-        self.drag = Some(Selection { target, inner, anchor: cell, head: cell, moved: false });
+        self.drag_scroll = 0;
+        let off = self.current_offset();
+        let cell = cell_at(inner, off, c, r);
+        self.drag = Some(Selection { target, anchor: cell, head: cell, moved: false });
+    }
+
+    /// Scrollback offset of the pane the main selection is over (0 when live or
+    /// when there's no pane).
+    fn current_offset(&self) -> usize {
+        self.current_nav()
+            .and_then(|n| self.pane_at(n))
+            .map(|p| p.scrollback_offset())
+            .unwrap_or(0)
+    }
+
+    /// Move the drag head to the cell under `(c, r)` at the pane's current offset.
+    fn update_drag_head(&mut self, inner: Rect, c: u16, r: u16) {
+        let off = self.current_offset();
+        let cell = cell_at(inner, off, c, r);
+        if let Some(sel) = self.drag.as_mut() {
+            if cell != sel.anchor {
+                sel.moved = true;
+            }
+            sel.head = cell;
+        }
+    }
+
+    /// One auto-scroll step in the armed direction, re-pinning the drag head to the
+    /// edge it's held against. Called from `tick`, so it repeats on its own while
+    /// the cursor sits at a pane edge. A no-op unless a drag is held at an edge; the
+    /// scroll itself clamps, so it stops cleanly at the ends of the buffer.
+    pub(crate) fn step_drag_scroll(&mut self) {
+        let dir = self.drag_scroll;
+        if dir == 0 || self.drag.is_none() {
+            return;
+        }
+        let Some(inner) = self.regions.main_inner else { return };
+        if let Some(p) = self.current_nav().and_then(|n| self.pane_at(n)) {
+            p.scroll(dir * DRAG_SCROLL_STEP);
+        }
+        let off = self.current_offset();
+        let edge_row = if dir > 0 { 0 } else { inner.height.saturating_sub(1) };
+        let line = edge_row as i32 - off as i32;
+        if let Some(sel) = self.drag.as_mut() {
+            if (line, sel.head.1) != sel.anchor {
+                sel.moved = true;
+            }
+            sel.head.0 = line;
+        }
     }
 
     /// Extract the selected text from the target pane and put it on the clipboard.
     fn copy_selection(&mut self, sel: Selection) {
-        let (sr, sc, er, ec) = sel.ordered_in(sel.inner);
+        let (lo, sc, hi, ec) = sel.ordered();
         let pane = match sel.target {
             SelTarget::Main => self.current_nav().and_then(|n| self.pane_at(n)),
         };
         let Some(pane) = pane else { return };
-        // vt100's `contents_between` takes an exclusive end column; +1 to include
-        // the cell the cursor was released on.
-        let end_col = (ec + 1).min(sel.inner.width);
-        let Some(raw) = pane.contents_between(sr, sc, er, end_col) else { return };
+        // `contents_block` takes an exclusive end column; +1 to include the cell
+        // the cursor was released on.
+        let Some(raw) = pane.contents_block(lo, hi, sc, ec + 1) else { return };
         let text = trim_block(&raw);
         if text.is_empty() {
             return;
@@ -529,41 +584,42 @@ pub(crate) enum SelTarget {
     Main,
 }
 
-/// An in-progress (or just-released) mouse drag selection over a pane. `anchor`
-/// and `head` are absolute screen cells clamped into `inner` (the pane's content
-/// rect captured at press time).
+/// An in-progress (or just-released) mouse drag selection over a pane. Endpoints
+/// are stored in *buffer* coordinates `(line, col)`: `col` is inner-relative, and
+/// `line` is `inner_row - scrollback_offset` — a fixed buffer line that doesn't
+/// move as the viewport scrolls (negative = scrolled up into history). The screen
+/// row at any moment is `line + offset`; this is what lets a selection span more
+/// than one screenful as the view auto-scrolls under the drag.
 #[derive(Clone, Copy)]
 pub(crate) struct Selection {
     pub target: SelTarget,
-    pub inner: Rect,
-    pub anchor: (u16, u16),
-    pub head: (u16, u16),
+    pub anchor: (i32, u16),
+    pub head: (i32, u16),
     pub moved: bool,
 }
 
 impl Selection {
-    /// The selection as inner-relative, inclusive `(start_row, start_col, end_row,
-    /// end_col)`, ordered in reading flow so start precedes end. `inner` lets the
-    /// caller re-map against the current frame's content rect.
-    pub(crate) fn ordered_in(&self, inner: Rect) -> (u16, u16, u16, u16) {
-        let rel = |(col, row): (u16, u16)| {
-            let c = col.clamp(inner.x, inner.x + inner.width.saturating_sub(1)) - inner.x;
-            let r = row.clamp(inner.y, inner.y + inner.height.saturating_sub(1)) - inner.y;
-            (r, c) // (row, col) for natural reading-order comparison
-        };
-        let a = rel(self.anchor);
-        let b = rel(self.head);
+    /// Endpoints in reading order as inclusive `(start_line, start_col, end_line,
+    /// end_col)`, so start precedes end (by line, then column).
+    pub(crate) fn ordered(&self) -> (i32, u16, i32, u16) {
+        let (a, b) = (self.anchor, self.head);
         let (s, e) = if a <= b { (a, b) } else { (b, a) };
         (s.0, s.1, e.0, e.1)
     }
 }
 
-/// Clamp an absolute mouse position to a cell inside `inner` (absolute coords).
-fn clamp_cell(inner: Rect, c: u16, r: u16) -> (u16, u16) {
-    let col = c.clamp(inner.x, inner.x + inner.width.saturating_sub(1));
-    let row = r.clamp(inner.y, inner.y + inner.height.saturating_sub(1));
-    (col, row)
+/// Map an absolute mouse position to a buffer cell `(line, col)` inside `inner` at
+/// scrollback offset `off`. The position is clamped to the content rect first, so
+/// a drag past an edge lands on the edge row/column.
+fn cell_at(inner: Rect, off: usize, c: u16, r: u16) -> (i32, u16) {
+    let col = c.clamp(inner.x, inner.x + inner.width.saturating_sub(1)) - inner.x;
+    let row = r.clamp(inner.y, inner.y + inner.height.saturating_sub(1)) - inner.y;
+    (row as i32 - off as i32, col)
 }
+
+/// Lines auto-scrolled per step while a drag is held against a pane edge. Matches
+/// the wheel step so the feel is consistent.
+const DRAG_SCROLL_STEP: i32 = 3;
 
 /// Tidy extracted text for the clipboard: vt100 pads rows with blanks, so trim
 /// trailing whitespace per line and drop any trailing blank lines.
@@ -574,4 +630,44 @@ fn trim_block(s: &str) -> String {
         .join("\n")
         .trim_end()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A 10×5 content rect inset by the pane border at (1, 1).
+    const INNER: Rect = Rect { x: 1, y: 1, width: 10, height: 5 };
+
+    fn sel(anchor: (i32, u16), head: (i32, u16)) -> Selection {
+        Selection { target: SelTarget::Main, anchor, head, moved: true }
+    }
+
+    #[test]
+    fn cell_at_is_inner_relative_and_offset_adjusted() {
+        // Live view (offset 0): line == inner row, col == inner col.
+        assert_eq!(cell_at(INNER, 0, 3, 2), (1, 2));
+        // Scrolled 3 into history: the same screen row names an older buffer line.
+        assert_eq!(cell_at(INNER, 3, 3, 2), (-2, 2));
+    }
+
+    #[test]
+    fn cell_at_clamps_past_the_edges() {
+        // Above/left of the rect clamps to the top-left cell.
+        assert_eq!(cell_at(INNER, 0, 0, 0), (0, 0));
+        // Below/right clamps to the bottom-right cell (row 4, col 9).
+        assert_eq!(cell_at(INNER, 0, 99, 99), (4, 9));
+        // At an offset, the clamped top edge is an older line by `off`.
+        assert_eq!(cell_at(INNER, 4, 0, 0), (-4, 0));
+    }
+
+    #[test]
+    fn ordered_sorts_by_line_then_column() {
+        // Head above the anchor (smaller line) becomes the start.
+        assert_eq!(sel((5, 2), (2, 9)).ordered(), (2, 9, 5, 2));
+        // Same line: the smaller column leads.
+        assert_eq!(sel((3, 8), (3, 2)).ordered(), (3, 2, 3, 8));
+        // Already in order is unchanged.
+        assert_eq!(sel((-4, 1), (0, 7)).ordered(), (-4, 1, 0, 7));
+    }
 }

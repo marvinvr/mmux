@@ -259,6 +259,17 @@ impl Pane {
         }
     }
 
+    /// Current scrollback offset (0 = live view, larger = further into history).
+    /// Selection coordinates are anchored relative to this, so they stay on the
+    /// same content as the view scrolls.
+    pub fn scrollback_offset(&self) -> usize {
+        self.parser
+            .lock()
+            .ok()
+            .map(|p| p.screen().scrollback())
+            .unwrap_or(0)
+    }
+
     /// Snap back to the live view (scrollback offset 0).
     pub fn reset_scroll(&self) {
         if let Ok(mut p) = self.parser.lock() {
@@ -276,10 +287,54 @@ impl Pane {
         self.parser.lock().ok().map(|p| f(p.screen()))
     }
 
-    /// Plain-text contents logically between two cells of the *visible* viewport.
-    /// Coordinates are screen-relative, so this respects the current scrollback
-    /// offset — used to extract a mouse selection. `end_col` is exclusive.
-    pub fn contents_between(&self, sr: u16, sc: u16, er: u16, ec: u16) -> Option<String> {
-        self.with_screen(|s| s.contents_between(sr, sc, er, ec))
+    /// Plain-text contents of a flow selection spanning buffer lines `lo..=hi`,
+    /// stitched across scrollback. A *line* here is `viewport_row - scrollback_offset`
+    /// (so it names a fixed buffer line regardless of the current scroll position;
+    /// negative values are lines that have scrolled up into history). The selection
+    /// runs from `(lo, sc)` through `(hi, ec)` in reading order: the first line from
+    /// `sc` to its end, whole lines in between, then the last line up to (but not
+    /// including) `ec`.
+    ///
+    /// vt100 only exposes the visible window, so we walk the offset to bring each
+    /// line into view, read it, and restore the offset before returning.
+    pub fn contents_block(&self, lo: i32, hi: i32, sc: u16, ec: u16) -> Option<String> {
+        if hi < lo {
+            return Some(String::new());
+        }
+        let mut p = self.parser.lock().ok()?;
+        let saved = p.screen().scrollback();
+        let (_, cols) = p.screen().size();
+        let ec = ec.min(cols);
+        let mut out = String::new();
+        for line in lo..=hi {
+            // Pick the offset that lands this line on a visible row: history lines
+            // (line < 0) sit at row 0 under offset `-line`; live lines (line >= 0)
+            // are already on screen at offset 0, row `line`.
+            let off = (-line).max(0) as usize;
+            p.screen_mut().set_scrollback(off);
+            let screen = p.screen();
+            let row = (line + off as i32).max(0) as u16;
+            let (c0, c1) = if lo == hi {
+                (sc, ec)
+            } else if line == lo {
+                (sc, cols)
+            } else if line == hi {
+                (0, ec)
+            } else {
+                (0, cols)
+            };
+            if c1 > c0 {
+                if let Some(text) = screen.rows(c0, c1 - c0).nth(row as usize) {
+                    out.push_str(&text);
+                }
+            }
+            // Join with newlines, but keep a soft-wrapped logical line on one line
+            // (matching vt100's own `contents_between`).
+            if line != hi && !screen.row_wrapped(row) {
+                out.push('\n');
+            }
+        }
+        p.screen_mut().set_scrollback(saved);
+        Some(out)
     }
 }

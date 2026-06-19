@@ -106,27 +106,39 @@ impl App {
 
     /// Paint the active drag selection (if it targets this pane and has actually
     /// moved) as a reverse-video overlay on top of the just-rendered screen. The
-    /// highlight follows the same flow shape as the extracted text.
+    /// selection is in buffer coordinates, so project each line to a viewport row at
+    /// the pane's current scrollback offset and skip whatever scrolled out of view.
     fn paint_selection(&self, f: &mut Frame, inner: Rect, target: SelTarget) {
         let Some(sel) = self.drag else { return };
         if !sel.moved || sel.target != target {
             return;
         }
-        let (sr, sc, er, ec) = sel.ordered_in(inner);
+        let off = self
+            .current_nav()
+            .and_then(|n| self.pane_at(n))
+            .map(|p| p.scrollback_offset())
+            .unwrap_or(0) as i32;
+        let (lo, sc, hi, ec) = sel.ordered();
         let style = Style::default().add_modifier(Modifier::REVERSED);
         let last = inner.width.saturating_sub(1);
+        let height = inner.height as i32;
         let buf = f.buffer_mut();
-        for row in sr..=er {
-            let (c0, c1) = if sr == er {
+        for line in lo..=hi {
+            let sr = line + off; // viewport row of this buffer line right now
+            if sr < 0 || sr >= height {
+                continue;
+            }
+            let row = sr as u16;
+            let (c0, c1) = if lo == hi {
                 (sc, ec)
-            } else if row == sr {
+            } else if line == lo {
                 (sc, last)
-            } else if row == er {
+            } else if line == hi {
                 (0, ec)
             } else {
                 (0, last)
             };
-            for col in c0..=c1 {
+            for col in c0..=c1.min(last) {
                 if let Some(cell) = buf.cell_mut((inner.x + col, inner.y + row)) {
                     cell.set_style(style);
                 }

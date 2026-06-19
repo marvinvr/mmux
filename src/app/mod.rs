@@ -77,6 +77,10 @@ pub(crate) struct App {
     compact: bool,     // single-column (phone) mode
     regions: Regions,  // per-frame hit rects + sidebar row map
     drag: Option<Selection>, // in-progress mouse drag-to-copy selection
+    /// Edge auto-scroll direction for a held drag: `1` reveals older history, `-1`
+    /// moves toward the present, `0` not at an edge. Applied each `tick` so the
+    /// selection keeps extending while the cursor sits still at a pane edge.
+    drag_scroll: i32,
 
     /// An active modal overlay (commit prompt / branch switcher / Ctrl+P file
     /// picker), drawn over the whole UI and eating all keys while open.
@@ -148,6 +152,7 @@ impl App {
             compact: false,
             regions: Regions::default(),
             drag: None,
+            drag_scroll: 0,
             overlay: None,
             // Our stdout flows through the tmux jail, so notification OSCs need the
             // passthrough wrapper to reach the real terminal.
@@ -178,6 +183,9 @@ impl App {
     /// any finished background pull/push jobs (flashing the result) and give the
     /// visible panel a throttled refresh so external commits show up.
     pub(crate) fn tick(&mut self) {
+        // Keep a held-at-edge drag selection auto-scrolling even when the mouse
+        // isn't moving (crossterm only emits drag events on movement).
+        self.step_drag_scroll();
         // Reap finished throwaway panes (the Ctrl+P editor) before anything reads the
         // selection, so a just-quit editor row is gone this frame.
         self.prune_ephemeral();

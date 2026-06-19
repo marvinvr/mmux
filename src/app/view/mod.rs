@@ -32,7 +32,7 @@ pub(crate) struct Regions {
     // Footer shortcut buttons: each `[key label]` chip and the action it fires.
     pub footer_btns: Vec<(Rect, FooterAction)>,
     // Inner content rect (inside the borders) of the main pane, for mapping a mouse
-    // drag to screen cells and painting the selection highlight.
+    // drag to buffer cells and painting the selection highlight.
     pub main_inner: Option<Rect>,
     // The git panel's changed-file rows: screen `y` → file index, for click-to-stage.
     pub git_rows: Vec<(u16, usize)>,
