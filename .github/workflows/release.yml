@@ -1,0 +1,70 @@
+name: Release
+
+# Publishes a release and bumps the Homebrew formula whenever a version tag is
+# pushed, e.g.:
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# Two things happen:
+#   1. A GitHub Release is created for the tag (with auto-generated notes).
+#   2. The formula in the marvinvr/homebrew-mmux tap is rewritten to point at the
+#      tag's source tarball (url + sha256), then committed there over SSH using a
+#      deploy key (secret TAP_DEPLOY_KEY) scoped to that tap only.
+#
+# The formula builds from source, so users always get a binary freshly compiled
+# (and validly signed) on their own machine — no "Killed: 9" from a copied
+# ad-hoc-signed macOS binary.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release on this repo
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
+      - name: Load tap deploy key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.TAP_DEPLOY_KEY }}
+
+      - name: Bump Homebrew formula
+        env:
+          TAG: ${{ github.ref_name }}
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          echo "Source tarball: $URL"
+          SHA="$(curl -fsSL "$URL" | sha256sum | cut -d' ' -f1)"
+          echo "sha256: $SHA"
+
+          git clone git@github.com:marvinvr/homebrew-mmux.git tap
+          mkdir -p tap/Formula
+          sed -e "s|URL_PLACEHOLDER|${URL}|" \
+              -e "s|SHA256_PLACEHOLDER|${SHA}|" \
+              .github/homebrew/mmux.rb > tap/Formula/mmux.rb
+
+          cd tap
+          if git diff --quiet; then
+            echo "Formula already up to date; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "mmux ${VERSION}"
+          git push origin HEAD:main

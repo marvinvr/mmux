@@ -15,8 +15,19 @@ Claude is doing) and a red **●** when the program rings the bell (needs attent
 
 ## Install
 
-Requires [Rust](https://rustup.rs) and `tmux` on your PATH (and `lazygit` if you use the
-default right panel).
+Needs `tmux` on your PATH (and `lazygit` if you use the default right panel).
+
+### Homebrew
+
+```sh
+brew install marvinvr/mmux/mmux
+```
+
+Builds from source; Rust is pulled in automatically as a build dependency.
+
+### From source
+
+Requires [Rust](https://rustup.rs).
 
 ```sh
 cargo install --path .
