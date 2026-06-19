@@ -1,0 +1,29 @@
+[package]
+name = "mmux"
+version = "0.1.0"
+edition = "2021"
+description = "A persistent, per-directory terminal multiplexer for AI agents and dev processes"
+license = "MIT"
+
+[[bin]]
+name = "mmux"
+path = "src/main.rs"
+
+[dependencies]
+# TUI. ratatui 0.30 selects the crossterm 0.29 backend via this feature; we use
+# `ratatui::crossterm` everywhere to avoid version skew (no standalone crossterm dep).
+ratatui = { version = "0.30", features = ["crossterm_0_29"] }
+# PseudoTerminal widget; re-exports a compatible vt100 as `tui_term::vt100`.
+tui-term = "0.3.4"
+# PTY management.
+portable-pty = "0.9"
+# Config.
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+# Errors + byte buffers for the writer channel.
+anyhow = "1"
+bytes = "1"
+
+[profile.release]
+opt-level = 2
+strip = true

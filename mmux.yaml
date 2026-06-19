@@ -1,0 +1,72 @@
+# mmux workspace for mmux itself. Inception: open this repo with `mmux` and you
+# get Claude/Codex + lazygit (inherited from the global ~/.mmux/config.yaml) plus
+# the Rust build/dev loop below. cwd defaults to this file's directory.
+name: mmux
+
+# Build & dev processes — start/stop/watch them from the sidebar (`s`/`x`/`r`).
+# None autostart; flip `autostart: true` on Check if you want it running on open.
+processes:
+  - name: Check
+    cmd: cargo
+    args: ["check"]
+    autostart: false
+
+  - name: Build (release)
+    cmd: cargo
+    args: ["build", "--release"]
+
+  # Cross-build distributable binaries for both platforms into ./dist.
+  # macOS arm64 is the native build; Linux x86_64 is a fully static musl
+  # binary (runs on any distro) linked via zig.
+  # One-time setup:
+  #   brew install zig
+  #   cargo install cargo-zigbuild
+  #   rustup target add x86_64-unknown-linux-musl
+  - name: Build (all platforms)
+    cmd: sh
+    args:
+      - "-c"
+      - |
+        set -e
+        mkdir -p dist
+        echo "==> macOS arm64 (native)"
+        cargo build --release --target aarch64-apple-darwin
+        cp target/aarch64-apple-darwin/release/mmux dist/mmux-macos-arm64
+        echo "==> Linux x86_64 (static musl)"
+        cargo zigbuild --release --target x86_64-unknown-linux-musl
+        cp target/x86_64-unknown-linux-musl/release/mmux dist/mmux-linux-x86_64
+        echo "==> Done. Binaries in ./dist:"
+        ls -lh dist
+
+  - name: Test
+    cmd: cargo
+    args: ["test"]
+
+  # Inception payoff — native rebuild + reinstall into ~/.local/bin. One per host
+  # OS you develop on; run the one that matches where you are:
+  #   arm — macOS host. Includes the README re-sign dance so the freshly-copied
+  #         binary isn't SIGKILLed.
+  #   x86 — Linux host. Plain native build, no codesign (macOS-only).
+  - name: Install (arm)
+    cmd: sh
+    args:
+      - "-c"
+      - 'cargo build --release && cp target/release/mmux "$HOME/.local/bin/mmux" && codesign --force --sign - "$HOME/.local/bin/mmux"'
+
+  - name: Install (x86)
+    cmd: sh
+    args:
+      - "-c"
+      - 'cargo build --release && cp target/release/mmux "$HOME/.local/bin/mmux"'
+
+  # Optional — uncomment after installing the tool it needs:
+  # - name: Watch            # cargo install cargo-watch
+  #   cmd: cargo
+  #   args: ["watch", "-x", "check"]
+  #   autostart: true
+  # - name: Clippy           # rustup component add clippy
+  #   cmd: cargo
+  #   args: ["clippy", "--all-targets"]
+  # - name: Format
+  #   cmd: cargo
+  #   args: ["fmt"]
