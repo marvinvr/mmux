@@ -1,0 +1,740 @@
+/* mmux.org — the whole design system (DESIGN.md §2, §3) + every class in §4/§5.
+ *
+ * THE ONE RULE (§1): grayscale by default. --accent (cyan) ONLY for interaction
+ * (hover / focus-visible / active nav / the selected-row ▌ bar / focused-pane
+ * border). --alert (red) ONLY for attention (bell dot, toast) + error states.
+ * No other hue, no decorative color. The scene-6 red dot is the first warm color.
+ *
+ * No @import, no remote url() — the favicon/data: URIs live in index.html.
+ */
+
+/* ===================================================================== */
+/* §2 design tokens — all on :root                                       */
+/* ===================================================================== */
+:root {
+  /* surface */
+  --bg:          #0b0c0e;
+  --panel:       #111317;
+  --panel-2:     #15181d;
+  --line:        #23262d;
+  --line-bright: #2f333b;
+
+  /* ink */
+  --fg:        #c9d1d9;
+  --fg-bright: #e6edf3;
+  --muted:     #8b939e;   /* raised from #6e7681 to clear AA 4.5:1 on bg/panel/panel-2 (§0/§9) */
+  --faint:     #4b525c;
+
+  /* signal (see §1) */
+  --accent:     #5ec8d6;
+  --alert:      #e5534b;
+  --alert-dim:  #3a2422;
+
+  /* type */
+  --font: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code",
+          Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* scale */
+  --measure:  68ch;
+  --page-max: 1080px;
+  --gap: 1.5rem;
+  --radius: 0;
+
+  /* type sizes */
+  --fs-wordmark: clamp(2.5rem, 8vw, 5rem);
+  --fs-h2:       clamp(1.4rem, 3.5vw, 2rem);
+  --fs-body:     0.95rem;
+  --fs-small:    0.8rem;
+  --leading:     1.6;
+
+  /* breakpoint mirror (used only as a documented constant; media queries
+     hard-code 680px since CSS can't use custom props inside @media) */
+  --bp-compact: 680px;
+}
+
+/* ===================================================================== */
+/* reset / base                                                          */
+/* ===================================================================== */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: var(--leading);
+  /* never overflow x (§9) */
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+a:hover,
+a:focus-visible { color: var(--accent); }
+
+p { margin: 0 0 1rem; }
+
+code { font-family: var(--font); }
+
+/* Visible, cyan focus ring everywhere keyboard users land (§1, §9). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Skip link — hidden until focused. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--panel-2);
+  color: var(--fg-bright);
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line-bright);
+}
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
+
+/* Blinking block cursor (§3): 1s steps blink, paused under reduced-motion. */
+.cursor {
+  display: inline-block;
+  color: var(--fg-bright);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* One full-width hairline rule between major sections (§3). */
+.rule {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+
+/* shared section width helpers */
+.nav-inner,
+#hero,
+#features,
+#how,
+#install,
+.footer {
+  max-width: var(--page-max);
+  margin-inline: auto;
+  padding-inline: var(--gap);
+}
+
+/* ===================================================================== */
+/* §4.1 sticky nav                                                       */
+/* ===================================================================== */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding-block: 0.6rem;
+}
+.nav-wordmark {
+  color: var(--fg-bright);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.nav-links a { color: var(--muted); }
+.nav-links a:hover,
+.nav-links a:focus-visible { color: var(--accent); }
+.nav-sep { color: var(--faint); }
+
+/* install pill — pushed to the right; hides its command on narrow screens */
+.nav-pill {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0.2rem 0.2rem 0.2rem 0.6rem;
+  font-size: var(--fs-small);
+}
+.nav-pill-cmd { color: var(--fg); }
+
+/* generic copy button (nav pill, install blocks) — grayscale, cyan on interact */
+.copy {
+  font-family: var(--font);
+  font-size: var(--fs-small);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.copy:hover,
+.copy:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.copy--copied {
+  color: var(--fg-bright);
+  border-color: var(--line-bright);
+}
+
+/* ===================================================================== */
+/* §4.2 hero                                                             */
+/* ===================================================================== */
+#hero {
+  padding-block: clamp(2.5rem, 8vh, 5rem);
+}
+.hero-frame {
+  max-width: 56ch;
+  margin-inline: auto;
+}
+/* box-drawing frame top/bottom read as terminal chrome (§3). The line clips so
+   the fixed-width rule never forces horizontal scroll on tiny screens. */
+.frame-top,
+.frame-bottom {
+  color: var(--line-bright);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.frame-body {
+  border-left: 1px solid var(--line-bright);
+  border-right: 1px solid var(--line-bright);
+  padding: 1.5rem clamp(1rem, 4vw, 2rem);
+}
+.wordmark {
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-wordmark);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--fg-bright);
+  line-height: 1.05;
+}
+.lede {
+  margin: 0 0 0.75rem;
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  color: var(--fg-bright);
+  letter-spacing: -0.01em;
+}
+.lede-sub {
+  max-width: var(--measure);
+  color: var(--fg);
+}
+.install {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.install-prompt { color: var(--faint); }
+.install-cmd { color: var(--fg-bright); }
+.install .copy { margin-left: auto; }
+
+.scroll-hint {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+/* ===================================================================== */
+/* section headings (§4)                                                 */
+/* ===================================================================== */
+.section-h2 {
+  font-size: var(--fs-h2);
+  color: var(--fg-bright);
+  letter-spacing: -0.01em;
+  margin: 0 0 1.5rem;
+}
+.h2-mark { color: var(--faint); }
+#features,
+#how,
+#install { padding-block: clamp(2.5rem, 7vh, 4.5rem); }
+
+/* ===================================================================== */
+/* §4.3 + §5 + §6 demo: sticky stage + scroll-through TUI                */
+/* ===================================================================== */
+#demo {
+  /* tall scroll travel; the stage pins while captions track (§6.1) */
+  min-height: min(560vh, 810vh);
+  position: relative;
+}
+.demo-stage {
+  position: sticky;
+  top: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+}
+.demo-grid {
+  width: 100%;
+  max-width: var(--page-max);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: center;
+}
+
+/* caption column — driver cross-fades children; reduced-motion stacks them */
+.demo-caption {
+  position: relative;
+  min-height: 6rem;
+}
+.caption {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  pointer-events: none;
+}
+.caption--visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.caption-title {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  color: var(--fg-bright);
+  letter-spacing: -0.01em;
+  margin-bottom: 0.5rem;
+}
+.caption-body {
+  color: var(--muted);
+  max-width: var(--measure);
+}
+/* reduced-motion / no-scenes: plain stacked, statically positioned list */
+.demo-caption--static {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.demo-caption--static .caption {
+  position: static;
+  inset: auto;
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+/* ===================================================================== */
+/* §5 the fake mmux TUI                                                   */
+/* ===================================================================== */
+.tui {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  /* a real terminal aspect; body scrolls internally if content overflows */
+  min-height: 26rem;
+  overflow: hidden;
+}
+/* engaged sandbox: lift the whole widget to signal it owns the keyboard */
+.tui--engaged { border-color: var(--accent); }
+.tui:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tui-titlebar {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 0.35rem 0.6rem;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.tui-title { color: var(--fg-bright); font-weight: 700; }
+.tui-path { color: var(--muted); }
+
+/* 3-column body (sidebar · main · panel) at/above --bp-compact */
+.tui-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+/* --- sidebar --- */
+.tui-sidebar {
+  border-right: 1px solid var(--line);
+  padding: 0.5rem 0;
+  overflow-y: auto;
+}
+.sb-project {
+  padding: 0.2rem 0.6rem;
+  color: var(--muted);
+  border-left: 2px solid transparent;
+}
+.sb-project--active {
+  background: var(--panel-2);
+  color: var(--fg-bright);
+  border-left-color: var(--accent); /* §5.2: thin accent left tick on active */
+}
+.sb-section { padding: 0.4rem 0 0.6rem; }
+.sb-header {
+  padding: 0.1rem 0.6rem 0.25rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+.sb-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.12rem 0.6rem 0.12rem 0;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.sb-row--selected {
+  background: var(--panel-2);
+  color: var(--fg-bright);
+}
+/* launcher rows: + New … — grayscale until hover/selected (§5.2) */
+.sb-row--launcher { color: var(--muted); }
+.sb-row--launcher.sb-row--selected,
+.sb-row--launcher:hover { color: var(--accent); }
+
+/* selection bar ▌ — the one place cyan marks selection (§1) */
+.sb-bar {
+  width: 0.6rem;
+  flex: none;
+  text-align: center;
+  color: transparent;
+}
+.sb-row--selected .sb-bar { color: var(--accent); }
+
+/* glyphs ● ○ · stay grayscale; fill vs hollow carries state (§1) */
+.sb-glyph { color: var(--faint); flex: none; }
+.sb-row--selected .sb-glyph { color: var(--fg); }
+
+.sb-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.sb-sub {
+  flex: 0 1 auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* attention bell ● — red, the only warm color in the sidebar (§1) */
+.sb-dot {
+  margin-left: auto;
+  flex: none;
+  color: var(--alert);
+}
+.sb-dot[hidden] { display: none; }
+
+/* --- main pane --- */
+.tui-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid transparent; /* swapped to --accent when focused */
+}
+/* focused-pane border in cyan (§1) — set by tui--main-focus on root */
+.tui--main-focus .tui-main { border-color: var(--accent); }
+
+.tui-main-title {
+  padding: 0.3rem 0.7rem;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tui-main-screen {
+  flex: 1;
+  padding: 0.6rem 0.7rem;
+  overflow: auto;
+  min-height: 0;
+}
+.screen-line { white-space: pre-wrap; word-break: break-word; }
+.screen-placeholder { color: var(--muted); white-space: pre-line; } /* meaningful instructional text — must clear AA, so --muted not --faint (§0/§9). pre-line renders the \n\n in "… is stopped." as a blank-line break, like the app. */
+.screen-cursor {
+  color: var(--fg-bright);
+  animation: blink 1s steps(1) infinite;
+}
+
+/* --- right panel --- */
+.tui-panel {
+  display: flex;
+  flex-direction: column;
+  width: 14rem;
+  border-left: 1px solid var(--line);
+  border-top: 1px solid transparent;
+  border-right: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  min-height: 0;
+}
+.tui--panel-focus .tui-panel { border-color: var(--accent); }
+.tui-panel[hidden] { display: none; }
+.tui-panel-title {
+  padding: 0.3rem 0.7rem;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-bright);
+}
+.tui-panel-screen {
+  flex: 1;
+  padding: 0.5rem 0.7rem;
+  overflow: auto;
+  min-height: 0;
+}
+.panel-branch { color: var(--fg-bright); margin-bottom: 0.3rem; }
+.panel-line { color: var(--muted); white-space: pre-wrap; }
+
+/* --- footer hints --- */
+.tui-footer {
+  padding: 0.3rem 0.7rem;
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- overlays anchored inside #tui (positioned relative) --- */
+.tui { position: relative; }
+
+/* notification toast (scene 6) — the only place the toast accent (red) shows */
+.tui-toast {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 2.4rem;
+  max-width: 18rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--alert-dim);
+  border: 1px solid var(--alert);
+  color: var(--fg-bright);
+}
+.tui-toast[hidden] { display: none; }
+.toast-dot { color: var(--alert); flex: none; }
+.toast-title { font-weight: 700; }
+.toast-body { color: var(--fg); display: block; }
+
+/* detached / reattached overlay (scene 4) — grayscale, centered scrim */
+.tui-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  color: var(--fg-bright);
+  letter-spacing: 0.12em;
+  text-transform: lowercase;
+  z-index: 2;
+}
+.tui-overlay[hidden] { display: none; }
+
+/* sandbox hint (finale) — grayscale; cyan on engage handled on the widget */
+.tui-sandbox-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 2.4rem;
+  transform: translateX(-50%);
+  padding: 0.4rem 0.7rem;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+  z-index: 2;
+}
+.tui-sandbox-hint[hidden] { display: none; }
+
+/* ===================================================================== */
+/* §4.4 features — box-drawn panels                                      */
+/* ===================================================================== */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: var(--gap);
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+.card-top,
+.card-bottom {
+  color: var(--line-bright);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.card-body {
+  flex: 1;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  padding: 0.5rem 1rem 0.75rem;
+}
+.card-title {
+  margin: 0 0 0.4rem;
+  font-size: var(--fs-body);
+  color: var(--fg-bright);
+}
+.card-body p {
+  margin: 0;
+  color: var(--fg);
+  font-size: var(--fs-small);
+}
+
+/* ===================================================================== */
+/* §4.5 how it works — box-drawing diagram                               */
+/* ===================================================================== */
+.how-diagram {
+  margin: 0 0 1.5rem;
+  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: clamp(0.6rem, 1.8vw, var(--fs-small));
+  line-height: 1.35;
+  overflow-x: auto; /* the fixed-width art may exceed tiny viewports */
+}
+.how-prose {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: var(--measure);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.how-prose li { color: var(--fg); }
+.how-prose em { color: var(--fg-bright); font-style: italic; }
+
+/* ===================================================================== */
+/* §4.6 install — code blocks + copy                                     */
+/* ===================================================================== */
+.install-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--gap);
+  margin-bottom: 1.25rem;
+}
+.code-block--source { grid-column: 1 / -1; } /* from-source spans full width */
+.code-label {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  margin-bottom: 0.35rem;
+}
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.code-cmd {
+  color: var(--fg-bright);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.code-block--source .code-cmd { font-size: var(--fs-small); }
+.code-row .copy { margin-left: auto; flex: none; }
+
+.install-run { color: var(--fg); }
+.run-cmd { color: var(--fg-bright); }
+.install-run-meta { color: var(--muted); font-size: var(--fs-small); }
+
+/* ===================================================================== */
+/* §4.7 footer                                                           */
+/* ===================================================================== */
+.footer {
+  padding-block: 2rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.footer a { color: var(--muted); }
+.footer a:hover,
+.footer a:focus-visible { color: var(--accent); }
+
+/* ===================================================================== */
+/* Responsive — below --bp-compact (680px): TUI single column, sidebar   */
+/* stacks above main, panel hidden; page sections single-column (§2,§9). */
+/* ===================================================================== */
+@media (max-width: 680px) {
+  .demo-grid {
+    grid-template-columns: 1fr;
+  }
+  .tui-body {
+    grid-template-columns: 1fr; /* collapse to one column */
+  }
+  .tui-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line); /* now stacks above main */
+    max-height: 12rem;
+  }
+  .tui-panel,
+  .tui--panel-focus .tui-panel { display: none; } /* panel hidden when compact */
+  .nav-pill-cmd { display: none; } /* keep the nav from overflowing */
+}
+
+/* ===================================================================== */
+/* prefers-reduced-motion: kill cursor blink, scroll choreography,       */
+/* caption transitions, smooth scroll (§0, §9).                          */
+/* ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .cursor,
+  .screen-cursor { animation: none; }
+  .caption { transition: none; }
+  /* collapse the tall demo travel so there's no dead scroll past the static
+     finale the JS lands on under reduced-motion. */
+  #demo { min-height: 0; }
+  .demo-stage { position: static; min-height: 0; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

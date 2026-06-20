@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux — persistent terminals for your AI agents</title>
+  <meta name="description" content="mmux is a persistent, per-directory terminal multiplexer for AI coding agents and dev processes. One rust binary: spawn agents, watch processes, never lose a session — even over ssh.">
+  <!-- inline data: favicon — a block cursor ▮ on the page background, no remote fetch -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230b0c0e'/%3E%3Crect%20x='9'%20y='6'%20width='14'%20height='20'%20fill='%23c9d1d9'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#demo">skip to demo</a>
+
+  <!-- ===================================================================== -->
+  <!-- §4.1 sticky nav                                                       -->
+  <!-- ===================================================================== -->
+  <header class="nav" id="top">
+    <div class="nav-inner">
+      <a class="nav-wordmark" href="#top">mmux</a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="#demo">demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="#features">features</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="#install">install</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+      <div class="nav-pill">
+        <code class="nav-pill-cmd">cargo install mmux</code>
+        <button type="button" class="copy" data-copy="cargo install mmux">[copy]</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- =================================================================== -->
+    <!-- §4.2 hero                                                           -->
+    <!-- =================================================================== -->
+    <section id="hero">
+      <div class="hero-frame">
+        <div class="frame-top" aria-hidden="true">┌──────────────────────────────────────────────┐</div>
+        <div class="frame-body">
+          <p class="wordmark">mmux<span class="cursor" aria-hidden="true">▮</span></p>
+          <h1 class="lede">persistent terminals for your AI agents.</h1>
+          <p class="lede-sub">one rust binary. spawn agents, watch processes, never lose a session — even over ssh.</p>
+          <div class="install">
+            <span class="install-prompt" aria-hidden="true">$</span>
+            <code class="install-cmd">cargo install mmux</code>
+            <button type="button" class="copy" data-copy="cargo install mmux">[copy]</button>
+          </div>
+          <p class="scroll-hint">scroll to see it <span aria-hidden="true">↓</span></p>
+        </div>
+        <div class="frame-bottom" aria-hidden="true">└──────────────────────────────────────────────┘</div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- =================================================================== -->
+    <!-- §4.3 + §5 + §6 the centerpiece: scroll-through + playable TUI       -->
+    <!-- =================================================================== -->
+    <section id="demo" aria-label="a walkthrough of the mmux terminal">
+      <div class="demo-stage">
+        <div class="demo-grid">
+
+          <!-- ============================================================= -->
+          <!-- §5.1 the fake mmux TUI skeleton — ids/classes are LAW         -->
+          <!-- ============================================================= -->
+          <!-- At rest this is a decorative image (out of the tab order). tui.js upgrades it
+               to a focusable role="application" with operating instructions when scene 8 makes
+               it playable, and reverts on disable (§6.2). -->
+          <div id="tui" class="tui" role="img" aria-label="a simulated mmux terminal session">
+            <div class="tui-titlebar"><span class="tui-title">mmux</span><span class="tui-path"> — ~/dev/app</span></div>
+            <div class="tui-body">
+              <!-- divs, not <nav>/<main>: this is decorative chrome, not page landmarks
+                   (the page already has one <main>; a second would be invalid). -->
+              <div class="tui-sidebar" aria-hidden="true">
+                <!-- project headers (multi-project only) + sections rendered here by JS -->
+              </div>
+              <div class="tui-main">
+                <div class="tui-main-title"></div>     <!-- e.g. " claude — running " -->
+                <div class="tui-main-screen"></div>    <!-- streamed lines / placeholder -->
+              </div>
+              <aside class="tui-panel" hidden>          <!-- right git panel; toggled visible by JS -->
+                <div class="tui-panel-title"> git </div>
+                <div class="tui-panel-screen"></div>
+              </aside>
+            </div>
+            <div class="tui-footer"></div>             <!-- key hints, set per focus -->
+            <div class="tui-toast" hidden></div>        <!-- notification toast, scene 6 -->
+            <div class="tui-overlay" hidden></div>      <!-- "detached / reattached", scene 4 -->
+            <div class="tui-sandbox-hint" hidden></div> <!-- "click in to play", finale -->
+          </div>
+
+          <!-- caption column: driver cross-fades children; reduced-motion stacks them.
+               no aria-live — captions are static content read in normal flow; a live region
+               would re-announce on every scroll step. -->
+          <div class="demo-caption"></div>
+
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- =================================================================== -->
+    <!-- §4.4 features                                                       -->
+    <!-- =================================================================== -->
+    <section id="features">
+      <h2 class="section-h2">
+        <span class="h2-mark" aria-hidden="true">##</span> what you get
+      </h2>
+      <div class="cards">
+        <article class="card">
+          <div class="card-top" aria-hidden="true">┌─ per-directory &amp; persistent ─┐</div>
+          <div class="card-body">
+            <h3 class="card-title">per-directory &amp; persistent</h3>
+            <p>one mmux per directory, kept alive inside a tmux session. detach, drop ssh, reattach — it's all still there.</p>
+          </div>
+          <div class="card-bottom" aria-hidden="true">└──────────────────────────────┘</div>
+        </article>
+
+        <article class="card">
+          <div class="card-top" aria-hidden="true">┌─ agents on demand ─┐</div>
+          <div class="card-body">
+            <h3 class="card-title">agents on demand</h3>
+            <p>spawn claude, codex, whatever. each runs in its own pane, started and restarted straight from the sidebar.</p>
+          </div>
+          <div class="card-bottom" aria-hidden="true">└────────────────────┘</div>
+        </article>
+
+        <article class="card">
+          <div class="card-top" aria-hidden="true">┌─ processes you watch ─┐</div>
+          <div class="card-body">
+            <h3 class="card-title">processes you watch</h3>
+            <p>start, stop and tail your dev server and tasks without ever leaving the multiplexer.</p>
+          </div>
+          <div class="card-bottom" aria-hidden="true">└──────────────────────┘</div>
+        </article>
+
+        <article class="card">
+          <div class="card-top" aria-hidden="true">┌─ attention, caught ─┐</div>
+          <div class="card-body">
+            <h3 class="card-title">attention, caught</h3>
+            <p>a bell or a notification escape becomes a sidebar dot and a real desktop notification. even over ssh.</p>
+          </div>
+          <div class="card-bottom" aria-hidden="true">└─────────────────────┘</div>
+        </article>
+
+        <article class="card">
+          <div class="card-top" aria-hidden="true">┌─ linked projects ─┐</div>
+          <div class="card-body">
+            <h3 class="card-title">linked projects</h3>
+            <p>group sibling clones into one sidebar, each its own section; the panel follows whichever project is active.</p>
+          </div>
+          <div class="card-bottom" aria-hidden="true">└───────────────────┘</div>
+        </article>
+
+        <article class="card">
+          <div class="card-top" aria-hidden="true">┌─ one binary, any terminal ─┐</div>
+          <div class="card-body">
+            <h3 class="card-title">one binary, any terminal</h3>
+            <p>a single rust binary. it runs anywhere a terminal does.</p>
+          </div>
+          <div class="card-bottom" aria-hidden="true">└────────────────────────────┘</div>
+        </article>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- =================================================================== -->
+    <!-- §4.5 how it works                                                   -->
+    <!-- =================================================================== -->
+    <section id="how">
+      <h2 class="section-h2">
+        <span class="h2-mark" aria-hidden="true">##</span> how it works
+      </h2>
+      <pre class="how-diagram" role="img" aria-label="diagram: your terminal connects to a hidden per-directory tmux session that holds the mmux ratatui TUI, which survives detach and disconnect; the TUI has a sidebar of agents, terminals and processes, a main pane for the focused program's live screen, and a panel running lazygit; every pane is a real PTY with a vt100 parser">
+  your terminal  (local · ssh · tmux client)
+        │
+        ▼
+  ┌─────────────────────────────────────────────┐
+  │  tmux session   (one per directory · hidden) │   ← survives detach / disconnect
+  │  ┌───────────────────────────────────────┐   │
+  │  │  mmux  (ratatui TUI)                   │   │
+  │  │   sidebar  │   main pane   │  panel    │   │
+  │  │  agents    │  focused      │  lazygit  │   │
+  │  │  terminals │  program's    │  (git)    │   │
+  │  │  processes │  live screen  │           │   │
+  │  └───────────────────────────────────────┘   │
+  └─────────────────────────────────────────────┘
+   every pane = a real PTY + a vt100 parser</pre>
+      <ul class="how-prose">
+        <li>the TUI runs <em>inside</em> a per-directory tmux session, so closing the terminal or losing ssh never kills it.</li>
+        <li>each agent, terminal and process is one pty-backed pane behind a single unified lifecycle.</li>
+        <li>the bell and notification escapes are captured and turned into desktop notifications.</li>
+      </ul>
+    </section>
+
+    <hr class="rule">
+
+    <!-- =================================================================== -->
+    <!-- §4.6 install                                                        -->
+    <!-- =================================================================== -->
+    <section id="install">
+      <h2 class="section-h2">
+        <span class="h2-mark" aria-hidden="true">##</span> install
+      </h2>
+      <div class="install-blocks">
+        <div class="code-block">
+          <div class="code-label">homebrew</div>
+          <div class="code-row">
+            <code class="code-cmd">brew install marvinvr/mmux/mmux</code>
+            <button type="button" class="copy" data-copy="brew install marvinvr/mmux/mmux">[copy]</button>
+          </div>
+        </div>
+
+        <div class="code-block">
+          <div class="code-label">cargo</div>
+          <div class="code-row">
+            <code class="code-cmd">cargo install mmux</code>
+            <button type="button" class="copy" data-copy="cargo install mmux">[copy]</button>
+          </div>
+        </div>
+
+        <div class="code-block code-block--source">
+          <div class="code-label">from source</div>
+          <div class="code-row">
+            <code class="code-cmd">git clone https://github.com/marvinvr/mmux &amp;&amp; cd mmux &amp;&amp; cargo install --path .</code>
+            <button type="button" class="copy" data-copy="git clone https://github.com/marvinvr/mmux && cd mmux && cargo install --path .">[copy]</button>
+          </div>
+        </div>
+      </div>
+      <p class="install-run">then just run <code class="run-cmd">mmux</code> <span class="install-run-meta">(in a dir of your choice)</span></p>
+    </section>
+  </main>
+
+  <hr class="rule">
+
+  <!-- ===================================================================== -->
+  <!-- §4.7 footer                                                           -->
+  <!-- ===================================================================== -->
+  <footer class="footer">
+    <p>mmux · MIT · <a href="https://github.com/marvinvr/mmux">github</a><span class="cursor" aria-hidden="true">▮</span></p>
+  </footer>
+
+  <!-- scenes.js MUST load before tui.js (§8): defines window.MMUX_SCENES -->
+  <script defer src="scenes.js"></script>
+  <script defer src="tui.js"></script>
+</body>
+</html>
