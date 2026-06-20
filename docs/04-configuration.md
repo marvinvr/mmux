@@ -1,0 +1,159 @@
+# Configuration
+
+mmux is configured with YAML. There are two files, and they are merged at launch.
+
+## The Two Files
+
+| File | Purpose |
+| --- | --- |
+| `~/.mmux/config.yaml` | **Global defaults** — the things you want in every project, typically your agents. |
+| `./mmux.yaml` | **Per-project** — this directory's processes, name, and links. `./mmux.yml` is also accepted (`.yaml` wins if both exist). |
+
+Either file alone is enough. If **neither** exists when you run `mmux`, it treats the directory
+as a first run and launches the [`mmux init`](01-quick-start.md#2-set-up-a-project) wizard.
+
+Run `mmux check` to print the effective merged config without launching the TUI, or `mmux docs`
+for a self-contained guide printed straight to the terminal (handy for humans and AI agents
+setting up a config).
+
+## How the Merge Works
+
+The project file is layered on top of the global one, and **project values win**:
+
+- `name`, `git-panel`, and `notifications` — the project's value replaces the global one
+  **wholesale** if set. (There is no field-level merge: a project `notifications:` block that
+  sets only `enabled: true` does **not** inherit the global `mechanism`/`throttle_secs` — unset
+  sub-fields fall back to their built-in defaults, not to the global value.)
+- `agents` and `processes` — merged **by name**: a project entry with the same `name` replaces
+  the global one; otherwise it is appended.
+- `linked-projects` — the project's list, or the global's if the project lists none.
+- A relative `cwd` always resolves against the **project** directory — even for an agent or
+  process defined in the global config. So a global `claude` agent runs in whatever project you
+  opened, not in `$HOME`.
+
+## Example
+
+`~/.mmux/config.yaml` (global defaults — your agents everywhere):
+
+```yaml
+agents:
+  - name: Claude
+    cmd: claude
+    args: ["--dangerously-skip-permissions"]
+  - name: Codex
+    cmd: codex
+    args: ["--dangerously-bypass-approvals-and-sandbox"]
+```
+
+`./mmux.yaml` (per-project — just this directory's bits):
+
+```yaml
+# name is optional; it defaults to the directory's name.
+name: my-workspace
+
+processes:
+  - name: Dev server
+    cmd: npm
+    args: ["run", "dev"]
+    cwd: .            # relative to this file
+    autostart: false  # start automatically when mmux opens?
+```
+
+## Field Reference
+
+### Top level
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `name` | string | Workspace label; shown in the sidebar and the terminal's tab title. Defaults to the directory basename. |
+| `agents` | list | [Agent](#agent) templates you spawn on demand. |
+| `processes` | list | [Process](#process) definitions you start/stop and watch. |
+| `git-panel` | map | [Git panel](#git-panel) settings. |
+| `notifications` | map | [Notification](05-notifications.md) settings. |
+| `linked-projects` | list of paths | Sibling directories to open in one sidebar. Honored **only** in the launch directory's config. |
+
+### Agent
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `name` | string, **required** | Label shown in the sidebar. |
+| `cmd` | string, **required** | Executable on your `PATH`. |
+| `args` | list of strings | Defaults to `[]`. |
+| `cwd` | string | Relative to the config file's directory; defaults to the project directory. |
+| `env` | map | Environment overrides. |
+
+### Process
+
+Same as [Agent](#agent), plus:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `autostart` | bool | Start automatically when mmux first opens. Defaults to `false`. Honored only in the launch directory (linked projects' processes start stopped). |
+
+### Git panel
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `enabled` | bool | Defaults to `true`. Set to `false` to hide the panel. |
+
+The [git panel](03-usage.md#the-git-panel) is built in and shown automatically whenever the
+directory is a git repository. There is no command, width, or title to configure — its width
+follows the left sidebar. The only knob is turning it off:
+
+```yaml
+git-panel:
+  enabled: false
+```
+
+### Notifications
+
+See [Notifications](05-notifications.md) for the full reference. Defaults are sensible (on,
+`osc9`, unfocused-only, 5-second throttle), so most configs omit this block entirely.
+
+## Linked Projects
+
+Working in several clones of a repo at once (`./app`, `../app2`, `../app3` — the
+"clones instead of worktrees" setup)? List the siblings under `linked-projects` and they all open
+in **one** mmux, each as its own group in the sidebar:
+
+```yaml
+# in ./app/mmux.yaml
+linked-projects:
+  - ../app2
+  - ../app3
+```
+
+- Switch between projects with `[` and `]`. The git panel **follows the active project** — when
+  you select a row in `app2`, the panel shows `app2`'s git — and each project's panel stays alive
+  in the background, so switching back is instant.
+- Paths are resolved relative to the config file. Loading is **one level deep** and
+  **de-duplicated by canonical path**, so you can drop the *same* config into every clone (even
+  one that lists itself) and it will never expand recursively.
+- At most **8 projects** load in total (the launch directory plus up to 7 links). A missing,
+  unreadable, or over-the-cap sibling is skipped with a warning; only the launch directory
+  failing to load aborts startup.
+- The launch directory is always the first group, so opening mmux from any clone keeps "where you
+  are" on top.
+- The set of projects is **fixed when mmux opens.** Adding or removing a link takes effect on the
+  next `mmux` (a reopen), not on a [reload](#live-reload).
+
+## Live Reload
+
+Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the global config
+**without losing running panes**:
+
+- newly added processes and agents appear;
+- edited commands take effect on the next start;
+- a process whose definition you removed keeps running as an "orphan" rather than being killed;
+- the git panel is gained or lost if the directory's repo status changed;
+- a one-line footer flash summarizes what changed.
+
+Reload refreshes each *already-loaded* project in place. It does **not** re-read the
+`linked-projects` list — changing which projects are in the workspace needs a reopen.
+
+## Adding a Process From the TUI
+
+You don't have to hand-edit YAML to add a process. The `+ New Process` launcher opens a
+[guided form](03-usage.md#adding-a-process) that appends the entry to your `mmux.yaml`,
+preserving the file's existing comments and layout, then reloads. (It can't set `env`, though —
+that still needs a hand edit.)

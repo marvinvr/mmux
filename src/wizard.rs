@@ -202,11 +202,9 @@ fn build_global_yaml(agents: &[Agent]) -> String {
     s.push_str("# override or add to them by name.\n\n");
     s.push_str("agents:\n");
     s.push_str(&agent_items(agents));
-    s.push_str("\n# An always-on right-hand panel for every project (optional):\n");
-    s.push_str("# right_panel:\n");
-    s.push_str("#   cmd: lazygit\n");
-    s.push_str("#   title: lazygit\n");
-    s.push_str("#   width: 44\n");
+    s.push_str("\n# A git panel is shown automatically in every git repo. To disable it:\n");
+    s.push_str("# git-panel:\n");
+    s.push_str("#   enabled: false\n");
     s
 }
 

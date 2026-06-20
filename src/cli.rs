@@ -134,11 +134,12 @@ fn print_docs() {
 
 WHAT IT IS
     Type `mmux` in a directory and you get a TUI: a left sidebar split into
-    Agents (Claude, Codex, … you spawn on demand), Processes (servers, scripts,
-    … you start/stop and watch), and an optional persistent right panel (e.g.
-    lazygit). The whole TUI runs inside an invisible tmux session keyed to that
-    directory, so there is exactly ONE mmux per directory and it keeps running
-    after you close the terminal or drop SSH. Run `mmux` again to reattach.
+    Agents (Claude, Codex, … you spawn on demand), Terminals, and Processes
+    (servers, scripts, … you start/stop and watch), plus a built-in git panel
+    shown automatically when the directory is a git repo. The whole TUI runs
+    inside an invisible tmux session keyed to that directory, so there is exactly
+    ONE mmux per directory and it keeps running after you close the terminal or
+    drop SSH. Run `mmux` again to reattach.
 
     Agent rows show a subtitle (the terminal title the program sets, e.g. what
     Claude is doing) and a red ● when the program rings the bell (needs you).
@@ -146,15 +147,15 @@ WHAT IT IS
 CONFIG: TWO LAYERS, MERGED
     mmux reads a GLOBAL config and a PROJECT config and merges them at launch:
 
-      ~/.mmux/config.yaml   global defaults — your agents/panel everywhere
+      ~/.mmux/config.yaml   global defaults — your agents everywhere
       ./mmux.yaml           per-project — this directory's processes etc.
                             (./mmux.yml also accepted)
 
     Project values win. `agents` and `processes` merge BY NAME (a project entry
-    with the same name replaces the global one; otherwise it's appended). `name`
-    and `right_panel` are overridden if the project sets them. Relative `cwd`s
-    always resolve against the PROJECT directory, so a global agent/panel runs in
-    whatever project you're in. Either file alone is enough; you don't need both.
+    with the same name replaces the global one; otherwise it's appended). `name`,
+    `git-panel`, and `notifications` are overridden whole if the project sets them.
+    Relative `cwd`s always resolve against the PROJECT directory, so a global agent
+    runs in whatever project you're in. Either file alone is enough; you don't need both.
 
 PROJECT FILE — ./mmux.yaml
     Run `mmux init` for an interactive setup wizard, or write it yourself:
@@ -177,16 +178,14 @@ PROJECT FILE — ./mmux.yaml
           autostart: false             # start automatically when mmux opens?
           # env: {{ NODE_ENV: development }}
 
-      right_panel:                     # optional always-on right column
-        cmd: lazygit
-        title: lazygit                 # optional, defaults to cmd
-        width: 44                      # optional column width, defaults to 44
-        # cwd: .
+      # The git panel appears automatically when this dir is a git repo.
+      # It needs no config; disable it with:
+      # git-panel:
+      #   enabled: false
 
 GLOBAL FILE — ~/.mmux/config.yaml
     Same schema. Put the things you want in EVERY project here — typically your
-    agents and the right panel — and keep per-project bits (processes, name) in
-    the project file:
+    agents — and keep per-project bits (processes, name) in the project file:
 
       agents:
         - name: Claude
@@ -196,16 +195,11 @@ GLOBAL FILE — ~/.mmux/config.yaml
           cmd: codex
           args: ["--dangerously-bypass-approvals-and-sandbox"]
 
-      right_panel:
-        cmd: lazygit
-        title: lazygit
-        width: 44
-
 LINKED PROJECTS — one sidebar for several clones
     Working in multiple clones of a repo (./app, ../app2, ../app3)? List the
     siblings under `linked-projects` and they all open in ONE mmux, each as its own
-    group in the sidebar. Switch between them with [ and ]; the right panel (e.g.
-    lazygit) follows whichever project you're on.
+    group in the sidebar. Switch between them with [ and ]; the git panel follows
+    whichever project you're on.
 
       # in ./app/mmux.yaml
       linked-projects:
@@ -218,11 +212,11 @@ LINKED PROJECTS — one sidebar for several clones
     on the next `mmux` (a reopen), not on `R` reload.
 
 FIELD REFERENCE
-    top level   name (str, optional) · agents[] · processes[] · right_panel (optional)
+    top level   name (str, optional) · agents[] · processes[] · git-panel (optional)
                 · notifications (optional) · linked-projects[] (paths, root config only)
     agent       name* · cmd* · args[] · cwd · env{{}}
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
-    right_panel cmd* · args[] · cwd · title · width (default 44)
+    git-panel   enabled (bool, default true; the panel is automatic for git repos)
     (* required. cwd is relative to the file's directory. Omitted lists/maps are empty.)
 
 QUICK START

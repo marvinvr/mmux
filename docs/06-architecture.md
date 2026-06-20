@@ -1,0 +1,201 @@
+# Architecture
+
+This is the conceptual map of the codebase, for anyone — human or agent — working **on** mmux.
+For a file-by-file index, see the [Module Map](07-module-map.md). For conventions and the
+documentation covenant, see [Contributing](08-contributing.md).
+
+mmux has two halves: a thin **CLI / tmux outer shell**, and the **`app/` TUI** that runs inside
+it.
+
+## The Two Halves and the Inner/Outer Split
+
+The same binary plays two roles, distinguished by the `MMUX_INNER` environment variable (or the
+`--inner` flag):
+
+- **Outer process** — the bare `mmux` you type. It does no TUI work: it finds (or creates) the
+  per-directory tmux session and attaches to it. See `cli.rs` → `tmux.rs`.
+- **Inner process** — launched *by tmux* with `MMUX_INNER=1` set. It reads the workspace config
+  and runs the ratatui TUI (`app::run`). This is what you actually see.
+
+```text
+mmux                      cli::run() dispatch
+  │
+  ├─ init/check/docs/      → wizard / config validation / printed guide
+  │  attach
+  │
+  └─ (no subcommand)       → tmux::launch()
+        │
+        ├─ outer: tmux new-session -d … mmux --inner   (then attach-session)
+        │
+        └─ inner (MMUX_INNER set): Config::load_workspace → app::run(ws)
+```
+
+### The tmux Jail
+
+The TUI runs inside an invisible, per-directory tmux session. This is what makes mmux persistent
+and singleton-per-directory:
+
+- **Session name** = a hash of the directory's *canonical* path, formatted `mmux-{:016x}`. Hex
+  avoids tmux's illegal `.`/`:` characters; canonicalizing first means `dir`, `dir/`, and
+  symlinks all map to the same session.
+- **Singleton.** A second `mmux` in the same directory computes the same name and attaches
+  instead of creating. If creation loses a race, mmux falls through to attaching to the winner.
+- **Invisible & non-interfering.** `configure_session` sets options on *that session only*
+  (never `-g`): status bar off, no tmux prefix (mmux owns its own `Ctrl-b` leader), mouse off
+  (the TUI handles its own mouse), `destroy-unattached off` (survives detach),
+  `allow-passthrough on` (lets [notification](05-notifications.md) escapes reach the outer
+  terminal), and `set-clipboard on` (lets OSC 52 copies through). The outer terminal's tab title
+  is set to the project name.
+- Attaching runs with `TMUX` unset, so mmux works even when launched inside another tmux.
+
+`mmux attach` is a separate path: it lists running `mmux-*` sessions plus recent directories
+(from `~/.mmux/history`) in a small picker and attaches to or launches the chosen one.
+
+## The Event Loop
+
+`app::run` puts the terminal into raw mode + alternate screen + mouse capture + bracketed paste,
+then `run_loop` cycles:
+
+1. **draw** the frame (`App::draw`), which also writes the per-frame mouse hit-rects into
+   `App.regions`;
+2. **collect notifications** — drain every pane's captured events and write the resulting escape
+   bytes straight to stdout (they're non-painting, so this is safe after the frame);
+3. break if `should_quit`;
+4. **poll** events for 50 ms (so live program output keeps redrawing at ~20 fps even with no
+   input), dispatching `Key`/`Mouse`/`Paste`;
+5. **tick** — housekeeping (below).
+
+`tick()` runs every loop: it steps drag auto-scroll, prunes exited ephemeral panes, makes the
+selected row's project the **active** one (see [follow-active](#workspaces-and-projects)), drains
+finished background git jobs from every project's panel, and gives the *visible* git panel a
+throttled refresh.
+
+## The Unified Session Model
+
+This is the core abstraction. An agent, a terminal, and a process are the same thing under the
+hood: a `Recipe` (cmd/args/cwd/env) plus an optional live `Pane`. They live in **one** flat
+`Vec<Session>` on `App`, distinguished only by a `Kind` tag and a `project` index.
+
+```rust
+enum Kind { Agent, Terminal, Process }   // exactly three — there is no Panel kind
+
+struct Session {
+    name, kind, project,        // identity + which sidebar bucket / project
+    recipe,                     // everything needed to (re)spawn identically
+    pane: Option<Pane>,         // the live PTY-backed terminal, if running
+    error: Option<String>,
+    ephemeral: bool,            // throwaway rows (the Ctrl+P editor) get pruned on exit
+}
+```
+
+- **`Kind` drives presentation only** — sidebar grouping, the status badge, placeholder wording —
+  **never the lifecycle.** Filter the one `Vec` by `project` + `Kind` to build each sidebar group.
+- **One lifecycle for all three:**
+  - `spawn(rows, cols)` kills any existing pane and spawns the recipe fresh — it is **both start
+    and restart**; callers decide *when*.
+  - `stop()` kills the process but keeps the now-exited pane (so it reads as `Status::Exited`).
+  - `kill()` kills and drops the pane entirely (back to `Status::Stopped`).
+- `Status` (`Stopped`/`Running`/`Exited`) is derived from the `Option<Pane>` and whether the
+  process is alive — it is not stored.
+
+> Do **not** re-introduce per-kind collections or per-kind spawn/stop methods. That triplication
+> was deliberately removed; the unified model is the point.
+
+A `Pane` (in `pane.rs`) owns one PTY via `portable-pty`, parsed by `vt100` on a reader thread,
+with a writer thread draining an input channel and a reaper thread waiting on the child. A
+`Callbacks` impl captures the OSC window title (the sidebar subtitle), the bell, and notification
+OSCs. Scrollback is 5000 lines.
+
+## Workspaces and Projects
+
+`App.projects: Vec<Project>` holds the launch directory (`projects[0]`) plus any
+[linked projects](04-configuration.md#linked-projects). Each `Project` owns:
+
+- its merged `cfg`;
+- per-agent-template instance `counts` and a `term_count` (for `Claude #3`, `Terminal #2`
+  naming);
+- **its own** git panel: `git: Option<GitPanel>`.
+
+`App.active` is the selected row's project. **Follow-active:** `tick()` keeps `active` in sync
+with the selection, so the visible git panel always belongs to the project you're working in; the
+others stay alive in the background. `last_proj_sel` remembers each project's last-selected row so
+`[`/`]` and clicking restore where you were. A single-project workspace renders exactly as it
+always did — no project header.
+
+`load_workspace` (in `config.rs`) builds the workspace: load the root, then each linked project
+one level deep, de-duplicated by canonical path, capped at 8, with each linked project's *own*
+`linked-projects` cleared so links never chain. Failures become warnings, not errors.
+
+## The Git Panel and Overlays
+
+The right column is a **native git panel** — mmux's own UI, not an embedded program. It is **not**
+a `Session` and has no PTY: it is `Project.git: Option<GitPanel>`, created once in `Project::new`
+when [`git-panel`](04-configuration.md#git-panel) is enabled and the directory is a repo. It draws
+three boxes (Changes / Branches / Recent) and is driven by its own keymap.
+
+- **`git.rs`** (top level) is a stateless layer of synchronous shell-outs to the `git` CLI —
+  status, log, branches, stage/discard/commit/switch/pull/push — returning data or git's stderr
+  as a plain string. Nothing is cached.
+- **`app/git.rs`** is the `GitPanel` state machine plus the `impl App` git-action methods. It
+  refreshes on a 1500 ms throttle while visible (and immediately after any mutation). Network ops
+  (pull/push) block, so they run on a throwaway thread and report back over an `mpsc` channel
+  drained in `tick()`.
+
+`GitPanel` also hosts the **`Overlay`** enum — full-screen modals that eat every key while open:
+
+| Overlay | Raised by | Effect |
+| --- | --- | --- |
+| `Prompt` | `c` / `n` in the panel | Commit message / new-branch name |
+| `Confirm` | `d` in the panel | Yes/no guard before a destructive discard |
+| `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
+| `NewProcess` | `+ New Process` | [Guided form](03-usage.md#adding-a-process) → appends to `mmux.yaml` |
+
+The picker (`picker.rs`) lists files via `rg --files` → `git ls-files` → a shallow walk, and
+fuzzy-ranks them. The new-process form (`procform.rs`) collects fields step-by-step, then
+`finish_new_process` splices the entry into `mmux.yaml` via `config::append_process` (raw-text
+editing, to preserve comments) and reloads.
+
+## Navigation, Focus, and Regions
+
+- **Navigation is positional.** `App.sel` is an index into the `Vec<Nav>` returned by
+  `build_nav()`, rebuilt on demand. `Nav` is one row in display order: the launchers
+  (`NewAgent`/`NewTerminal`/`NewProcess`, each carrying its project), `Session(i)` (an index into
+  the flat sessions vec), and `Panel` (the git panel — listed in nav *only* in compact mode).
+  Any code that mutates `sessions` must re-clamp `sel` against the freshly built nav. This is the
+  one place that is deliberately not yet ideal — see [Planned](08-contributing.md#planned-and-known-limits).
+- **Focus** (`Sidebar` / `Terminal` / `Right`) decides which region gets keys. `focused_pane()`
+  resolves it — and returns `None` for `Right`, because the git panel is native UI with no PTY to
+  forward keys to.
+- **Regions** (`view/mod.rs`) is per-frame mouse geometry: rendering writes the rects, input reads
+  them, and it's reset at the top of every `draw()`. If you add a clickable area, set its rect
+  during render and test it in `on_mouse`.
+
+## Data Flow Summary
+
+- **Output:** program → PTY → reader thread → vt100 parser → `Pane` (title/bell/notifications via
+  `Callbacks`). The app reads it through `Session::subtitle/attention/take_notifications`.
+- **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then by focus). In a pane,
+  `keymap::encode_key` translates the key to PTY bytes and `Pane::send` queues them.
+- **Notifications:** captured pane events → `collect_notifications` → `notify.rs` builds the OSC
+  escape (wrapped in tmux passthrough when inside tmux) → written to stdout → the outer terminal
+  renders the popup. See [Notifications](05-notifications.md).
+- **Copy:** mouse drag → a `Selection` in buffer coordinates → on release `Pane::contents_block`
+  stitches the text across scrollback → `clipboard::copy` (OSC 52 + a local helper).
+
+## Why It's Built This Way
+
+| Decision | Rationale |
+| --- | --- |
+| Inner/outer split via tmux | One binary; tmux gives free persistence across detach/disconnect/SSH and a true per-directory singleton. |
+| Session name = hash of canonical path | Deterministic, tmux-safe, and collapses `dir`/`dir/`/symlinks to one session. |
+| One unified `Session` model | Agents, terminals, and processes differ only in presentation; unifying them removed three-way triplication of spawn/stop/collections. |
+| Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
+| Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
+| Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |
+
+## Planned
+
+The v1 architecture has known limits — persistence covers detach/disconnect but not a TUI crash;
+selection is positional; mouse events aren't forwarded into panes; the linked-project set is fixed
+at launch. These, and the planned daemon/client split, are tracked in
+[Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).
