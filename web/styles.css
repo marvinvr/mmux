@@ -1,77 +1,80 @@
 /* ============================================================================
- * mmux.org — v2 stylesheet
+ * mmux.org — v3 stylesheet
  *
- * A premium dark dev-tool landing page. The ONE thing that looks like a
- * terminal is #tw — a high-fidelity, real-CSS terminal window. Everything else
- * is real cards, real borders, real diagrams. No box-drawing chrome.
+ * Flat, sharp, terminal-honest. No glows, no gradients, minimal radius. The
+ * palette is tmux's: a green accent (the status-bar green) over neutral
+ * terminal greys; ANSI-ish semantic colors live only inside the window. The
+ * centerpiece is the scroll-through demo — a sticky terminal that scrubs scenes.
  *
- * Map: §2 tokens → reset → primitives (btn/copy/kicker/headings/grad) →
- *      bg glows → nav → hero → demo stage + captions → #tw window (§5) →
- *      syntax tones (§5.4) → features → how diagram (§9) → install → footer →
- *      responsive → reduced-motion → focus.
+ * Map: tokens → reset → primitives → nav → hero → demo (sticky scrub) →
+ *      #tw window → syntax tones → features → how → install → footer →
+ *      responsive → reduced-motion/focus → polish.
  * ========================================================================== */
 
 /* ============================================================================
- * §2 — design tokens
+ * design tokens
  * ========================================================================== */
 :root {
-  /* base surfaces — deep, slightly cool, with elevation steps */
-  --bg:        #08090f;
-  --bg-2:      #0b0d15;
-  --surface:   #111320;
-  --surface-2: #181b2b;
-  --surface-3: #20243a;
-  --border:    #232844;
-  --border-2:  #343c66;
+  /* base surfaces — neutral terminal dark, flat */
+  --bg:        #0d0e10;
+  --bg-2:      #131416;
+  --surface:   #17181b;
+  --surface-2: #1d1f22;
+  --surface-3: #26282c;
+  --border:    #2a2d31;
+  --border-2:  #3a3e44;
 
   /* ink */
-  --text:   #e9ebf5;
-  --text-2: #b3b9d2;
-  --muted:  #828aa6;
-  --faint:  #555d7e;
+  --text:   #d7d9dc;
+  --text-2: #abafb5;
+  --muted:  #7c8087;
+  --faint:  #4f535a;
 
-  /* brand — blue → indigo → magenta */
-  --brand-1: #38bdf8;
-  --brand-2: #818cf8;
-  --brand-3: #e879f9;
-  --brand-grad:  linear-gradient(110deg, #38bdf8 0%, #818cf8 48%, #e879f9 100%);
-  --accent:      #818cf8;
-  --accent-soft: rgba(129, 140, 248, .14);
+  /* accent — tmux green. used sparingly: status bar, active row, links, cursor */
+  --green:        #3fb950;
+  --green-bright: #57d268;   /* legible green text on dark */
+  --green-dim:    #2c8c3c;
+  --accent:       #3fb950;
+  --accent-soft:  rgba(63, 185, 80, .12);
 
-  /* terminal / semantic signal (inside the window + status dots) */
-  --running:   #4ade80;
-  --attention: #fb7185;
-  --warn:      #fbbf24;
-  --info:      #38bdf8;
-  --add:       #4ade80;
-  --del:       #fb7185;
-  --ai:        #e879f9;
+  /* terminal ANSI-ish semantic (de-neoned, classic) — inside the window only */
+  --red:     #e0626f;
+  --yellow:  #d3a23e;
+  --blue:    #5aa6e0;
+  --magenta: #b07cd6;
+  --cyan:    #4bb7c4;
 
-  /* syntax token tones (terminal content, §5.4) */
-  --tok-kw:      #e879f9;
-  --tok-fn:      #38bdf8;
-  --tok-str:     #86efac;
-  --tok-num:     #fbbf24;
-  --tok-comment: #7c83a0;   /* AA-tuned: ≥4.5:1 on --surface/--bg-2 */
-  --tok-type:    #818cf8;
-  --tok-path:    #7dd3fc;
-  --tok-op:      #b3b9d2;
+  --running:   var(--green);
+  --attention: var(--red);
+  --warn:      var(--yellow);
+  --info:      var(--blue);
+  --add:       var(--green);
+  --del:       var(--red);
+  --ai:        var(--magenta);
 
-  /* glows */
-  --glow-brand: 0 0 80px -16px rgba(129, 140, 248, .55), 0 0 40px -16px rgba(232, 121, 249, .4);
-  --glow-sky:   0 0 50px -14px rgba(56, 189, 248, .5);
-  --ring:       0 0 0 3px var(--accent-soft);
+  /* syntax token tones (terminal content) */
+  --tok-kw:      #b07cd6;
+  --tok-fn:      #5aa6e0;
+  --tok-str:     #8cc265;
+  --tok-num:     #d3a23e;
+  --tok-comment: #7c8490;
+  --tok-type:    #5aa6e0;
+  --tok-path:    #6cb6e8;
+  --tok-op:      #abafb5;
 
-  /* shape / depth */
-  --radius:    14px;
-  --radius-sm: 9px;
-  --shadow:    0 24px 60px -24px rgba(0, 0, 0, .7), 0 8px 24px -16px rgba(0, 0, 0, .6);
+  /* depth — one subtle shadow, no glows */
+  --shadow: 0 12px 38px -22px rgba(0, 0, 0, .9);
+  --ring:   0 0 0 2px var(--bg), 0 0 0 4px var(--green);
+
+  /* shape — sharp */
+  --radius:    4px;
+  --radius-sm: 3px;
 
   /* type — system mono stack only, no remote fonts */
   --font: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
 
   /* scale */
-  --page-max: 1180px;
+  --page-max: 1120px;
   --measure: 60ch;
 }
 
@@ -94,7 +97,6 @@ body {
   line-height: 1.6;
   color: var(--text-2);
   background: var(--bg);
-  /* never let a glow or pinned window push a horizontal scrollbar */
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -103,17 +105,15 @@ body {
 a {
   color: var(--text);
   text-decoration: none;
-  transition: color .18s ease;
+  transition: color .15s ease;
 }
-a:hover { color: var(--brand-2); }
+a:hover { color: var(--green-bright); }
 
 button { font-family: inherit; }
 ul { margin: 0; padding: 0; list-style: none; }
 
-/* keep decorative bits from inflating the layout / being selectable */
 [aria-hidden="true"] { user-select: none; }
 
-/* the demo skip-link — visible only on focus */
 .skip-link {
   position: fixed;
   top: -100%;
@@ -122,251 +122,200 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: .6rem 1rem;
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--green);
   border-radius: var(--radius-sm);
 }
 .skip-link:focus { top: 1rem; }
 
-/* shared section rhythm — generous vertical breathing room (anti-cramp) */
 section {
   position: relative;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 6.5rem 1.5rem;
+  padding: 6rem 1.5rem;
 }
 
 /* ============================================================================
- * primitives — eyebrow kicker, gradient text, headings, buttons, copy
+ * primitives — kicker, accent text, headings, buttons, copy
  * ========================================================================== */
 
-/* uppercase brand-colored eyebrow above each section */
+/* lowercase mono eyebrow above each section (e.g. "// what you get") */
 .kicker,
 .hero-kicker,
 .caption-kicker {
-  font-size: .8rem;
-  font-weight: 600;
-  letter-spacing: .12em;
-  color: var(--brand-2);
+  font-size: .82rem;
+  font-weight: 500;
+  letter-spacing: .02em;
+  color: var(--green);
   margin: 0 0 1rem;
 }
 
-/* gradient-filled text fragment (wordmark words, accent heading words) */
-.grad,
+/* accent text fragment — a solid green word inside a heading */
+.grad {
+  color: var(--green-bright);
+}
 .brand,
 .hero-wordmark,
 .footer-brand {
-  background: var(--brand-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--text);
 }
 
 .section-h2 {
-  font-size: clamp(1.7rem, 4vw, 2.6rem);
+  font-size: clamp(1.6rem, 3.6vw, 2.3rem);
   font-weight: 700;
-  letter-spacing: -.02em;
-  line-height: 1.1;
+  letter-spacing: -.015em;
+  line-height: 1.15;
   color: var(--text);
-  margin: 0 0 3rem;
+  margin: 0 0 2.5rem;
 }
 
-/* buttons --------------------------------------------------------------- */
+/* buttons — flat, no glow ------------------------------------------------ */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: .5rem;
-  padding: .72rem 1.4rem;
-  font-size: .95rem;
+  padding: .6rem 1.2rem;
+  font-size: .92rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: transform .18s ease, box-shadow .25s ease, border-color .18s ease, background .18s ease;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
-
-/* the glowing gradient primary CTA */
 .btn-brand {
-  color: #0a0b12;
-  background: var(--brand-grad);
-  box-shadow: 0 8px 24px -10px rgba(129, 140, 248, .55);
+  color: #08130a;
+  background: var(--green);
+  border-color: var(--green);
 }
 .btn-brand:hover {
-  color: #0a0b12;
-  transform: translateY(-2px);
-  box-shadow: 0 12px 34px -8px rgba(129, 140, 248, .7), 0 0 28px -6px rgba(232, 121, 249, .55);
+  color: #08130a;
+  background: var(--green-bright);
+  border-color: var(--green-bright);
 }
-
 .btn-ghost {
   color: var(--text);
-  background: var(--surface);
-  border-color: var(--border);
+  background: transparent;
+  border-color: var(--border-2);
 }
 .btn-ghost:hover {
   color: var(--text);
-  border-color: var(--border-2);
-  background: var(--surface-2);
-  transform: translateY(-2px);
+  border-color: var(--muted);
+  background: var(--surface);
 }
 
-/* small inline [copy] chip used in install rows */
+/* inline copy chip in install rows */
 .copy {
   flex: none;
-  padding: .35rem .7rem;
-  font-size: .82rem;
+  padding: .32rem .65rem;
+  font-size: .8rem;
   font-weight: 600;
   color: var(--text-2);
   background: var(--surface-3);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: color .18s ease, border-color .18s ease, background .18s ease;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
 }
 .copy:hover {
   color: var(--text);
   border-color: var(--border-2);
   background: var(--surface-2);
 }
-/* flashed state set by tui.js for ~1s after copy */
 .copy--copied {
-  color: var(--running);
-  border-color: rgba(74, 222, 128, .4);
-  background: rgba(74, 222, 128, .1);
+  color: var(--green-bright);
+  border-color: var(--green-dim);
+  background: var(--accent-soft);
 }
 
 /* ============================================================================
- * §3 — fixed, low-opacity brand glows behind the page (depth without noise)
- * ========================================================================== */
-.bg-glows {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  overflow: hidden;
-}
-.bg-glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: .5;
-}
-.bg-glow--sky {
-  top: -8%;
-  left: -6%;
-  width: 46vw;
-  height: 46vw;
-  max-width: 640px;
-  max-height: 640px;
-  background: radial-gradient(circle, rgba(56, 189, 248, .22), transparent 70%);
-}
-.bg-glow--magenta {
-  top: 36%;
-  right: -10%;
-  width: 50vw;
-  height: 50vw;
-  max-width: 700px;
-  max-height: 700px;
-  background: radial-gradient(circle, rgba(232, 121, 249, .18), transparent 70%);
-  /* a very slow, very subtle idle shimmer (motion-gated below) */
-  animation: glow-drift 18s ease-in-out infinite alternate;
-}
-@keyframes glow-drift {
-  from { transform: translate3d(0, 0, 0) scale(1); opacity: .42; }
-  to   { transform: translate3d(-3%, 4%, 0) scale(1.08); opacity: .56; }
-}
-
-/* ============================================================================
- * §4.1 — sticky, translucent nav
+ * nav — slim, sticky, opaque (no blur theatrics)
  * ========================================================================== */
 .site-nav {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(8, 9, 15, .6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(13, 14, 16, .85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
 .nav-inner {
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: .9rem 1.5rem;
+  padding: .85rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1.5rem;
 }
 .brand {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -.02em;
 }
+.brand::before { content: "$ "; color: var(--green); font-weight: 500; }
 .nav-links {
   display: flex;
   align-items: center;
   gap: .85rem;
   margin-left: auto;
-  font-size: .92rem;
+  font-size: .9rem;
   color: var(--muted);
 }
 .nav-links a { color: var(--text-2); }
-.nav-links a:hover { color: var(--brand-2); }
+.nav-links a:hover { color: var(--green-bright); }
 .nav-sep { color: var(--faint); }
-.site-nav .btn-brand { padding: .55rem 1.1rem; font-size: .9rem; }
 
 /* ============================================================================
- * §4.2 — hero (text + glow, no terminal art)
+ * hero — compact, so the demo is reached fast
  * ========================================================================== */
 #hero {
   text-align: center;
-  padding-top: 7rem;
-  padding-bottom: 4rem;
+  padding-top: 5rem;
+  padding-bottom: 2.5rem;
 }
 .hero-wordmark {
-  font-size: clamp(3rem, 9vw, 6rem);
+  font-size: clamp(2.6rem, 7vw, 4.4rem);
   font-weight: 700;
   letter-spacing: -.03em;
   line-height: 1;
-  margin: 0 0 1.5rem;
+  margin: 0 0 1.3rem;
 }
-/* the block caret sits inline, brand-tinted, gently blinking */
 .hero-caret {
-  -webkit-text-fill-color: var(--brand-3);
-  color: var(--brand-3);
-  margin-left: .06em;
+  color: var(--green);
+  margin-left: .04em;
   animation: caret-blink 1.1s steps(1) infinite;
 }
 @keyframes caret-blink { 50% { opacity: 0; } }
 
 .hero-tagline {
-  font-size: clamp(1.2rem, 2.6vw, 1.6rem);
+  font-size: clamp(1.15rem, 2.4vw, 1.5rem);
   font-weight: 600;
   color: var(--text);
-  margin: 0 auto .9rem;
-  max-width: 32ch;
+  margin: 0 auto .85rem;
+  max-width: 34ch;
 }
 .hero-sub {
-  font-size: 1.02rem;
+  font-size: 1rem;
   line-height: 1.7;
   color: var(--text-2);
-  max-width: 54ch;
-  margin: 0 auto 2.5rem;
+  max-width: 56ch;
+  margin: 0 auto 2.2rem;
 }
 
-/* the single install row — the one prominent command */
+/* the single install row — flat bordered box, no glow */
 .hero-install {
   display: inline-flex;
   align-items: center;
-  gap: .75rem;
-  padding: .65rem .75rem .65rem 1.1rem;
+  gap: .7rem;
+  padding: .6rem .6rem .6rem 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  border-radius: var(--radius);
   max-width: 100%;
 }
-.hero-install-prompt { color: var(--brand-2); font-weight: 700; }
+.hero-install-prompt { color: var(--green); font-weight: 700; }
 .hero-install-cmd {
-  font-size: .98rem;
+  font-size: .96rem;
   color: var(--text);
   white-space: nowrap;
   overflow-x: auto;
@@ -376,21 +325,21 @@ section {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: .6rem;
-  margin: 1.75rem auto 0;
+  gap: .5rem;
+  margin: 1.5rem auto 0;
 }
 .hero-chip {
-  font-size: .82rem;
+  font-size: .8rem;
   color: var(--text-2);
-  padding: .35rem .8rem;
-  background: var(--surface-2);
+  padding: .3rem .7rem;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .scroll-cue {
-  margin: 3rem 0 0;
-  font-size: .85rem;
+  margin: 2.5rem 0 0;
+  font-size: .82rem;
   color: var(--muted);
   animation: cue-bob 2s ease-in-out infinite;
 }
@@ -400,12 +349,14 @@ section {
 }
 
 /* ============================================================================
- * §4.3 / §6 — the demo: a tall section, a sticky stage pins #tw while the
- * caption column cross-fades beside it. The driver (tui.js) scrubs scenes by
- * mapping demo scroll-progress to a scene index; the stage stays ~100vh so the
- * window is pinned while the surrounding track scrolls past it.
+ * the demo — THE centerpiece. A TALL track so the sticky stage scrubs scenes.
+ * #demo height drives how much scroll each scene gets (~80vh/scene over 9).
+ * The driver (tui.js) maps demo scroll-progress → scene index.
  * ========================================================================== */
 #demo {
+  /* CRITICAL: the track must be much taller than the 100vh sticky stage,
+   * otherwise progress is always 0 and the walkthrough never scrubs. */
+  min-height: 760vh;
   padding: 0 1.5rem;
   max-width: var(--page-max);
   margin: 0 auto;
@@ -416,17 +367,17 @@ section {
   min-height: 100vh;
   display: flex;
   align-items: center;
-  padding: 5rem 0;
+  padding: 4.5rem 0;
 }
 .demo-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
-  gap: 3rem;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 2.75rem;
   align-items: center;
   width: 100%;
 }
 
-/* caption column — children are absolutely stacked, cross-faded by --visible */
+/* caption column — children absolutely stacked, cross-faded by --visible */
 .demo-caption {
   position: relative;
   min-height: 13rem;
@@ -438,8 +389,8 @@ section {
   flex-direction: column;
   justify-content: center;
   opacity: 0;
-  transform: translateY(14px);
-  transition: opacity .5s ease, transform .5s ease;
+  transform: translateY(12px);
+  transition: opacity .45s ease, transform .45s ease;
   pointer-events: none;
 }
 .caption--visible {
@@ -448,36 +399,34 @@ section {
   pointer-events: auto;
 }
 .caption-title {
-  font-size: clamp(1.5rem, 3.2vw, 2.2rem);
+  font-size: clamp(1.4rem, 3vw, 2.1rem);
   font-weight: 700;
   letter-spacing: -.02em;
-  line-height: 1.15;
+  line-height: 1.18;
   color: var(--text);
-  margin-bottom: .9rem;
+  margin-bottom: .8rem;
 }
 .caption-body {
-  font-size: 1.02rem;
+  font-size: 1rem;
   line-height: 1.7;
   color: var(--text-2);
   max-width: var(--measure);
 }
 
-/* reduced-motion path: captions become a static stacked list, not overlapped */
-.demo-caption--static {
-  min-height: 0;
-}
+/* reduced-motion path: captions become a static stacked list */
+.demo-caption--static { min-height: 0; }
 .demo-caption--static .caption {
   position: static;
   inset: auto;
   opacity: 1;
   transform: none;
   display: block;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2.25rem;
   pointer-events: auto;
 }
 
 /* ============================================================================
- * §5 — the terminal window (#tw): the visual crux. Real CSS, no ascii.
+ * the terminal window (#tw) — flat, crisp, with a tmux-green status bar
  * ========================================================================== */
 .tw {
   position: relative;
@@ -485,70 +434,45 @@ section {
   flex-direction: column;
   min-width: 0;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   border-radius: var(--radius);
-  /* the soft brand glow bloom behind the window (§5.2). It lives on .tw's own
-   * box-shadow rather than a child ::before because overflow:hidden (below)
-   * clips a child's shadow but never the element's own outset shadow. */
-  box-shadow: var(--shadow), var(--glow-brand);
+  box-shadow: var(--shadow);
   overflow: hidden;
   font-size: .82rem;
   line-height: 1.6;
-  transition: box-shadow .4s ease;
-  /* fixed height so scenes swap content without the window resizing/jumping */
-  height: 30rem;
+  transition: border-color .2s ease;
+  height: 32rem;
 }
-/* engaged sandbox: a brighter bloom */
-.tw.tw--engaged {
-  box-shadow: var(--shadow),
-    0 0 110px -14px rgba(129, 140, 248, .7),
-    0 0 60px -14px rgba(232, 121, 249, .55);
-}
-/* subtle inner top highlight — the "lit screen" feel */
-.tw::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
-}
+/* engaged sandbox: a crisp green edge, not a glow */
+.tw.tw--engaged { border-color: var(--green); }
 
-/* titlebar -------------------------------------------------------------- */
+/* titlebar — minimal, de-mac'd (monochrome dots) ------------------------- */
 .tw-bar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: .7rem;
-  padding: .55rem .9rem;
+  gap: .65rem;
+  padding: .5rem .85rem;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
 }
-.tw-lights {
-  display: inline-flex;
-  gap: .42rem;
-}
+.tw-lights { display: inline-flex; gap: .4rem; }
 .tw-lights i {
-  width: .72rem;
-  height: .72rem;
+  width: .62rem;
+  height: .62rem;
   border-radius: 50%;
   background: var(--faint);
 }
-/* tasteful traffic-light tint */
-.tw-lights i:nth-child(1) { background: #fb7185; opacity: .85; }
-.tw-lights i:nth-child(2) { background: #fbbf24; opacity: .85; }
-.tw-lights i:nth-child(3) { background: #4ade80; opacity: .85; }
-
 .tw-titlebar-name {
   font-weight: 600;
   color: var(--text);
-  margin-left: .35rem;
+  margin-left: .3rem;
 }
 .tw-titlebar-path { color: var(--muted); }
 .tw-titlebar-meta {
   margin-left: auto;
-  color: var(--faint);
-  font-size: .78rem;
+  color: var(--green);
+  font-size: .76rem;
 }
 
 /* body: sidebar | main | panel ------------------------------------------ */
@@ -558,34 +482,29 @@ section {
   min-height: 0;
 }
 
-/* sidebar --------------------------------------------------------------- */
+/* sidebar */
 .tw-sidebar {
   flex: none;
-  width: 190px;
+  width: 188px;
   background: var(--bg-2);
   border-right: 1px solid var(--border);
-  padding: .6rem 0;
+  padding: .55rem 0;
   overflow-y: auto;
 }
 .sb-project {
-  padding: .35rem .9rem;
+  padding: .35rem .85rem;
   font-size: .76rem;
   font-weight: 700;
-  letter-spacing: .04em;
+  letter-spacing: .03em;
   color: var(--muted);
 }
-.sb-project--active {
-  color: var(--text);
-}
-.sb-project--active::before {
-  content: "▸ ";
-  color: var(--brand-2);
-}
+.sb-project--active { color: var(--text); }
+.sb-project--active::before { content: "▸ "; color: var(--green); }
 
-.sb-section { margin-bottom: .55rem; }
+.sb-section { margin-bottom: .5rem; }
 .sb-head {
-  padding: .45rem .9rem .3rem;
-  font-size: .68rem;
+  padding: .45rem .85rem .3rem;
+  font-size: .67rem;
   font-weight: 600;
   letter-spacing: .14em;
   text-transform: uppercase;
@@ -597,12 +516,12 @@ section {
   display: flex;
   align-items: center;
   gap: .5rem;
-  padding: .4rem .9rem;
+  padding: .38rem .85rem;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
 }
-/* active row = brand-soft fill + a 2px brand-gradient left edge + brighter ink */
+/* active row = green-soft fill + a solid green left edge + brighter ink */
 .sb-row--active {
   background: var(--accent-soft);
   color: var(--text);
@@ -614,10 +533,10 @@ section {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--brand-grad);
+  background: var(--green);
 }
 
-/* status dot, colored by data-status (§5.2) */
+/* status dot, colored by data-status — solid, no glow */
 .sb-dot {
   flex: none;
   width: .5rem;
@@ -625,22 +544,11 @@ section {
   border-radius: 50%;
   background: var(--muted);
 }
-.sb-dot[data-status="running"] {
-  background: var(--running);
-  box-shadow: 0 0 8px -1px rgba(74, 222, 128, .7);
-  animation: dot-pulse 2.4s ease-in-out infinite;
-}
+.sb-dot[data-status="running"] { background: var(--green); }
 .sb-dot[data-status="exited"]  { background: var(--faint); }
 .sb-dot[data-status="stopped"] { background: var(--muted); }
-@keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: .55; }
-}
 
-.sb-name {
-  flex: none;
-  font-weight: 500;
-}
+.sb-name { flex: none; font-weight: 500; }
 .sb-sub {
   flex: 1;
   min-width: 0;
@@ -660,14 +568,12 @@ section {
 }
 .sb-bell[hidden] { display: none; }
 @keyframes bell-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: .5; transform: scale(.82); }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .45; }
 }
 
-/* launcher rows: a muted "+ New …" that brightens to brand on hover */
-.sb-row--launcher {
-  color: var(--muted);
-}
+/* launcher rows: a muted "+ New …" that greens on hover */
+.sb-row--launcher { color: var(--muted); }
 .sb-row--launcher .sb-name { font-weight: 400; }
 .sb-plus {
   flex: none;
@@ -676,11 +582,11 @@ section {
   color: var(--muted);
   font-weight: 700;
 }
-.sb-row--launcher:hover { color: var(--brand-2); }
-.sb-row--launcher:hover .sb-plus { color: var(--brand-2); }
+.sb-row--launcher:hover { color: var(--green-bright); }
+.sb-row--launcher:hover .sb-plus { color: var(--green-bright); }
 .sb-row--launcher.sb-row--active { color: var(--text); }
 
-/* main pane ------------------------------------------------------------- */
+/* main pane */
 .tw-main {
   flex: 1;
   display: flex;
@@ -690,8 +596,8 @@ section {
 }
 .tw-tab {
   flex: none;
-  padding: .45rem .95rem;
-  font-size: .74rem;
+  padding: .42rem .9rem;
+  font-size: .73rem;
   font-weight: 600;
   letter-spacing: .03em;
   color: var(--text-2);
@@ -702,7 +608,7 @@ section {
 
 .tw-screen {
   flex: 1;
-  padding: .85rem 1rem;
+  padding: .8rem 1rem;
   overflow: auto;
   line-height: 1.65;
   color: var(--text-2);
@@ -713,39 +619,38 @@ section {
 }
 .screen-placeholder {
   color: var(--muted);
-  white-space: pre-wrap;
-  padding: 1.5rem .5rem;
+  white-space: pre-line;
+  padding: 1.4rem .5rem;
 }
-
-/* the blink block cursor appended to the last line (§5.4) */
+/* green block cursor on the last line */
 .screen-cursor {
   display: inline-block;
-  color: var(--brand-3);
+  color: var(--green);
   animation: caret-blink 1.1s steps(1) infinite;
 }
 
-/* line-level tints (§5.4): faint colored backgrounds + a colored gutter feel */
+/* line-level tints: a faint colored wash + a colored gutter bar */
 .ln-add {
-  background: rgba(74, 222, 128, .08);
+  background: rgba(63, 185, 80, .08);
   color: var(--add);
-  box-shadow: inset 2px 0 0 rgba(74, 222, 128, .55);
+  box-shadow: inset 2px 0 0 var(--green);
 }
 .ln-del {
-  background: rgba(251, 113, 133, .08);
+  background: rgba(224, 98, 111, .08);
   color: var(--del);
-  box-shadow: inset 2px 0 0 rgba(251, 113, 133, .55);
+  box-shadow: inset 2px 0 0 var(--red);
 }
 .ln-cmd { color: var(--text); }
 .ln-dim { color: var(--muted); }
 
-/* the active pane gets brighter ink when focus is on it (§10) */
+/* the active pane gets brighter ink */
 .tw--main-focus .tw-tab { color: var(--text); border-bottom-color: var(--border-2); }
 .tw--main-focus .tw-screen { color: var(--text); }
 
-/* panel (lazygit) ------------------------------------------------------- */
+/* panel (native git) */
 .tw-panel {
   flex: none;
-  width: 210px;
+  width: 208px;
   display: flex;
   flex-direction: column;
   background: var(--bg-2);
@@ -754,7 +659,7 @@ section {
 .tw-panel[hidden] { display: none; }
 .tw-panel-head {
   flex: none;
-  padding: .45rem .8rem;
+  padding: .42rem .8rem;
   font-size: .72rem;
   font-weight: 600;
   color: var(--text-2);
@@ -763,59 +668,59 @@ section {
 }
 .tw-panel-screen {
   flex: 1;
-  padding: .6rem .55rem;
+  padding: .55rem .5rem;
   overflow: auto;
   font-size: .76rem;
   line-height: 1.7;
   color: var(--text-2);
 }
 .tw--panel-focus .tw-panel-head { color: var(--text); border-bottom-color: var(--border-2); }
-.tw--panel-focus .tw-panel { box-shadow: inset 1px 0 0 var(--border-2); }
 
-/* status bar ------------------------------------------------------------ */
+/* status bar — the tmux-green signature: green bar, dark text */
 .tw-status {
   flex: none;
-  padding: .4rem .95rem;
-  font-size: .74rem;
-  color: var(--muted);
-  background: var(--surface-2);
-  border-top: 1px solid var(--border);
+  padding: .35rem .85rem;
+  font-size: .73rem;
+  font-weight: 500;
+  color: #08130a;
+  background: var(--green);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* toast (scene 6) — a desktop-notification card sliding in over the screen */
+/* toast (scene 6) — flat notification card */
 .tw-toast {
   position: absolute;
-  top: 3.2rem;
+  top: 3rem;
   right: 1rem;
   z-index: 6;
   max-width: 16rem;
-  padding: .7rem .85rem;
+  padding: .65rem .8rem;
   background: var(--surface-2);
   border: 1px solid var(--border-2);
+  border-left: 2px solid var(--red);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow), var(--glow-brand);
-  animation: toast-in .35s ease;
+  box-shadow: var(--shadow);
+  animation: toast-in .3s ease;
 }
 .tw-toast[hidden] { display: none; }
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(-8px) scale(.97); }
+  from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: none; }
 }
 .toast-head {
   display: flex;
   align-items: center;
-  gap: .45rem;
+  gap: .4rem;
   margin-bottom: .2rem;
 }
-.toast-dot { color: var(--ai); font-size: .6rem; }
+.toast-dot { color: var(--red); font-size: .6rem; }
 .toast-app { font-weight: 600; color: var(--text); }
 .toast-title { color: var(--text-2); font-size: .78rem; }
 .toast-body { color: var(--muted); font-size: .78rem; line-height: 1.5; }
 
-/* overlay (scene 4) — ssh disconnect / reattach scrim over the body */
+/* overlay (scene 4) — ssh disconnect / reattach scrim */
 .tw-overlay {
   position: absolute;
   inset: 0;
@@ -827,28 +732,25 @@ section {
   padding: 1.5rem;
   font-size: .92rem;
   color: var(--text);
-  background: rgba(8, 9, 15, .72);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(13, 14, 16, .82);
 }
 .tw-overlay[hidden] { display: none; }
 .tw-overlay[data-overlay="disconnected"] { color: var(--warn); }
-.tw-overlay[data-overlay="reattached"]   { color: var(--running); }
+.tw-overlay[data-overlay="reattached"]   { color: var(--green); }
 
-/* sandbox hint (finale) — "click in to play" pill at the bottom */
+/* sandbox hint (finale) — flat pill-less chip */
 .tw-sandbox-hint {
   position: absolute;
-  bottom: 2.6rem;
+  bottom: 2.4rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
-  padding: .4rem .9rem;
-  font-size: .78rem;
+  padding: .38rem .85rem;
+  font-size: .77rem;
   color: var(--text);
-  background: rgba(24, 27, 43, .92);
-  border: 1px solid var(--border-2);
-  border-radius: 999px;
-  box-shadow: var(--glow-sky);
+  background: var(--surface-2);
+  border: 1px solid var(--green);
+  border-radius: var(--radius-sm);
   animation: hint-bob 2s ease-in-out infinite;
 }
 .tw-sandbox-hint[hidden] { display: none; }
@@ -858,7 +760,7 @@ section {
 }
 
 /* ============================================================================
- * §5.4 — syntax token tones. Every .tok-<tone> renderLine() can emit.
+ * syntax token tones — every .tok-<tone> renderLine() can emit
  * ========================================================================== */
 .tok-kw      { color: var(--tok-kw); }
 .tok-fn      { color: var(--tok-fn); }
@@ -870,355 +772,299 @@ section {
 .tok-op      { color: var(--tok-op); }
 .tok-add     { color: var(--add); }
 .tok-del     { color: var(--del); }
-.tok-ok      { color: var(--running); }
+.tok-ok      { color: var(--green); }
 .tok-warn    { color: var(--warn); }
 .tok-info    { color: var(--info); }
 .tok-ai      { color: var(--ai); font-weight: 600; }
 .tok-dim     { color: var(--muted); }
 .tok-prompt,
-.tok-brand {
-  font-weight: 700;
-  background: var(--brand-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+.tok-brand   { color: var(--green-bright); font-weight: 700; }
 
 /* ============================================================================
- * §4.4 — features (real card grid, brand-tinted icon chips, hover lift)
+ * features — flat list-cards, green-stroke icons, no glow/lift
  * ========================================================================== */
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.25rem;
+  gap: 1rem;
 }
 .feature {
-  padding: 1.6rem;
+  padding: 1.4rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  transition: transform .2s ease, border-color .2s ease, box-shadow .25s ease;
+  transition: border-color .15s ease;
 }
-.feature:hover {
-  transform: translateY(-4px);
-  border-color: var(--border-2);
-  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .8), var(--glow-brand);
-}
+.feature:hover { border-color: var(--border-2); }
 .feature-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.6rem;
-  height: 2.6rem;
-  margin-bottom: 1.1rem;
-  color: var(--brand-2);
+  width: 2.3rem;
+  height: 2.3rem;
+  margin-bottom: 1rem;
+  color: var(--green);
   background: var(--accent-soft);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.feature-icon svg {
-  width: 1.3rem;
-  height: 1.3rem;
-}
+.feature-icon svg { width: 1.2rem; height: 1.2rem; }
 .feature-title {
-  font-size: 1.05rem;
+  font-size: 1.02rem;
   font-weight: 600;
   color: var(--text);
-  margin: 0 0 .55rem;
+  margin: 0 0 .5rem;
 }
 .feature-desc {
-  font-size: .92rem;
+  font-size: .9rem;
   line-height: 1.65;
   color: var(--text-2);
   margin: 0;
 }
 
 /* ============================================================================
- * §9 — the how-it-works diagram (real nodes + SVG connector, not ascii)
+ * how it works — flat diagram (real nodes + a thin green connector)
  * ========================================================================== */
 .how-diagram {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 3rem;
+  margin-bottom: 2.5rem;
 }
-
-/* the "your terminal" chip */
 .how-node {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: .25rem;
-  padding: .9rem 1.6rem;
+  gap: .2rem;
+  padding: .8rem 1.4rem;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
 }
-/* the terminal node carries the sky glow — it's the entry point */
-.how-node--terminal { box-shadow: var(--shadow), var(--glow-sky); }
 .how-node-title { font-weight: 600; color: var(--text); }
 .how-node-sub { font-size: .8rem; color: var(--muted); }
 
-/* the brand-stroked connector down into the jail */
-.how-connector {
-  width: 40px;
-  height: 64px;
-}
-.how-connector-path {
-  /* a dash pattern for the subtle animated flow (motion-gated) */
-  stroke-dasharray: 5 6;
-  animation: dash-flow 1.4s linear infinite;
-}
-@keyframes dash-flow { to { stroke-dashoffset: -22; } }
+.how-connector { width: 36px; height: 56px; }
+.how-connector-path { stroke-dasharray: 4 5; }
 
-/* the tmux "jail" — dashed, brand-glowing container */
+/* the tmux "jail" — a dashed (not glowing) container */
 .how-jail {
   width: 100%;
-  max-width: 640px;
-  padding: 1.5rem;
-  background: linear-gradient(180deg, rgba(24, 27, 43, .5), rgba(11, 13, 21, .5));
-  border: 1.5px dashed var(--border-2);
+  max-width: 620px;
+  padding: 1.4rem;
+  background: var(--bg-2);
+  border: 1px dashed var(--border-2);
   border-radius: var(--radius);
-  box-shadow: var(--glow-brand);
 }
 .how-jail-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: .6rem;
-  margin-bottom: 1.1rem;
+  margin-bottom: 1rem;
 }
 .how-jail-chip {
-  font-size: .82rem;
+  font-size: .8rem;
   font-weight: 600;
   color: var(--text);
-  padding: .35rem .8rem;
-  background: var(--accent-soft);
+  padding: .3rem .7rem;
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 .how-jail-badge {
   font-size: .76rem;
-  color: var(--brand-2);
-  padding: .3rem .7rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  color: var(--green);
+  padding: .28rem .65rem;
+  border: 1px solid var(--green-dim);
+  border-radius: var(--radius-sm);
 }
 
-/* miniature mmux window: three labeled bordered columns. Widths come from the
- * column identity (--sidebar / --main / --panel) so the mini reads like the
- * real window even if the grid order ever changes. */
+/* miniature mmux window: three labeled bordered columns */
 .how-mmux {
   display: grid;
   grid-template-columns: .8fr 1.6fr .7fr;
-  gap: .75rem;
+  gap: .65rem;
 }
 .how-col {
   display: flex;
   flex-direction: column;
-  gap: .4rem;
-  padding: .7rem;
-  min-height: 6rem;
+  gap: .35rem;
+  padding: .65rem;
+  min-height: 5.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-/* the main column reads as the lit pane; the side columns sit on the deeper band */
 .how-col--main { background: var(--surface-2); }
 .how-col--sidebar,
-.how-col--panel { background: var(--bg-2); }
+.how-col--panel { background: var(--bg); }
 .how-col-label {
   font-size: .7rem;
   font-weight: 600;
-  letter-spacing: .06em;
+  letter-spacing: .05em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: .15rem;
+  margin-bottom: .1rem;
 }
 .how-row {
-  height: .5rem;
+  height: .45rem;
   width: 70%;
   background: var(--surface-3);
-  border-radius: 3px;
+  border-radius: 2px;
 }
 .how-row--wide { width: 100%; }
-.how-row--active {
-  width: 85%;
-  background: var(--brand-grad);
-  opacity: .85;
-}
+.how-row--active { width: 85%; background: var(--green); }
 
 .how-diagram-caption {
-  margin: 1.4rem 0 0;
+  margin: 1.3rem 0 0;
   font-size: .85rem;
   color: var(--muted);
 }
 
-/* the three supporting points under the diagram */
+/* the three supporting points */
 .how-prose {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
+  gap: 1.4rem;
   max-width: var(--page-max);
 }
 .how-prose li {
   position: relative;
-  padding-left: 1.1rem;
-  font-size: .94rem;
+  padding-left: 1rem;
+  font-size: .92rem;
   line-height: 1.65;
   color: var(--text-2);
 }
 .how-prose li::before {
-  content: "";
+  content: "▸";
   position: absolute;
   left: 0;
-  top: .55rem;
-  width: .45rem;
-  height: .45rem;
-  border-radius: 50%;
-  background: var(--brand-grad);
+  top: 0;
+  color: var(--green);
 }
-.how-prose em {
-  font-style: normal;
-  color: var(--text);
-  font-weight: 600;
-}
+.how-prose em { font-style: normal; color: var(--text); font-weight: 600; }
 
 /* ============================================================================
- * §4.6 — install CTA (single command, brew only)
+ * install — single command, brew only
  * ========================================================================== */
 #install { text-align: center; }
 .install-row {
   display: inline-flex;
   align-items: center;
-  gap: .8rem;
-  padding: .85rem .85rem .85rem 1.3rem;
+  gap: .75rem;
+  padding: .8rem .8rem .8rem 1.2rem;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   border-radius: var(--radius);
-  box-shadow: var(--shadow), 0 0 50px -22px rgba(129, 140, 248, .5);
   max-width: 100%;
 }
-.install-row-prompt { color: var(--brand-2); font-weight: 700; }
+.install-row-prompt { color: var(--green); font-weight: 700; }
 .install-row-cmd {
-  font-size: 1.05rem;
+  font-size: 1.02rem;
   color: var(--text);
   white-space: nowrap;
   overflow-x: auto;
 }
 .install-then {
-  margin: 1.5rem 0 0;
+  margin: 1.4rem 0 0;
   color: var(--text-2);
 }
 .install-then-cmd {
-  padding: .15rem .5rem;
-  color: var(--brand-2);
+  padding: .12rem .45rem;
+  color: var(--green-bright);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .install-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 1rem;
-  margin-top: 2.5rem;
+  margin-top: 2.25rem;
 }
 
 /* ============================================================================
- * §4.7 — footer
+ * footer
  * ========================================================================== */
 .site-footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: .8rem;
+  gap: .75rem;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 4rem 1.5rem 5rem;
+  padding: 3.5rem 1.5rem 4.5rem;
   border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: .92rem;
+  font-size: .9rem;
 }
-.footer-brand { font-weight: 700; }
+.footer-brand { font-weight: 700; color: var(--text); }
 .footer-license { color: var(--muted); }
 .footer-sep { color: var(--faint); }
 .site-footer a { color: var(--text-2); }
-.site-footer a:hover { color: var(--brand-2); }
+.site-footer a:hover { color: var(--green-bright); }
 .footer-caret {
-  color: var(--brand-3);
+  color: var(--green);
   animation: caret-blink 1.1s steps(1) infinite;
 }
 
 /* ============================================================================
- * §2 breakpoints — responsive
- *   --bp-md 900px: panel hides, grids → fewer cols, nav condenses
- *   --bp-sm 640px: single column, sidebar simplifies
+ * responsive
  * ========================================================================== */
 @media (max-width: 900px) {
-  section { padding: 5rem 1.25rem; }
-
+  section { padding: 4.5rem 1.25rem; }
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
   .how-prose { grid-template-columns: 1fr; gap: 1rem; }
 
-  /* demo stops pinning side-by-side; window over stacked captions */
-  .demo-grid { grid-template-columns: 1fr; gap: 2rem; }
+  /* demo: window over stacked captions; shorter track so it isn't endless */
+  #demo { min-height: 680vh; }
+  .demo-grid { grid-template-columns: 1fr; gap: 1.75rem; }
   .demo-caption { min-height: 9rem; }
 
-  /* §5: the right panel hides under 900px */
   .tw-panel { display: none !important; }
 
-  /* nav condenses — drop the separators, tighten links */
   .nav-sep { display: none; }
   .nav-links { gap: 1rem; }
 }
 
 @media (max-width: 640px) {
   body { font-size: 15px; }
-  section { padding: 4rem 1rem; }
-
+  section { padding: 3.75rem 1rem; }
   .feature-grid { grid-template-columns: 1fr; }
 
-  /* §5: simplify the window — sidebar narrows, mini columns stack */
   .tw { height: 26rem; font-size: .76rem; }
-  .tw-sidebar { width: 142px; }
+  .tw-sidebar { width: 140px; }
   .sb-sub { display: none; }
 
   .how-mmux { grid-template-columns: 1fr; }
 
-  /* nav: hide the inline link list on the smallest screens, keep brand + CTA */
-  .nav-links { display: none; }
-  .nav-inner { gap: 1rem; }
-  .site-nav .btn-brand { margin-left: auto; }
-
+  .nav-links { gap: .8rem; font-size: .85rem; }
   .hero-install,
   .install-row { width: 100%; }
 }
 
-/* very narrow: keep the window legible, never overflow */
 @media (max-width: 460px) {
-  .tw-sidebar { width: 120px; }
-  .demo-caption--static .caption { margin-bottom: 1.75rem; }
+  .tw-sidebar { width: 118px; }
+  .demo-caption--static .caption { margin-bottom: 1.6rem; }
 }
 
 /* ============================================================================
- * Accessibility — focus ring + reduced motion
+ * accessibility — focus ring + reduced motion
  * ========================================================================== */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--green);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
-/* engaged sandbox window: a clear brand ring instead of a thin outline */
 .tw:focus-visible {
   outline: none;
-  box-shadow: var(--shadow), var(--glow-brand), var(--ring);
+  box-shadow: var(--shadow), var(--ring);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* honor §10/§3: keep static glows, kill all animation & smooth scroll */
   html { scroll-behavior: auto; }
   *,
   *::before,
@@ -1228,7 +1074,6 @@ section {
     transition-duration: .001ms !important;
     scroll-behavior: auto !important;
   }
-  /* cursors/dots/bell/glow drift land on their resting state, no blink/pulse */
   .hero-caret,
   .footer-caret,
   .screen-cursor { opacity: 1; }
@@ -1236,10 +1081,8 @@ section {
 }
 
 /* ============================================================================
- * polish & a11y — themed scrollbars, window-light depth, sr-only announcer
+ * polish & a11y — themed scrollbars, sr-only announcer
  * ========================================================================== */
-
-/* themed thin scrollbars on the scrollable terminal regions (no default light bar) */
 .tw-screen,
 .tw-panel-screen,
 .tw-sidebar {
@@ -1256,12 +1099,7 @@ section {
 .tw-panel-screen::-webkit-scrollbar-track,
 .tw-sidebar::-webkit-scrollbar-track { background: transparent; }
 
-/* a touch of physical depth on the traffic-light dots (real-window fidelity) */
-.tw-lights i {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 0 .5px rgba(0, 0, 0, .25);
-}
-
-/* visually-hidden live region — tui.js announces sandbox selection/spawn/stop here */
+/* visually-hidden live region — tui.js announces sandbox selection/spawn/stop */
 .tw-a11y-live {
   position: absolute;
   width: 1px;
@@ -1275,5 +1113,4 @@ section {
   white-space: nowrap;
 }
 
-/* skip-link target: focus the main without a giant ring around the whole page */
 main[tabindex="-1"]:focus { outline: none; }

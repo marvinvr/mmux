@@ -6,20 +6,14 @@
   <title>mmux — persistent terminals for your coding agents</title>
   <meta name="description" content="mmux is a persistent, per-directory terminal multiplexer for AI coding agents and dev processes. One rust binary: spawn agents, run your dev processes, and keep every session alive — even after you close the terminal or drop ssh.">
   <!-- inline data: favicon — a brand block cursor on a dark field, no remote fetch -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2308090f'/%3E%3Crect%20x='10'%20y='6'%20width='12'%20height='20'%20rx='2'%20fill='%23818cf8'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='3'%20fill='%230d0e10'/%3E%3Crect%20x='10'%20y='6'%20width='12'%20height='20'%20rx='1'%20fill='%233fb950'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <a class="skip-link" href="#main">skip to content</a>
 
-  <!-- fixed, low-opacity brand glows — depth without noise (§3). decorative. -->
-  <div class="bg-glows" aria-hidden="true">
-    <span class="bg-glow bg-glow--sky"></span>
-    <span class="bg-glow bg-glow--magenta"></span>
-  </div>
-
   <!-- ===================================================================== -->
-  <!-- §4.1 sticky, translucent nav                                          -->
+  <!-- sticky nav                                                            -->
   <!-- ===================================================================== -->
   <header class="site-nav" id="top">
     <div class="nav-inner">
@@ -33,7 +27,6 @@
         <span class="nav-sep" aria-hidden="true">·</span>
         <a href="https://github.com/marvinvr/mmux">github</a>
       </nav>
-      <a class="btn btn-brand" href="#install">install</a>
     </div>
   </header>
 
@@ -203,11 +196,11 @@
         <svg class="how-connector" viewBox="0 0 40 64" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <linearGradient id="howStroke" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#38bdf8"></stop>
-              <stop offset="1" stop-color="#818cf8"></stop>
+              <stop offset="0" stop-color="#3fb950"></stop>
+              <stop offset="1" stop-color="#3fb950"></stop>
             </linearGradient>
             <marker id="howArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M1 1 L9 5 L1 9" fill="none" stroke="#818cf8" stroke-width="1.4"></path>
+              <path d="M1 1 L9 5 L1 9" fill="none" stroke="#3fb950" stroke-width="1.4"></path>
             </marker>
           </defs>
           <path class="how-connector-path" d="M20 2 L20 54" stroke="url(#howStroke)" stroke-width="2" fill="none" marker-end="url(#howArrow)"></path>
@@ -268,8 +261,7 @@
       <p class="install-then">then, in any project directory: <code class="install-then-cmd">mmux</code></p>
 
       <div class="install-actions">
-        <a class="btn btn-brand" href="https://github.com/marvinvr/mmux">view on github</a>
-        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux#readme">read the docs</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux">view on github</a>
       </div>
     </section>
   </main>
