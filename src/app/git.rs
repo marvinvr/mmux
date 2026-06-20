@@ -289,6 +289,8 @@ pub(crate) enum Overlay {
     },
     /// The Ctrl+P fuzzy file picker (state in [`super::picker`]).
     Picker(super::picker::Picker),
+    /// The "+ New Process" guided form (state in [`super::procform`]).
+    NewProcess(super::procform::ProcForm),
 }
 
 #[derive(Clone, Copy)]
@@ -323,6 +325,10 @@ impl Overlay {
 
     pub(crate) fn confirm(title: &'static str, body: String, action: Confirmed) -> Overlay {
         Overlay::Confirm { title, body, action }
+    }
+
+    pub(crate) fn new_process(project: usize) -> Overlay {
+        Overlay::NewProcess(super::procform::ProcForm::new(project))
     }
 }
 

@@ -14,6 +14,7 @@ mod keymap;
 mod lifecycle;
 mod nav;
 mod picker;
+mod procform;
 mod session;
 mod view;
 

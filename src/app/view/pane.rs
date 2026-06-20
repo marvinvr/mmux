@@ -169,6 +169,13 @@ impl App {
                     " New Terminal ".into()
                 }
             }
+            Some(Nav::NewProcess(p)) => {
+                if multi {
+                    format!(" New Process · {} ", self.projects[p].cfg.display_name())
+                } else {
+                    " New Process ".into()
+                }
+            }
             Some(Nav::Panel) => " git ".into(),
             None => " mmux ".into(),
         }
@@ -180,6 +187,9 @@ impl App {
                 format!("Press Enter to launch a new {}.", self.projects[p].cfg.agents[t].name)
             }
             Some(Nav::NewTerminal(_)) => "Press Enter to open a new terminal.".into(),
+            Some(Nav::NewProcess(_)) => {
+                "Press Enter to define a new process and save it to mmux.yaml.".into()
+            }
             Some(Nav::Session(i)) => {
                 let s = &self.sessions[i];
                 if let Some(e) = &s.error {

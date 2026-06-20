@@ -297,6 +297,214 @@ pub fn config_path(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The file project-level edits (e.g. the in-TUI "+ New Process" form) write to:
+/// the existing `mmux.yaml`/`.yml` if there is one, else a fresh `mmux.yaml`.
+pub fn project_config_path(dir: &Path) -> PathBuf {
+    config_path(dir).unwrap_or_else(|| dir.join("mmux.yaml"))
+}
+
+/// A process gathered by the in-TUI form, before it's written to the config.
+pub struct ProcessDraft {
+    pub name: String,
+    pub cmd: String,
+    pub args: Vec<String>,
+    pub cwd: Option<String>,
+    pub autostart: bool,
+}
+
+/// Split a typed command line ("npm run dev") into `(cmd, args)`, honouring simple
+/// single/double quotes so one argument can contain spaces ("git commit -m 'a b'").
+pub fn split_command(line: &str) -> (String, Vec<String>) {
+    let mut parts = shell_split(line).into_iter();
+    let cmd = parts.next().unwrap_or_default();
+    (cmd, parts.collect())
+}
+
+/// Append `p` to the `processes:` list in `path`, preserving the file's existing
+/// comments and layout — we edit the raw text rather than round-tripping through
+/// serde (which would strip every comment). Creates the file/block if absent.
+pub fn append_process(path: &Path, p: &ProcessDraft) -> Result<()> {
+    let original = std::fs::read_to_string(path).unwrap_or_default();
+    let updated = insert_process(&original, p)?;
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Splice a rendered process item into `text`'s top-level `processes:` block (kept
+/// pure for testing). The item lands among any existing entries — after the last
+/// one, before trailing blank lines/comments — at their indentation. With no block
+/// it's created at EOF; an `[]`/`null` placeholder is replaced by the real list.
+fn insert_process(text: &str, p: &ProcessDraft) -> Result<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(k) = lines.iter().position(|l| top_level_key(l) == Some("processes")) else {
+        // No block yet: append a fresh one (with a blank separator) at EOF.
+        let mut out = text.trim_end_matches('\n').to_string();
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str("processes:\n");
+        out.push_str(&render_item(p, 2));
+        return Ok(out);
+    };
+
+    // An inline value other than an empty placeholder (`processes: foo`) is a shape
+    // we can't safely extend by appending lines — leave it to the user.
+    let after = lines[k].splitn(2, ':').nth(1).map(str::trim).unwrap_or("");
+    let empty_marker = matches!(after, "" | "[]" | "{}" | "~" | "null");
+    if !empty_marker {
+        anyhow::bail!("`processes:` is written inline — add the entry by hand");
+    }
+
+    let indent = block_item_indent(&lines, k).unwrap_or(2);
+    let item = render_item(p, indent);
+    let at = block_end(&lines, k);
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == at {
+            out.push_str(&item);
+        }
+        // Drop an `[]`/`null` placeholder so the new block items parse as its value.
+        if i == k && !after.is_empty() {
+            out.push_str("processes:");
+        } else {
+            out.push_str(l);
+        }
+        out.push('\n');
+    }
+    if at >= lines.len() {
+        out.push_str(&item);
+    }
+    Ok(out)
+}
+
+/// The key name if `line` is a top-level mapping key (column 0, `key:` …), else
+/// `None` — used to find the `processes:` block and detect where it ends.
+fn top_level_key(line: &str) -> Option<&str> {
+    if line.is_empty() || line.starts_with(char::is_whitespace) || !line.contains(':') {
+        return None;
+    }
+    let key = line.splitn(2, ':').next()?.trim_end();
+    if key.is_empty() || key.starts_with('#') || key.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(key)
+}
+
+/// Indentation (leading spaces) of the first `- ` list item under the block at `k`,
+/// so a new item lines up with its siblings. `None` when the block is empty.
+fn block_item_indent(lines: &[&str], k: usize) -> Option<usize> {
+    for line in &lines[k + 1..] {
+        if top_level_key(line).is_some() {
+            break;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('-') {
+            return Some(line.len() - trimmed.len());
+        }
+    }
+    None
+}
+
+/// Line index to insert a new item at: just past the block's last real line (the
+/// next top-level key or EOF), backed up over trailing blank lines and comments so
+/// the entry sits with its siblings rather than below a trailing comment block.
+fn block_end(lines: &[&str], k: usize) -> usize {
+    let mut end = lines.len();
+    for (i, line) in lines.iter().enumerate().skip(k + 1) {
+        if top_level_key(line).is_some() {
+            end = i;
+            break;
+        }
+    }
+    while end > k + 1 {
+        let t = lines[end - 1].trim();
+        if t.is_empty() || t.starts_with('#') {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    end
+}
+
+/// Render one `processes:` list item at the given indent, matching the hand-written
+/// style (unquoted scalars where safe, quoted args). `args`/`cwd` are emitted only
+/// when set, so a bare command stays minimal.
+fn render_item(p: &ProcessDraft, indent: usize) -> String {
+    let ind = " ".repeat(indent);
+    let sub = " ".repeat(indent + 2);
+    let mut s = format!("{ind}- name: {}\n", yaml_scalar(&p.name));
+    s.push_str(&format!("{sub}cmd: {}\n", yaml_scalar(&p.cmd)));
+    if !p.args.is_empty() {
+        s.push_str(&format!("{sub}args: {}\n", yaml_args(&p.args)));
+    }
+    if let Some(cwd) = &p.cwd {
+        s.push_str(&format!("{sub}cwd: {}\n", yaml_scalar(cwd)));
+    }
+    s.push_str(&format!("{sub}autostart: {}\n", p.autostart));
+    s
+}
+
+/// Render an argument list as a YAML flow sequence of double-quoted scalars.
+/// JSON-style quoting (via `{:?}`) is valid YAML, so this stays correct for args
+/// with spaces or quotes.
+pub(crate) fn yaml_args(args: &[String]) -> String {
+    let inner: Vec<String> = args.iter().map(|a| format!("{a:?}")).collect();
+    format!("[{}]", inner.join(", "))
+}
+
+/// A scalar value, quoted only when YAML would otherwise mis-parse it. Keeps the
+/// common case (`cmd: cargo`, `cwd: .`) clean while staying safe for input
+/// containing `:`, `#`, quotes, brackets, or an indicator first character. Shared
+/// with the `mmux init` wizard so both writers emit identically-styled YAML.
+pub(crate) fn yaml_scalar(s: &str) -> String {
+    let plain = !s.is_empty()
+        && s == s.trim()
+        && !s.contains(['#', ':', '"', '\'', '[', ']', '{', '}', '\n'])
+        && !s.starts_with(['-', '?', '&', '*', '!', '|', '>', '%', '@', '`', ',']);
+    if plain {
+        s.to_string()
+    } else {
+        format!("{s:?}")
+    }
+}
+
+/// Tokenize a command line on whitespace, with single/double quotes grouping a run
+/// (quotes are removed; no escape processing — enough for typed commands).
+fn shell_split(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut started = false; // distinguishes "" (a real empty token) from no token
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' | '"' => {
+                started = true;
+                while let Some(q) = chars.next() {
+                    if q == c {
+                        break;
+                    }
+                    cur.push(q);
+                }
+            }
+            c if c.is_whitespace() => {
+                if started {
+                    out.push(std::mem::take(&mut cur));
+                    started = false;
+                }
+            }
+            _ => {
+                started = true;
+                cur.push(c);
+            }
+        }
+    }
+    if started {
+        out.push(cur);
+    }
+    out
+}
+
 /// Path to the global config (`~/.mmux/config.yaml`) if it exists.
 pub fn global_config_path() -> Option<PathBuf> {
     global_config_target().filter(|p| p.exists())
@@ -362,3 +570,97 @@ processes:
 #   throttle_secs: 5
 #   # command: 'terminal-notifier -title "$MMUX_NOTIFY_TITLE" -message "$MMUX_NOTIFY_BODY"'
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn draft() -> ProcessDraft {
+        ProcessDraft {
+            name: "Dev server".into(),
+            cmd: "npm".into(),
+            args: vec!["run".into(), "dev".into()],
+            cwd: None,
+            autostart: false,
+        }
+    }
+
+    #[test]
+    fn inserts_among_existing_processes_at_their_indent() {
+        let text = "name: demo\n\nprocesses:\n  - name: Check\n    cmd: cargo\n    args: [\"check\"]\n";
+        let out = insert_process(text, &draft()).unwrap();
+        // The existing entry survives untouched and the new one follows it, same indent
+        // and unquoted-where-safe style.
+        assert!(out.contains("  - name: Check"));
+        assert!(out.contains("  - name: Dev server"));
+        assert!(out.contains("    cmd: npm"));
+        assert!(out.contains("    args: [\"run\", \"dev\"]"));
+        assert!(out.contains("    autostart: false"));
+        assert!(out.find("name: Check").unwrap() < out.find("name: Dev server").unwrap());
+        // A parse-back proves the splice is valid YAML with both entries.
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 2);
+        assert_eq!(cfg.processes[1].name, "Dev server");
+        assert_eq!(cfg.processes[1].args, vec!["run", "dev"]);
+    }
+
+    #[test]
+    fn inserts_above_a_trailing_comment_block() {
+        // The new entry should land with its siblings, not below the trailing comments.
+        let text = "processes:\n  - name: A\n    cmd: x\n\n  # optional extras below\n";
+        let out = insert_process(text, &draft()).unwrap();
+        assert!(out.find("Dev server").unwrap() < out.find("optional extras").unwrap());
+    }
+
+    #[test]
+    fn appends_a_fresh_block_when_absent() {
+        let out = insert_process("name: demo\n", &draft()).unwrap();
+        assert!(out.contains("\nprocesses:\n  - name: Dev server"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 1);
+    }
+
+    #[test]
+    fn replaces_an_empty_list_placeholder() {
+        let out = insert_process("processes: []\nname: demo\n", &draft()).unwrap();
+        assert!(!out.contains("[]"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 1);
+    }
+
+    #[test]
+    fn refuses_an_inline_processes_value() {
+        assert!(insert_process("processes: something\n", &draft()).is_err());
+    }
+
+    #[test]
+    fn optional_fields_are_emitted_only_when_set() {
+        let mut d = draft();
+        d.args.clear();
+        d.cwd = Some("backend".into());
+        d.autostart = true;
+        let out = insert_process("", &d).unwrap();
+        assert!(!out.contains("args:"));
+        assert!(out.contains("cwd: backend"));
+        assert!(out.contains("autostart: true"));
+    }
+
+    #[test]
+    fn yaml_scalar_quotes_only_when_needed() {
+        assert_eq!(yaml_scalar("Dev server"), "Dev server");
+        assert_eq!(yaml_scalar("."), ".");
+        assert_eq!(yaml_scalar("../proj2"), "../proj2");
+        assert_eq!(yaml_scalar("build:dev"), "\"build:dev\"");
+        assert_eq!(yaml_scalar("- weird"), "\"- weird\"");
+    }
+
+    #[test]
+    fn split_command_handles_quotes() {
+        assert_eq!(split_command("npm run dev"), ("npm".into(), vec!["run".into(), "dev".into()]));
+        assert_eq!(
+            split_command("git commit -m 'a b'"),
+            ("git".into(), vec!["commit".into(), "-m".into(), "a b".into()])
+        );
+        assert_eq!(split_command("  "), (String::new(), vec![]));
+    }
+}

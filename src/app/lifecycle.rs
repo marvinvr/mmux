@@ -4,6 +4,7 @@
 use super::git::{GitPanel, Overlay};
 use super::nav::Nav;
 use super::picker::Picker;
+use super::procform::ProcForm;
 use super::session::{Kind, Recipe, Session, Status};
 use super::{App, Focus};
 use crate::config::Config;
@@ -32,6 +33,48 @@ impl App {
         s.spawn(rows, cols);
         self.sessions.push(s);
         self.select_session(self.sessions.len() - 1);
+    }
+
+    /// Raise the "+ New Process" form over project `pi`. The modal eats keys until
+    /// the user finishes (writing the process to the config) or cancels.
+    pub(crate) fn open_new_process(&mut self, pi: usize) {
+        self.overlay = Some(Overlay::new_process(pi));
+    }
+
+    /// Write a finished form's process to project `pi`'s `mmux.yaml`, then reload so
+    /// it shows up as a real row. On success the new row is selected (and started if
+    /// autostart was chosen); a write failure is flashed and nothing else changes.
+    pub(crate) fn finish_new_process(&mut self, form: &ProcForm) {
+        let pi = form.project;
+        let path = crate::config::project_config_path(&self.projects[pi].cfg.dir);
+        let (cmd, args) = crate::config::split_command(&form.command);
+        let cwd = form.cwd.trim();
+        let draft = crate::config::ProcessDraft {
+            name: form.name.clone(),
+            cmd,
+            args,
+            cwd: (!cwd.is_empty()).then(|| cwd.to_string()),
+            autostart: form.autostart,
+        };
+        if let Err(e) = crate::config::append_process(&path, &draft) {
+            self.flash = Some((format!("couldn't add process — {e}"), Instant::now()));
+            return;
+        }
+        // Pull the new entry into the live session list, then select it.
+        self.reload();
+        self.flash = Some((format!("added process “{}”", draft.name), Instant::now()));
+        if let Some(i) = self.sessions.iter().position(|s| {
+            s.project == pi && s.kind == Kind::Process && s.name == draft.name
+        }) {
+            self.select_session(i);
+            // "Start automatically" was just opted into — honour it now, not only on
+            // the next open. (`reload` adds it stopped; this brings it up.)
+            if draft.autostart && !self.sessions[i].is_running() {
+                let (rows, cols) = self.last_inner;
+                self.sessions[i].spawn(rows, cols);
+            }
+        }
+        self.focus = Focus::Sidebar;
     }
 
     /// Raise the Ctrl+P fuzzy file picker over the active project. Listing happens
@@ -76,6 +119,9 @@ impl App {
                 self.spawn_terminal(p);
                 self.focus = Focus::Terminal;
             }
+            // The process launcher opens the guided form rather than spawning; the
+            // modal takes over input, so focus stays on the sidebar.
+            Nav::NewProcess(p) => self.open_new_process(p),
             Nav::Session(i) => {
                 if !self.sessions[i].is_running() {
                     let (rows, cols) = self.last_inner;
@@ -94,6 +140,7 @@ impl App {
         match self.current_nav() {
             Some(Nav::NewAgent(p, t)) => self.spawn_agent(p, t),
             Some(Nav::NewTerminal(p)) => self.spawn_terminal(p),
+            Some(Nav::NewProcess(p)) => self.open_new_process(p),
             Some(Nav::Session(i)) if !self.sessions[i].is_running() => {
                 let (rows, cols) = self.last_inner;
                 self.sessions[i].spawn(rows, cols);
@@ -163,6 +210,7 @@ impl App {
             }
             Some(Nav::NewAgent(p, t)) => self.spawn_agent(p, t),
             Some(Nav::NewTerminal(p)) => self.spawn_terminal(p),
+            Some(Nav::NewProcess(p)) => self.open_new_process(p),
             Some(Nav::Panel) => {
                 if let Some(g) = self.active_git_mut() {
                     g.refresh();

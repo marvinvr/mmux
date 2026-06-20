@@ -4,6 +4,7 @@
 use super::git::{Confirmed, Overlay, PromptKind, Section};
 use super::keymap::encode_key;
 use super::nav::Nav;
+use super::procform::{ProcForm, Step};
 use super::view::FooterAction;
 use super::{App, Focus};
 use ratatui::crossterm::event::{
@@ -140,6 +141,12 @@ impl App {
     /// filter for the branch switcher. We resolve the keystroke into one action and
     /// apply it *after* the borrow ends, so we never reassign `overlay` mid-borrow.
     fn overlay_key(&mut self, k: KeyEvent) {
+        // The guided process form carries enough state (and needs to read project
+        // config for validation) that it gets its own handler.
+        if matches!(self.overlay, Some(Overlay::NewProcess(_))) {
+            self.procform_key(k);
+            return;
+        }
         enum Act {
             None,
             Close,
@@ -205,6 +212,8 @@ impl App {
                 }
                 _ => Act::Close,
             },
+            // Handled above by `procform_key`; arm kept for match exhaustiveness.
+            Some(Overlay::NewProcess(_)) => Act::None,
             None => Act::None,
         };
         match act {
@@ -223,6 +232,84 @@ impl App {
                 self.open_in_editor(pi, path);
             }
         }
+    }
+
+    /// Keys for the "+ New Process" form. We take the form out of `self.overlay` for
+    /// the duration so the handler can freely read project config (for validation)
+    /// while mutating the form, then put it back unless the user finished/cancelled.
+    fn procform_key(&mut self, k: KeyEvent) {
+        let Some(Overlay::NewProcess(mut form)) = self.overlay.take() else {
+            return;
+        };
+        match form.step {
+            // Text steps: type to edit, ⏎ advances (after validation), Esc cancels.
+            Step::Name | Step::Command | Step::Cwd => match k.code {
+                KeyCode::Esc => return, // cancelled — leave overlay cleared
+                KeyCode::Enter => self.procform_advance(&mut form),
+                KeyCode::Backspace => {
+                    form.buf.pop();
+                    form.error = None;
+                }
+                KeyCode::Char(c) => {
+                    form.buf.push(c);
+                    form.error = None;
+                }
+                _ => {}
+            },
+            // Review: toggle autostart, ⏎ writes the process, Esc cancels.
+            Step::Review => match k.code {
+                KeyCode::Esc => return,
+                KeyCode::Char('y') | KeyCode::Char('Y') => form.autostart = true,
+                KeyCode::Char('n') | KeyCode::Char('N') => form.autostart = false,
+                KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') | KeyCode::Tab => {
+                    form.autostart = !form.autostart;
+                }
+                KeyCode::Enter => {
+                    self.finish_new_process(&form); // sets its own flash + selection
+                    return;
+                }
+                _ => {}
+            },
+        }
+        self.overlay = Some(Overlay::NewProcess(form));
+    }
+
+    /// Validate the current text step and move to the next one, committing the buffer
+    /// into the matching field and loading the next field's value to edit. Validation
+    /// failures set `form.error` and stay put.
+    fn procform_advance(&mut self, form: &mut ProcForm) {
+        let val = form.buf.trim().to_string();
+        match form.step {
+            Step::Name => {
+                if val.is_empty() {
+                    form.error = Some("name can't be empty".into());
+                    return;
+                }
+                if self.projects[form.project].cfg.processes.iter().any(|p| p.name == val) {
+                    form.error = Some(format!("a process named “{val}” already exists"));
+                    return;
+                }
+                form.name = val;
+                form.step = Step::Command;
+                form.buf = form.command.clone();
+            }
+            Step::Command => {
+                if val.is_empty() {
+                    form.error = Some("command can't be empty".into());
+                    return;
+                }
+                form.command = val;
+                form.step = Step::Cwd;
+                form.buf = form.cwd.clone();
+            }
+            Step::Cwd => {
+                form.cwd = val; // optional — blank means the project root
+                form.step = Step::Review;
+                form.buf.clear();
+            }
+            Step::Review => {}
+        }
+        form.error = None;
     }
 
     pub(crate) fn on_mouse(&mut self, m: MouseEvent) {
@@ -450,8 +537,8 @@ impl App {
         self.last_click = Some((idx, now));
         self.sel = idx;
         match self.current_nav() {
-            // Launchers: single click selects, double click spawns.
-            Some(Nav::NewAgent(..)) | Some(Nav::NewTerminal(_)) => {
+            // Launchers: single click selects, double click spawns / opens the form.
+            Some(Nav::NewAgent(..)) | Some(Nav::NewTerminal(_)) | Some(Nav::NewProcess(_)) => {
                 if double {
                     self.activate();
                 } else {
@@ -559,11 +646,15 @@ impl App {
     }
 
     pub(crate) fn on_paste(&mut self, s: String) {
-        // Paste into an open text prompt (commit message); otherwise to the pane.
-        if let Some(Overlay::Prompt { buf, .. }) = &mut self.overlay {
-            buf.push_str(&s);
-        } else if self.focus == Focus::Terminal {
-            self.send_focused(s.into_bytes());
+        // Paste into an open text prompt (commit message / a form's text step);
+        // otherwise to the pane.
+        match &mut self.overlay {
+            Some(Overlay::Prompt { buf, .. }) => buf.push_str(&s),
+            Some(Overlay::NewProcess(form)) if form.step != Step::Review => {
+                form.buf.push_str(&s);
+            }
+            _ if self.focus == Focus::Terminal => self.send_focused(s.into_bytes()),
+            _ => {}
         }
     }
 }

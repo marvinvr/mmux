@@ -11,6 +11,7 @@
 
 use crate::app::git::{GitPanel, Overlay, PromptKind, Section};
 use crate::app::picker::Picker;
+use crate::app::procform::{ProcForm, Step, STEPS};
 use crate::git::{Branch, Commit, FileEntry, Stage, TreeRow};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -332,7 +333,109 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
         Overlay::Prompt { title, buf, kind } => render_prompt(f, area, title, buf, *kind),
         Overlay::Confirm { title, body, .. } => render_confirm(f, area, title, body),
         Overlay::Picker(p) => render_picker(f, area, p),
+        Overlay::NewProcess(form) => render_procform(f, area, form),
     }
+}
+
+/// The "+ New Process" guided form: a "Step N of 4" header, the fields already
+/// entered (dim, for context), the active input or the review screen, an optional
+/// validation warning, and a key hint pinned to the bottom row.
+fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
+    let w = area.width.saturating_sub(6).clamp(34, 72);
+    let h = 12u16.min(area.height);
+    let rect = centered(area, w, h);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" New process ")
+        .border_style(Style::default().fg(Color::Magenta));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    if inner.width == 0 || inner.height < 3 {
+        return;
+    }
+
+    let (label, hint) = match form.step {
+        Step::Name => ("Name", "⏎ next · esc cancel"),
+        Step::Command => ("Command", "⏎ next · esc cancel"),
+        Step::Cwd => ("Working dir", "⏎ next (blank ok) · esc cancel"),
+        Step::Review => ("Review", "←→ autostart · ⏎ create · esc cancel"),
+    };
+
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!("Step {} of {STEPS} · {label}", form.step_index()),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    // The screen row the text cursor should sit on (set on text steps only).
+    let mut input_y: Option<u16> = None;
+    match form.step {
+        Step::Review => {
+            lines.push(field_line("Name", &form.name));
+            lines.push(field_line("Command", &form.command));
+            let cwd = if form.cwd.trim().is_empty() { "(project root)" } else { form.cwd.trim() };
+            lines.push(field_line("Working dir", cwd));
+            let mark = if form.autostart { " yes " } else { " no " };
+            lines.push(Line::from(vec![
+                Span::styled("Autostart    ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    mark,
+                    Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+        step => {
+            // Echo the fields gathered so far for context.
+            if step != Step::Name {
+                lines.push(field_line("Name", &form.name));
+            }
+            if step == Step::Cwd {
+                lines.push(field_line("Command", &form.command));
+            }
+            let prompt = match step {
+                Step::Name => "A label for the sidebar, e.g. Dev server",
+                Step::Command => "The command to run, e.g. npm run dev",
+                Step::Cwd => "Directory relative to the project (blank = project root)",
+                Step::Review => "",
+            };
+            lines.push(Line::from(Span::styled(prompt, Style::default().fg(Color::DarkGray))));
+            input_y = Some(inner.y + lines.len() as u16);
+            lines.push(Line::from(vec![
+                Span::styled("> ", Style::default().fg(Color::Magenta)),
+                Span::styled(form.buf.clone(), Style::default().fg(Color::White)),
+            ]));
+        }
+    }
+    if let Some(err) = &form.error {
+        lines.push(Line::from(Span::styled(
+            format!("⚠ {err}"),
+            Style::default().fg(Color::Red),
+        )));
+    }
+
+    // Body above, hint pinned to the last inner row.
+    let body = Rect { x: inner.x, y: inner.y, width: inner.width, height: inner.height - 1 };
+    f.render_widget(Paragraph::new(lines), body);
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray)))),
+        Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 },
+    );
+
+    if let Some(y) = input_y {
+        let cx = inner.x + 2 + (form.buf.chars().count() as u16).min(inner.width.saturating_sub(3));
+        f.set_cursor_position((cx, y));
+    }
+}
+
+/// A dim `label: value` context line in the process form.
+fn field_line(label: &str, value: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{label}: "), Style::default().fg(Color::DarkGray)),
+        Span::styled(value.to_string(), Style::default().fg(Color::Gray)),
+    ])
 }
 
 /// The Ctrl+P fuzzy file picker: a query line, the ranked match list (the

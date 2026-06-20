@@ -105,8 +105,10 @@ impl App {
             Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Terminal,
             _ => false,
         });
-        self.push_proj_section(&mut lines, &mut rows, "PROCESSES", false, nav, width, move |app, n| {
-            matches!(n, Nav::Session(i) if app.sessions[i].project == pi && app.sessions[i].kind == Kind::Process)
+        self.push_proj_section(&mut lines, &mut rows, "PROCESSES", false, nav, width, move |app, n| match n {
+            Nav::NewProcess(p) => p == pi,
+            Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Process,
+            _ => false,
         });
         (lines, rows)
     }
@@ -183,8 +185,10 @@ impl App {
                 Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Terminal,
                 _ => false,
             });
-            self.section(&mut lines, &mut y, "PROCESSES", false, &nav, inner.width, move |app, n| {
-                matches!(n, Nav::Session(i) if app.sessions[i].project == pi && app.sessions[i].kind == Kind::Process)
+            self.section(&mut lines, &mut y, "PROCESSES", false, &nav, inner.width, move |app, n| match n {
+                Nav::NewProcess(p) => p == pi,
+                Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Process,
+                _ => false,
             });
         }
         // In compact mode the git panel is also a sidebar entry.
@@ -245,6 +249,14 @@ impl App {
             ),
             Nav::NewTerminal(_) => entry_line(
                 "+ New Terminal",
+                sel,
+                Style::default().fg(Color::Green),
+                None,
+                false,
+                width,
+            ),
+            Nav::NewProcess(_) => entry_line(
+                "+ New Process",
                 sel,
                 Style::default().fg(Color::Green),
                 None,

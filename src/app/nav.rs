@@ -16,6 +16,7 @@ use crate::pane::Pane;
 pub enum Nav {
     NewAgent(usize, usize), // (project, agent template): launcher for projects[p].cfg.agents[t]
     NewTerminal(usize),     // (project): launcher for a plain shell in that project
+    NewProcess(usize),      // (project): launcher for the "+ New Process" form in that project
     Session(usize),         // a live/exited session: self.sessions[i]
     Panel,                  // the active project's right panel (only listed in compact mode)
 }
@@ -32,6 +33,7 @@ impl App {
             self.push_sessions(&mut nav, pi, Kind::Agent);
             nav.push(Nav::NewTerminal(pi));
             self.push_sessions(&mut nav, pi, Kind::Terminal);
+            nav.push(Nav::NewProcess(pi));
             self.push_sessions(&mut nav, pi, Kind::Process);
         }
         if self.compact && self.active_git().is_some() {
@@ -51,7 +53,7 @@ impl App {
     /// Which project a nav row belongs to (the shared panel row belongs to none).
     pub(crate) fn project_of(&self, nav: Nav) -> Option<usize> {
         match nav {
-            Nav::NewAgent(p, _) | Nav::NewTerminal(p) => Some(p),
+            Nav::NewAgent(p, _) | Nav::NewTerminal(p) | Nav::NewProcess(p) => Some(p),
             Nav::Session(i) => Some(self.sessions[i].project),
             Nav::Panel => None,
         }
@@ -64,15 +66,15 @@ impl App {
     pub(crate) fn pane_at(&self, nav: Nav) -> Option<&Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_ref(),
-            // The git panel is native, not pane-backed.
-            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) => None,
+            // The git panel is native, not pane-backed; launchers have no pane.
+            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
         }
     }
 
     pub(crate) fn pane_at_mut(&mut self, nav: Nav) -> Option<&mut Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_mut(),
-            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) => None,
+            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
         }
     }
 

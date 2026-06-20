@@ -21,6 +21,7 @@
 //! derive `Serialize`, which would emit `null`s and drop the comments. The
 //! interactive half is thin stdin/stdout prompting and never runs without a TTY.
 
+use crate::config::{yaml_args, yaml_scalar};
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
@@ -269,6 +270,7 @@ fn build_local_yaml(
 }
 
 /// The `- name:/cmd:/args:` block items for an agents list (indented two spaces).
+/// YAML styling is shared with the runtime config writer (see [`crate::config`]).
 fn agent_items(agents: &[Agent]) -> String {
     let mut s = String::new();
     for a in agents {
@@ -290,29 +292,6 @@ fn process_items(procs: &[Process]) -> String {
         s.push_str(&format!("    autostart: {}\n", p.autostart));
     }
     s
-}
-
-/// Render an argument list as a YAML flow sequence of double-quoted scalars.
-/// JSON-style quoting (via `{:?}`) is valid YAML, so this stays correct for args
-/// with spaces or quotes.
-fn yaml_args(args: &[String]) -> String {
-    let inner: Vec<String> = args.iter().map(|a| format!("{a:?}")).collect();
-    format!("[{}]", inner.join(", "))
-}
-
-/// A scalar value, quoted only when YAML would otherwise mis-parse it. Keeps the
-/// common case (`name: Dev server`, `cwd: .`) clean while staying safe for input
-/// containing `:`, `#`, quotes, brackets, or an indicator first character.
-fn yaml_scalar(s: &str) -> String {
-    let plain = !s.is_empty()
-        && s == s.trim()
-        && !s.contains(['#', ':', '"', '\'', '[', ']', '{', '}', '\n'])
-        && !s.starts_with(['-', '?', '&', '*', '!', '|', '>', '%', '@', '`', ',']);
-    if plain {
-        s.to_string()
-    } else {
-        format!("{s:?}")
-    }
 }
 
 // ── file writing ─────────────────────────────────────────────────────────────
@@ -477,15 +456,6 @@ mod tests {
         assert_eq!(split_command("solo"), Some(("solo".into(), vec![])));
         assert_eq!(split_command("   "), None);
         assert_eq!(split_command(""), None);
-    }
-
-    #[test]
-    fn yaml_scalar_quotes_only_when_needed() {
-        assert_eq!(yaml_scalar("Dev server"), "Dev server");
-        assert_eq!(yaml_scalar("."), ".");
-        assert_eq!(yaml_scalar("../proj2"), "../proj2");
-        assert_eq!(yaml_scalar("build:dev"), "\"build:dev\"");
-        assert_eq!(yaml_scalar("- weird"), "\"- weird\"");
     }
 
     #[test]
