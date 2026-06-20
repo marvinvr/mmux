@@ -356,9 +356,9 @@ section {
 #demo {
   /* CRITICAL: the track must be much taller than the 100vh sticky stage,
    * otherwise progress is always 0 and the walkthrough never scrubs. */
-  min-height: 760vh;
+  min-height: 680vh;
   padding: 0 1.5rem;
-  max-width: var(--page-max);
+  max-width: 1240px;          /* the demo is the star — a touch wider than the rest */
   margin: 0 auto;
 }
 .demo-stage {
@@ -371,8 +371,8 @@ section {
 }
 .demo-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: 2.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+  gap: 2.5rem;
   align-items: center;
   width: 100%;
 }
@@ -438,10 +438,10 @@ section {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
-  font-size: .82rem;
+  font-size: .9rem;
   line-height: 1.6;
   transition: border-color .2s ease;
-  height: 32rem;
+  height: 34rem;
 }
 /* engaged sandbox: a crisp green edge, not a glow */
 .tw.tw--engaged { border-color: var(--green); }
@@ -516,7 +516,7 @@ section {
   display: flex;
   align-items: center;
   gap: .5rem;
-  padding: .38rem .85rem;
+  padding: .46rem .9rem;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
@@ -608,9 +608,9 @@ section {
 
 .tw-screen {
   flex: 1;
-  padding: .8rem 1rem;
+  padding: 1rem 1.15rem;
   overflow: auto;
-  line-height: 1.65;
+  line-height: 1.7;
   color: var(--text-2);
 }
 .screen-line {
@@ -650,7 +650,7 @@ section {
 /* panel (native git) */
 .tw-panel {
   flex: none;
-  width: 208px;
+  width: 196px;
   display: flex;
   flex-direction: column;
   background: var(--bg-2);
@@ -823,127 +823,94 @@ section {
 }
 
 /* ============================================================================
- * how it works — flat diagram (real nodes + a thin green connector)
+ * how it works — plain language: it's all one terminal. A simple window mock.
  * ========================================================================== */
-.how-diagram {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 2.5rem;
-}
-.how-node {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .2rem;
-  padding: .8rem 1.4rem;
+.how-window {
+  max-width: 720px;
+  margin: 0 auto 2.75rem;
   background: var(--surface);
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.how-node-title { font-weight: 600; color: var(--text); }
-.how-node-sub { font-size: .8rem; color: var(--muted); }
-
-.how-connector { width: 36px; height: 56px; }
-.how-connector-path { stroke-dasharray: 4 5; }
-
-/* the tmux "jail" — a dashed (not glowing) container */
-.how-jail {
-  width: 100%;
-  max-width: 620px;
-  padding: 1.4rem;
-  background: var(--bg-2);
-  border: 1px dashed var(--border-2);
-  border-radius: var(--radius);
-}
-.how-jail-head {
+.how-window-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: .6rem;
-  margin-bottom: 1rem;
+  padding: .5rem .85rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
 }
-.how-jail-chip {
-  font-size: .8rem;
-  font-weight: 600;
-  color: var(--text);
-  padding: .3rem .7rem;
-  background: var(--surface);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-sm);
+.how-window-lights { display: inline-flex; gap: .4rem; }
+.how-window-lights i {
+  width: .58rem;
+  height: .58rem;
+  border-radius: 50%;
+  background: var(--faint);
 }
-.how-jail-badge {
-  font-size: .76rem;
-  color: var(--green);
-  padding: .28rem .65rem;
-  border: 1px solid var(--green-dim);
-  border-radius: var(--radius-sm);
-}
+.how-window-name { font-weight: 600; color: var(--text); margin-left: .25rem; }
+.how-window-path { color: var(--muted); font-size: .85rem; }
 
-/* miniature mmux window: three labeled bordered columns */
-.how-mmux {
+.how-window-body {
   display: grid;
-  grid-template-columns: .8fr 1.6fr .7fr;
-  gap: .65rem;
+  grid-template-columns: 1fr 1.7fr .9fr;
+  gap: .7rem;
+  padding: .9rem;
 }
-.how-col {
+.how-pane {
   display: flex;
   flex-direction: column;
-  gap: .35rem;
-  padding: .65rem;
-  min-height: 5.5rem;
-  background: var(--surface);
+  gap: .45rem;
+  padding: .75rem;
+  min-height: 7rem;
+  background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.how-col--main { background: var(--surface-2); }
-.how-col--sidebar,
-.how-col--panel { background: var(--bg); }
-.how-col-label {
-  font-size: .7rem;
+.how-pane--main { background: var(--surface-2); }
+.how-pane-label {
+  font-size: .72rem;
   font-weight: 600;
-  letter-spacing: .05em;
-  text-transform: uppercase;
+  letter-spacing: .03em;
   color: var(--muted);
-  margin-bottom: .1rem;
+  margin-bottom: .15rem;
 }
-.how-row {
-  height: .45rem;
-  width: 70%;
+.how-line {
+  height: .5rem;
+  width: 75%;
   background: var(--surface-3);
   border-radius: 2px;
 }
-.how-row--wide { width: 100%; }
-.how-row--active { width: 85%; background: var(--green); }
+.how-line--wide { width: 100%; }
+.how-line--on { width: 88%; background: var(--green); }
 
-.how-diagram-caption {
-  margin: 1.3rem 0 0;
-  font-size: .85rem;
-  color: var(--muted);
+.how-window-status {
+  padding: .35rem .85rem;
+  font-size: .76rem;
+  font-weight: 500;
+  color: #08130a;
+  background: var(--green);
 }
 
-/* the three supporting points */
-.how-prose {
+/* three plain-language points */
+.how-points {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.4rem;
+  gap: 1.6rem;
   max-width: var(--page-max);
 }
-.how-prose li {
-  position: relative;
-  padding-left: 1rem;
-  font-size: .92rem;
+.how-points li {
+  font-size: .95rem;
   line-height: 1.65;
   color: var(--text-2);
 }
-.how-prose li::before {
-  content: "▸";
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: var(--green);
+.how-points strong {
+  display: block;
+  color: var(--text);
+  font-weight: 700;
+  margin-bottom: .3rem;
 }
-.how-prose em { font-style: normal; color: var(--text); font-weight: 600; }
 
 /* ============================================================================
  * install — single command, brew only
@@ -1017,7 +984,7 @@ section {
 @media (max-width: 900px) {
   section { padding: 4.5rem 1.25rem; }
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
-  .how-prose { grid-template-columns: 1fr; gap: 1rem; }
+  .how-points { grid-template-columns: 1fr; gap: 1.1rem; }
 
   /* demo: window over stacked captions; shorter track so it isn't endless */
   #demo { min-height: 680vh; }
@@ -1035,11 +1002,11 @@ section {
   section { padding: 3.75rem 1rem; }
   .feature-grid { grid-template-columns: 1fr; }
 
-  .tw { height: 26rem; font-size: .76rem; }
-  .tw-sidebar { width: 140px; }
+  .tw { height: 28rem; font-size: .82rem; }
+  .tw-sidebar { width: 142px; }
   .sb-sub { display: none; }
 
-  .how-mmux { grid-template-columns: 1fr; }
+  .how-window-body { grid-template-columns: 1fr; }
 
   .nav-links { gap: .8rem; font-size: .85rem; }
   .hero-install,

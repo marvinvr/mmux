@@ -44,15 +44,12 @@
 
   /* DEFAULT_STATE — a realistic, populated finale (§5.3 / §8). Used when
    * window.MMUX_SCENES is absent (degrade to a static, playable finale). scenes.js
-   * authors scene 8 to mirror this shape, so the field names here are the stable
-   * contract. The content uses the token model so the pane looks real. */
+   * authors the finale scene to mirror this shape, so the field names here are the
+   * stable contract. The content uses the token model so the pane looks real. */
   var DEFAULT_STATE = {
     title: "~/dev/app",
-    multiProject: true,
-    projects: [
-      { name: "app", active: true },
-      { name: "app-2", active: false },
-    ],
+    multiProject: false,
+    projects: [{ name: "app", active: true }],
     sidebar: [
       {
         kind: "AGENTS",
@@ -64,14 +61,6 @@
             status: "running",
             active: true,
             attention: false,
-            project: "app",
-          },
-          {
-            id: "claude-2",
-            name: "claude",
-            sub: "running tests",
-            status: "running",
-            project: "app-2",
           },
           { id: "new-claude", launcher: true, name: "New Claude" },
         ],
@@ -79,7 +68,7 @@
       {
         kind: "TERMINAL",
         rows: [
-          { id: "zsh", name: "zsh", status: "running", project: "app" },
+          { id: "zsh", name: "zsh", status: "running" },
           { id: "new-terminal", launcher: true, name: "New Terminal" },
         ],
       },
@@ -91,7 +80,6 @@
             name: "dev server",
             sub: "vite · :5173",
             status: "running",
-            project: "app",
           },
           { id: "new-process", launcher: true, name: "New Process" },
         ],

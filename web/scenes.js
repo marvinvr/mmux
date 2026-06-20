@@ -1,7 +1,7 @@
 /* scenes.js — the data for the mmux.org scroll walkthrough (v2).
  *
  * One global: window.MMUX_SCENES — pure data, no logic, no console output.
- * Nine scenes (id 0..8). Each: { id, caption:{kicker?,title,body}, type?, state }.
+ * Eight scenes (id 0..7). Each: { id, caption:{kicker?,title,body}, type?, state }.
  *
  * The state shape, the Line/token model, and the field names are the contract
  * defined in DESIGN.md §5.3 / §5.4 and consumed verbatim by tui.js's
@@ -406,93 +406,18 @@
       },
     },
 
-    /* 7 — many clones, one sidebar. (multi-project: app + app-2) ---------- */
+    /* 7 — your turn. (finale; mirrors tui.js DEFAULT_STATE; sandbox) ------ */
     {
       id: 7,
       caption: {
-        kicker: "// linked projects",
-        title: "many clones, one sidebar.",
-        body: "link sibling projects; each gets its own section.",
-      },
-      state: {
-        title: "~/dev/app",
-        multiProject: true,
-        projects: [
-          { name: "app", active: true },
-          { name: "app-2", active: false },
-        ],
-        sidebar: [
-          {
-            kind: "AGENTS",
-            rows: [
-              {
-                id: "claude",
-                name: "claude",
-                sub: "refactoring auth",
-                status: "running",
-                active: true,
-                project: "app",
-              },
-              {
-                id: "claude-2",
-                name: "claude",
-                sub: "running tests",
-                status: "running",
-                project: "app-2",
-              },
-              L_CLAUDE,
-            ],
-          },
-          {
-            kind: "TERMINAL",
-            rows: [
-              { id: "zsh", name: "zsh", status: "running", project: "app" },
-              L_TERMINAL,
-            ],
-          },
-          {
-            kind: "PROCESSES",
-            rows: [
-              {
-                id: "dev-server",
-                name: "dev server",
-                sub: "vite · :5173",
-                status: "running",
-                project: "app",
-              },
-              L_PROCESS,
-            ],
-          },
-        ],
-        main: {
-          program: "claude",
-          title: " claude — running ",
-          lines: CLAUDE_LINES,
-          placeholder: null,
-          cursor: true,
-        },
-        panel: { visible: true, branch: "main", lines: LAZYGIT_LINES },
-        focus: "main",
-        toast: null,
-        overlay: null,
-      },
-    },
-
-    /* 8 — your turn. (finale; mirrors tui.js DEFAULT_STATE; sandbox) ------ */
-    {
-      id: 8,
-      caption: {
         kicker: "// sandbox",
         title: "your turn.",
-        body: "↑↓ move · ⏎ open · x close — spawn an agent from a + New row.",
+        body: "click a row to play — spawn an agent from a + New row, or open one that's running.",
       },
       state: {
         title: "~/dev/app",
-        multiProject: true,
-        projects: [
-          { name: "app", active: true },
-          { name: "app-2", active: false },
-        ],
+        multiProject: false,
+        projects: [{ name: "app", active: true }],
         sidebar: [
           {
             kind: "AGENTS",
@@ -504,14 +429,6 @@
                 status: "running",
                 active: true,
                 attention: false,
-                project: "app",
-              },
-              {
-                id: "claude-2",
-                name: "claude",
-                sub: "running tests",
-                status: "running",
-                project: "app-2",
               },
               L_CLAUDE,
             ],
@@ -519,7 +436,7 @@
           {
             kind: "TERMINAL",
             rows: [
-              { id: "zsh", name: "zsh", status: "running", project: "app" },
+              { id: "zsh", name: "zsh", status: "running" },
               L_TERMINAL,
             ],
           },
@@ -531,7 +448,6 @@
                 name: "dev server",
                 sub: "vite · :5173",
                 status: "running",
-                project: "app",
               },
               L_PROCESS,
             ],

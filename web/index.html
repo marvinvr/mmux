@@ -179,69 +179,46 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- §4.5 + §9 how it works — a real diagram, no ascii                    -->
+    <!-- how it works — plain language: it all lives in one terminal           -->
     <!-- =================================================================== -->
     <section id="how">
-      <p class="kicker">// how it works</p>
-      <h2 class="section-h2">a tui inside a <span class="grad">tmux session.</span></h2>
+      <p class="kicker">// the gist</p>
+      <h2 class="section-h2">it all lives in <span class="grad">one terminal.</span></h2>
 
-      <div class="how-diagram" role="img" aria-label="diagram: your terminal — local, ssh or tmux client — connects down into a per-directory tmux session that survives detach and ssh; inside it runs the mmux window with a sidebar, a main pane and a panel; every pane is a real PTY with a vt100 parser">
-        <!-- node: your terminal -->
-        <div class="how-node how-node--terminal">
-          <span class="how-node-title">your terminal</span>
-          <span class="how-node-sub">local · ssh · tmux client</span>
+      <div class="how-window" role="img" aria-label="a single terminal window holding three panes side by side: agents and terminals on the left, your work in the middle, git on the right">
+        <div class="how-window-bar">
+          <span class="how-window-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="how-window-name">mmux</span>
+          <span class="how-window-path">~/dev/app</span>
         </div>
-
-        <!-- connector down into the jail -->
-        <svg class="how-connector" viewBox="0 0 40 64" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="howStroke" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#6e9e72"></stop>
-              <stop offset="1" stop-color="#6e9e72"></stop>
-            </linearGradient>
-            <marker id="howArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M1 1 L9 5 L1 9" fill="none" stroke="#6e9e72" stroke-width="1.4"></path>
-            </marker>
-          </defs>
-          <path class="how-connector-path" d="M20 2 L20 54" stroke="url(#howStroke)" stroke-width="2" fill="none" marker-end="url(#howArrow)"></path>
-        </svg>
-
-        <!-- the tmux "jail" -->
-        <div class="how-jail">
-          <div class="how-jail-head">
-            <span class="how-jail-chip">tmux session · one per directory</span>
-            <span class="how-jail-badge">survives detach · ssh</span>
+        <div class="how-window-body">
+          <div class="how-pane how-pane--side">
+            <span class="how-pane-label">agents · terminals</span>
+            <span class="how-line"></span>
+            <span class="how-line how-line--on"></span>
+            <span class="how-line"></span>
+            <span class="how-line"></span>
           </div>
-
-          <!-- miniature mmux window: three labeled columns -->
-          <div class="how-mmux">
-            <div class="how-col how-col--sidebar">
-              <span class="how-col-label">sidebar</span>
-              <span class="how-row"></span>
-              <span class="how-row how-row--active"></span>
-              <span class="how-row"></span>
-            </div>
-            <div class="how-col how-col--main">
-              <span class="how-col-label">main pane</span>
-              <span class="how-row how-row--wide"></span>
-              <span class="how-row how-row--wide"></span>
-              <span class="how-row how-row--wide"></span>
-            </div>
-            <div class="how-col how-col--panel">
-              <span class="how-col-label">panel</span>
-              <span class="how-row"></span>
-              <span class="how-row"></span>
-            </div>
+          <div class="how-pane how-pane--main">
+            <span class="how-pane-label">your work</span>
+            <span class="how-line how-line--wide"></span>
+            <span class="how-line how-line--wide"></span>
+            <span class="how-line how-line--wide"></span>
+            <span class="how-line how-line--wide"></span>
+          </div>
+          <div class="how-pane how-pane--git">
+            <span class="how-pane-label">git</span>
+            <span class="how-line"></span>
+            <span class="how-line"></span>
           </div>
         </div>
-
-        <p class="how-diagram-caption">every pane = a real PTY + a vt100 parser</p>
+        <div class="how-window-status">mmux · ~/dev/app</div>
       </div>
 
-      <ul class="how-prose">
-        <li>the TUI runs <em>inside</em> a per-directory tmux session, so closing the terminal or losing ssh never kills it.</li>
-        <li>every agent, terminal and process is one pty-backed pane behind a single unified lifecycle.</li>
-        <li>bells and notification escapes are captured and turned into desktop notifications — even over ssh.</li>
+      <ul class="how-points">
+        <li><strong>one window.</strong> your agents, shells and git sit side by side in a single terminal — no browser, no second app to babysit.</li>
+        <li><strong>always there.</strong> close the terminal or lose your connection, reopen, and everything's exactly where you left it.</li>
+        <li><strong>anywhere.</strong> it works the same on your laptop or over ssh on a server.</li>
       </ul>
     </section>
 
