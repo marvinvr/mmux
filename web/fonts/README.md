@@ -8,7 +8,7 @@ guaranteed good system mono), self-host one here:
 
 1. Drop a `woff2` into this folder, e.g. `fonts/jetbrains-mono.woff2`
    (JetBrains Mono or Geist Mono both fit the aesthetic).
-2. Uncomment the `@font-face` block in `styles.css` and point it at the file.
+2. Add an `@font-face` block to `styles.css` (example below) and point it at the file.
 
 The font must be local — never an `@import` or a remote `url()` (that would break §0 and
 the strict CSP). Ready-to-paste example:
@@ -23,5 +23,5 @@ the strict CSP). Ready-to-paste example:
 }
 ```
 
-Then prepend `"MMUX Mono"` to the `--font-mono` stack in `styles.css`. This stays within
+Then prepend `"MMUX Mono"` to the `--font` stack in `styles.css`. This stays within
 the CSP (`style-src 'self'` covers the stylesheet; the `woff2` is same-origin).

@@ -1,60 +1,83 @@
-/* mmux.org — the whole design system (DESIGN.md §2, §3) + every class in §4/§5.
+/* ============================================================================
+ * mmux.org — v2 stylesheet
  *
- * THE ONE RULE (§1): grayscale by default. --accent (cyan) ONLY for interaction
- * (hover / focus-visible / active nav / the selected-row ▌ bar / focused-pane
- * border). --alert (red) ONLY for attention (bell dot, toast) + error states.
- * No other hue, no decorative color. The scene-6 red dot is the first warm color.
+ * A premium dark dev-tool landing page. The ONE thing that looks like a
+ * terminal is #tw — a high-fidelity, real-CSS terminal window. Everything else
+ * is real cards, real borders, real diagrams. No box-drawing chrome.
  *
- * No @import, no remote url() — the favicon/data: URIs live in index.html.
- */
+ * Map: §2 tokens → reset → primitives (btn/copy/kicker/headings/grad) →
+ *      bg glows → nav → hero → demo stage + captions → #tw window (§5) →
+ *      syntax tones (§5.4) → features → how diagram (§9) → install → footer →
+ *      responsive → reduced-motion → focus.
+ * ========================================================================== */
 
-/* ===================================================================== */
-/* §2 design tokens — all on :root                                       */
-/* ===================================================================== */
+/* ============================================================================
+ * §2 — design tokens
+ * ========================================================================== */
 :root {
-  /* surface */
-  --bg:          #0b0c0e;
-  --panel:       #111317;
-  --panel-2:     #15181d;
-  --line:        #23262d;
-  --line-bright: #2f333b;
+  /* base surfaces — deep, slightly cool, with elevation steps */
+  --bg:        #08090f;
+  --bg-2:      #0b0d15;
+  --surface:   #111320;
+  --surface-2: #181b2b;
+  --surface-3: #20243a;
+  --border:    #232844;
+  --border-2:  #343c66;
 
   /* ink */
-  --fg:        #c9d1d9;
-  --fg-bright: #e6edf3;
-  --muted:     #8b939e;   /* raised from #6e7681 to clear AA 4.5:1 on bg/panel/panel-2 (§0/§9) */
-  --faint:     #4b525c;
+  --text:   #e9ebf5;
+  --text-2: #b3b9d2;
+  --muted:  #828aa6;
+  --faint:  #555d7e;
 
-  /* signal (see §1) */
-  --accent:     #5ec8d6;
-  --alert:      #e5534b;
-  --alert-dim:  #3a2422;
+  /* brand — blue → indigo → magenta */
+  --brand-1: #38bdf8;
+  --brand-2: #818cf8;
+  --brand-3: #e879f9;
+  --brand-grad:  linear-gradient(110deg, #38bdf8 0%, #818cf8 48%, #e879f9 100%);
+  --accent:      #818cf8;
+  --accent-soft: rgba(129, 140, 248, .14);
 
-  /* type */
-  --font: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code",
-          Menlo, Consolas, "Liberation Mono", monospace;
+  /* terminal / semantic signal (inside the window + status dots) */
+  --running:   #4ade80;
+  --attention: #fb7185;
+  --warn:      #fbbf24;
+  --info:      #38bdf8;
+  --add:       #4ade80;
+  --del:       #fb7185;
+  --ai:        #e879f9;
+
+  /* syntax token tones (terminal content, §5.4) */
+  --tok-kw:      #e879f9;
+  --tok-fn:      #38bdf8;
+  --tok-str:     #86efac;
+  --tok-num:     #fbbf24;
+  --tok-comment: #7c83a0;   /* AA-tuned: ≥4.5:1 on --surface/--bg-2 */
+  --tok-type:    #818cf8;
+  --tok-path:    #7dd3fc;
+  --tok-op:      #b3b9d2;
+
+  /* glows */
+  --glow-brand: 0 0 80px -16px rgba(129, 140, 248, .55), 0 0 40px -16px rgba(232, 121, 249, .4);
+  --glow-sky:   0 0 50px -14px rgba(56, 189, 248, .5);
+  --ring:       0 0 0 3px var(--accent-soft);
+
+  /* shape / depth */
+  --radius:    14px;
+  --radius-sm: 9px;
+  --shadow:    0 24px 60px -24px rgba(0, 0, 0, .7), 0 8px 24px -16px rgba(0, 0, 0, .6);
+
+  /* type — system mono stack only, no remote fonts */
+  --font: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
 
   /* scale */
-  --measure:  68ch;
-  --page-max: 1080px;
-  --gap: 1.5rem;
-  --radius: 0;
-
-  /* type sizes */
-  --fs-wordmark: clamp(2.5rem, 8vw, 5rem);
-  --fs-h2:       clamp(1.4rem, 3.5vw, 2rem);
-  --fs-body:     0.95rem;
-  --fs-small:    0.8rem;
-  --leading:     1.6;
-
-  /* breakpoint mirror (used only as a documented constant; media queries
-     hard-code 680px since CSS can't use custom props inside @media) */
-  --bp-compact: 680px;
+  --page-max: 1180px;
+  --measure: 60ch;
 }
 
-/* ===================================================================== */
-/* reset / base                                                          */
-/* ===================================================================== */
+/* ============================================================================
+ * reset & base
+ * ========================================================================== */
 *,
 *::before,
 *::after { box-sizing: border-box; }
@@ -66,228 +89,326 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
   font-family: var(--font);
-  font-size: var(--fs-body);
-  line-height: var(--leading);
-  /* never overflow x (§9) */
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-2);
+  background: var(--bg);
+  /* never let a glow or pinned window push a horizontal scrollbar */
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
-  color: inherit;
+  color: var(--text);
   text-decoration: none;
+  transition: color .18s ease;
 }
-a:hover,
-a:focus-visible { color: var(--accent); }
+a:hover { color: var(--brand-2); }
 
-p { margin: 0 0 1rem; }
+button { font-family: inherit; }
+ul { margin: 0; padding: 0; list-style: none; }
 
-code { font-family: var(--font); }
+/* keep decorative bits from inflating the layout / being selectable */
+[aria-hidden="true"] { user-select: none; }
 
-/* Visible, cyan focus ring everywhere keyboard users land (§1, §9). */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* Skip link — hidden until focused. */
+/* the demo skip-link — visible only on focus */
 .skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
+  position: fixed;
+  top: -100%;
+  left: 1rem;
   z-index: 100;
-  background: var(--panel-2);
-  color: var(--fg-bright);
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--line-bright);
+  padding: .6rem 1rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
 }
-.skip-link:focus {
-  left: 0.5rem;
-  top: 0.5rem;
-}
+.skip-link:focus { top: 1rem; }
 
-/* Blinking block cursor (§3): 1s steps blink, paused under reduced-motion. */
-.cursor {
-  display: inline-block;
-  color: var(--fg-bright);
-  animation: blink 1s steps(1) infinite;
-}
-@keyframes blink {
-  50% { opacity: 0; }
-}
-
-/* One full-width hairline rule between major sections (§3). */
-.rule {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 0;
-}
-
-/* shared section width helpers */
-.nav-inner,
-#hero,
-#features,
-#how,
-#install,
-.footer {
+/* shared section rhythm — generous vertical breathing room (anti-cramp) */
+section {
+  position: relative;
   max-width: var(--page-max);
-  margin-inline: auto;
-  padding-inline: var(--gap);
+  margin: 0 auto;
+  padding: 6.5rem 1.5rem;
 }
 
-/* ===================================================================== */
-/* §4.1 sticky nav                                                       */
-/* ===================================================================== */
-.nav {
+/* ============================================================================
+ * primitives — eyebrow kicker, gradient text, headings, buttons, copy
+ * ========================================================================== */
+
+/* uppercase brand-colored eyebrow above each section */
+.kicker,
+.hero-kicker,
+.caption-kicker {
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: var(--brand-2);
+  margin: 0 0 1rem;
+}
+
+/* gradient-filled text fragment (wordmark words, accent heading words) */
+.grad,
+.brand,
+.hero-wordmark,
+.footer-brand {
+  background: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.section-h2 {
+  font-size: clamp(1.7rem, 4vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0 0 3rem;
+}
+
+/* buttons --------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .72rem 1.4rem;
+  font-size: .95rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .25s ease, border-color .18s ease, background .18s ease;
+}
+
+/* the glowing gradient primary CTA */
+.btn-brand {
+  color: #0a0b12;
+  background: var(--brand-grad);
+  box-shadow: 0 8px 24px -10px rgba(129, 140, 248, .55);
+}
+.btn-brand:hover {
+  color: #0a0b12;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 34px -8px rgba(129, 140, 248, .7), 0 0 28px -6px rgba(232, 121, 249, .55);
+}
+
+.btn-ghost {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+.btn-ghost:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+  background: var(--surface-2);
+  transform: translateY(-2px);
+}
+
+/* small inline [copy] chip used in install rows */
+.copy {
+  flex: none;
+  padding: .35rem .7rem;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color .18s ease, border-color .18s ease, background .18s ease;
+}
+.copy:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+/* flashed state set by tui.js for ~1s after copy */
+.copy--copied {
+  color: var(--running);
+  border-color: rgba(74, 222, 128, .4);
+  background: rgba(74, 222, 128, .1);
+}
+
+/* ============================================================================
+ * §3 — fixed, low-opacity brand glows behind the page (depth without noise)
+ * ========================================================================== */
+.bg-glows {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: .5;
+}
+.bg-glow--sky {
+  top: -8%;
+  left: -6%;
+  width: 46vw;
+  height: 46vw;
+  max-width: 640px;
+  max-height: 640px;
+  background: radial-gradient(circle, rgba(56, 189, 248, .22), transparent 70%);
+}
+.bg-glow--magenta {
+  top: 36%;
+  right: -10%;
+  width: 50vw;
+  height: 50vw;
+  max-width: 700px;
+  max-height: 700px;
+  background: radial-gradient(circle, rgba(232, 121, 249, .18), transparent 70%);
+  /* a very slow, very subtle idle shimmer (motion-gated below) */
+  animation: glow-drift 18s ease-in-out infinite alternate;
+}
+@keyframes glow-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: .42; }
+  to   { transform: translate3d(-3%, 4%, 0) scale(1.08); opacity: .56; }
+}
+
+/* ============================================================================
+ * §4.1 — sticky, translucent nav
+ * ========================================================================== */
+.site-nav {
   position: sticky;
   top: 0;
-  z-index: 20;
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--line);
+  z-index: 50;
+  background: rgba(8, 9, 15, .6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
 }
 .nav-inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: .9rem 1.5rem;
   display: flex;
   align-items: center;
-  gap: var(--gap);
-  padding-block: 0.6rem;
+  gap: 1.5rem;
 }
-.nav-wordmark {
-  color: var(--fg-bright);
+.brand {
+  font-size: 1.35rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -.02em;
 }
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-.nav-links a { color: var(--muted); }
-.nav-links a:hover,
-.nav-links a:focus-visible { color: var(--accent); }
-.nav-sep { color: var(--faint); }
-
-/* install pill — pushed to the right; hides its command on narrow screens */
-.nav-pill {
+  gap: .85rem;
   margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 0.2rem 0.2rem 0.2rem 0.6rem;
-  font-size: var(--fs-small);
-}
-.nav-pill-cmd { color: var(--fg); }
-
-/* generic copy button (nav pill, install blocks) — grayscale, cyan on interact */
-.copy {
-  font-family: var(--font);
-  font-size: var(--fs-small);
+  font-size: .92rem;
   color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--line);
-  padding: 0.15rem 0.4rem;
-  cursor: pointer;
-  border-radius: var(--radius);
 }
-.copy:hover,
-.copy:focus-visible {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.copy--copied {
-  color: var(--fg-bright);
-  border-color: var(--line-bright);
-}
+.nav-links a { color: var(--text-2); }
+.nav-links a:hover { color: var(--brand-2); }
+.nav-sep { color: var(--faint); }
+.site-nav .btn-brand { padding: .55rem 1.1rem; font-size: .9rem; }
 
-/* ===================================================================== */
-/* §4.2 hero                                                             */
-/* ===================================================================== */
+/* ============================================================================
+ * §4.2 — hero (text + glow, no terminal art)
+ * ========================================================================== */
 #hero {
-  padding-block: clamp(2.5rem, 8vh, 5rem);
+  text-align: center;
+  padding-top: 7rem;
+  padding-bottom: 4rem;
 }
-.hero-frame {
-  max-width: 56ch;
-  margin-inline: auto;
-}
-/* box-drawing frame top/bottom read as terminal chrome (§3). The line clips so
-   the fixed-width rule never forces horizontal scroll on tiny screens. */
-.frame-top,
-.frame-bottom {
-  color: var(--line-bright);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.frame-body {
-  border-left: 1px solid var(--line-bright);
-  border-right: 1px solid var(--line-bright);
-  padding: 1.5rem clamp(1rem, 4vw, 2rem);
-}
-.wordmark {
-  margin: 0 0 0.5rem;
-  font-size: var(--fs-wordmark);
+.hero-wordmark {
+  font-size: clamp(3rem, 9vw, 6rem);
   font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--fg-bright);
-  line-height: 1.05;
-}
-.lede {
-  margin: 0 0 0.75rem;
-  font-size: var(--fs-h2);
-  font-weight: 700;
-  color: var(--fg-bright);
-  letter-spacing: -0.01em;
-}
-.lede-sub {
-  max-width: var(--measure);
-  color: var(--fg);
-}
-.install {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 1.25rem 0 0.75rem;
-  padding: 0.6rem 0.75rem;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-}
-.install-prompt { color: var(--faint); }
-.install-cmd { color: var(--fg-bright); }
-.install .copy { margin-left: auto; }
-
-.scroll-hint {
-  margin: 0.5rem 0 0;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-/* ===================================================================== */
-/* section headings (§4)                                                 */
-/* ===================================================================== */
-.section-h2 {
-  font-size: var(--fs-h2);
-  color: var(--fg-bright);
-  letter-spacing: -0.01em;
+  letter-spacing: -.03em;
+  line-height: 1;
   margin: 0 0 1.5rem;
 }
-.h2-mark { color: var(--faint); }
-#features,
-#how,
-#install { padding-block: clamp(2.5rem, 7vh, 4.5rem); }
+/* the block caret sits inline, brand-tinted, gently blinking */
+.hero-caret {
+  -webkit-text-fill-color: var(--brand-3);
+  color: var(--brand-3);
+  margin-left: .06em;
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
 
-/* ===================================================================== */
-/* §4.3 + §5 + §6 demo: sticky stage + scroll-through TUI                */
-/* ===================================================================== */
+.hero-tagline {
+  font-size: clamp(1.2rem, 2.6vw, 1.6rem);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 auto .9rem;
+  max-width: 32ch;
+}
+.hero-sub {
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--text-2);
+  max-width: 54ch;
+  margin: 0 auto 2.5rem;
+}
+
+/* the single install row — the one prominent command */
+.hero-install {
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .65rem .75rem .65rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  max-width: 100%;
+}
+.hero-install-prompt { color: var(--brand-2); font-weight: 700; }
+.hero-install-cmd {
+  font-size: .98rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .6rem;
+  margin: 1.75rem auto 0;
+}
+.hero-chip {
+  font-size: .82rem;
+  color: var(--text-2);
+  padding: .35rem .8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.scroll-cue {
+  margin: 3rem 0 0;
+  font-size: .85rem;
+  color: var(--muted);
+  animation: cue-bob 2s ease-in-out infinite;
+}
+@keyframes cue-bob {
+  0%, 100% { transform: translateY(0); opacity: .7; }
+  50%      { transform: translateY(4px); opacity: 1; }
+}
+
+/* ============================================================================
+ * §4.3 / §6 — the demo: a tall section, a sticky stage pins #tw while the
+ * caption column cross-fades beside it. The driver (tui.js) scrubs scenes by
+ * mapping demo scroll-progress to a scene index; the stage stays ~100vh so the
+ * window is pinned while the surrounding track scrolls past it.
+ * ========================================================================== */
 #demo {
-  /* tall scroll travel; the stage pins while captions track (§6.1) */
-  min-height: min(560vh, 810vh);
-  position: relative;
+  padding: 0 1.5rem;
+  max-width: var(--page-max);
+  margin: 0 auto;
 }
 .demo-stage {
   position: sticky;
@@ -295,446 +416,864 @@ code { font-family: var(--font); }
   min-height: 100vh;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--gap);
+  padding: 5rem 0;
 }
 .demo-grid {
-  width: 100%;
-  max-width: var(--page-max);
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: clamp(1.5rem, 4vw, 3rem);
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 3rem;
   align-items: center;
+  width: 100%;
 }
 
-/* caption column — driver cross-fades children; reduced-motion stacks them */
+/* caption column — children are absolutely stacked, cross-faded by --visible */
 .demo-caption {
   position: relative;
-  min-height: 6rem;
+  min-height: 13rem;
 }
 .caption {
   position: absolute;
   inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
+  transform: translateY(14px);
+  transition: opacity .5s ease, transform .5s ease;
   pointer-events: none;
 }
 .caption--visible {
   opacity: 1;
-  transform: none;
+  transform: translateY(0);
   pointer-events: auto;
 }
 .caption-title {
-  font-size: var(--fs-h2);
+  font-size: clamp(1.5rem, 3.2vw, 2.2rem);
   font-weight: 700;
-  color: var(--fg-bright);
-  letter-spacing: -0.01em;
-  margin-bottom: 0.5rem;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+  color: var(--text);
+  margin-bottom: .9rem;
 }
 .caption-body {
-  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--text-2);
   max-width: var(--measure);
 }
-/* reduced-motion / no-scenes: plain stacked, statically positioned list */
+
+/* reduced-motion path: captions become a static stacked list, not overlapped */
 .demo-caption--static {
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
 }
 .demo-caption--static .caption {
   position: static;
   inset: auto;
   opacity: 1;
   transform: none;
-  transition: none;
+  display: block;
+  margin-bottom: 2.5rem;
+  pointer-events: auto;
 }
 
-/* ===================================================================== */
-/* §5 the fake mmux TUI                                                   */
-/* ===================================================================== */
-.tui {
-  width: 100%;
-  background: var(--panel);
-  border: 1px solid var(--line-bright);
-  border-radius: var(--radius);
-  font-size: var(--fs-small);
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
-  /* a real terminal aspect; body scrolls internally if content overflows */
-  min-height: 26rem;
-  overflow: hidden;
-}
-/* engaged sandbox: lift the whole widget to signal it owns the keyboard */
-.tui--engaged { border-color: var(--accent); }
-.tui:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-.tui-titlebar {
-  display: flex;
-  align-items: baseline;
-  gap: 0;
-  padding: 0.35rem 0.6rem;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-}
-.tui-title { color: var(--fg-bright); font-weight: 700; }
-.tui-path { color: var(--muted); }
-
-/* 3-column body (sidebar · main · panel) at/above --bp-compact */
-.tui-body {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr) auto;
-  min-height: 0;
-}
-
-/* --- sidebar --- */
-.tui-sidebar {
-  border-right: 1px solid var(--line);
-  padding: 0.5rem 0;
-  overflow-y: auto;
-}
-.sb-project {
-  padding: 0.2rem 0.6rem;
-  color: var(--muted);
-  border-left: 2px solid transparent;
-}
-.sb-project--active {
-  background: var(--panel-2);
-  color: var(--fg-bright);
-  border-left-color: var(--accent); /* §5.2: thin accent left tick on active */
-}
-.sb-section { padding: 0.4rem 0 0.6rem; }
-.sb-header {
-  padding: 0.1rem 0.6rem 0.25rem;
-  color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-}
-.sb-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  padding: 0.12rem 0.6rem 0.12rem 0;
-  color: var(--fg);
-  white-space: nowrap;
-}
-.sb-row--selected {
-  background: var(--panel-2);
-  color: var(--fg-bright);
-}
-/* launcher rows: + New … — grayscale until hover/selected (§5.2) */
-.sb-row--launcher { color: var(--muted); }
-.sb-row--launcher.sb-row--selected,
-.sb-row--launcher:hover { color: var(--accent); }
-
-/* selection bar ▌ — the one place cyan marks selection (§1) */
-.sb-bar {
-  width: 0.6rem;
-  flex: none;
-  text-align: center;
-  color: transparent;
-}
-.sb-row--selected .sb-bar { color: var(--accent); }
-
-/* glyphs ● ○ · stay grayscale; fill vs hollow carries state (§1) */
-.sb-glyph { color: var(--faint); flex: none; }
-.sb-row--selected .sb-glyph { color: var(--fg); }
-
-.sb-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
-.sb-sub {
-  flex: 0 1 auto;
-  color: var(--muted);
-  font-size: 0.72rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* attention bell ● — red, the only warm color in the sidebar (§1) */
-.sb-dot {
-  margin-left: auto;
-  flex: none;
-  color: var(--alert);
-}
-.sb-dot[hidden] { display: none; }
-
-/* --- main pane --- */
-.tui-main {
+/* ============================================================================
+ * §5 — the terminal window (#tw): the visual crux. Real CSS, no ascii.
+ * ========================================================================== */
+.tw {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
-  border: 1px solid transparent; /* swapped to --accent when focused */
-}
-/* focused-pane border in cyan (§1) — set by tui--main-focus on root */
-.tui--main-focus .tui-main { border-color: var(--accent); }
-
-.tui-main-title {
-  padding: 0.3rem 0.7rem;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  color: var(--fg-bright);
-  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* the soft brand glow bloom behind the window (§5.2). It lives on .tw's own
+   * box-shadow rather than a child ::before because overflow:hidden (below)
+   * clips a child's shadow but never the element's own outset shadow. */
+  box-shadow: var(--shadow), var(--glow-brand);
   overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: .82rem;
+  line-height: 1.6;
+  transition: box-shadow .4s ease;
+  /* fixed height so scenes swap content without the window resizing/jumping */
+  height: 30rem;
 }
-.tui-main-screen {
-  flex: 1;
-  padding: 0.6rem 0.7rem;
-  overflow: auto;
-  min-height: 0;
+/* engaged sandbox: a brighter bloom */
+.tw.tw--engaged {
+  box-shadow: var(--shadow),
+    0 0 110px -14px rgba(129, 140, 248, .7),
+    0 0 60px -14px rgba(232, 121, 249, .55);
 }
-.screen-line { white-space: pre-wrap; word-break: break-word; }
-.screen-placeholder { color: var(--muted); white-space: pre-line; } /* meaningful instructional text — must clear AA, so --muted not --faint (§0/§9). pre-line renders the \n\n in "… is stopped." as a blank-line break, like the app. */
-.screen-cursor {
-  color: var(--fg-bright);
-  animation: blink 1s steps(1) infinite;
-}
-
-/* --- right panel --- */
-.tui-panel {
-  display: flex;
-  flex-direction: column;
-  width: 14rem;
-  border-left: 1px solid var(--line);
-  border-top: 1px solid transparent;
-  border-right: 1px solid transparent;
-  border-bottom: 1px solid transparent;
-  min-height: 0;
-}
-.tui--panel-focus .tui-panel { border-color: var(--accent); }
-.tui-panel[hidden] { display: none; }
-.tui-panel-title {
-  padding: 0.3rem 0.7rem;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  color: var(--fg-bright);
-}
-.tui-panel-screen {
-  flex: 1;
-  padding: 0.5rem 0.7rem;
-  overflow: auto;
-  min-height: 0;
-}
-.panel-branch { color: var(--fg-bright); margin-bottom: 0.3rem; }
-.panel-line { color: var(--muted); white-space: pre-wrap; }
-
-/* --- footer hints --- */
-.tui-footer {
-  padding: 0.3rem 0.7rem;
-  border-top: 1px solid var(--line);
-  background: var(--panel-2);
-  color: var(--muted);
-  font-size: 0.72rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* --- overlays anchored inside #tui (positioned relative) --- */
-.tui { position: relative; }
-
-/* notification toast (scene 6) — the only place the toast accent (red) shows */
-.tui-toast {
-  position: absolute;
-  right: 0.6rem;
-  bottom: 2.4rem;
-  max-width: 18rem;
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  padding: 0.5rem 0.6rem;
-  background: var(--alert-dim);
-  border: 1px solid var(--alert);
-  color: var(--fg-bright);
-}
-.tui-toast[hidden] { display: none; }
-.toast-dot { color: var(--alert); flex: none; }
-.toast-title { font-weight: 700; }
-.toast-body { color: var(--fg); display: block; }
-
-/* detached / reattached overlay (scene 4) — grayscale, centered scrim */
-.tui-overlay {
+/* subtle inner top highlight — the "lit screen" feel */
+.tw::after {
+  content: "";
   position: absolute;
   inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+
+/* titlebar -------------------------------------------------------------- */
+.tw-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .55rem .9rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.tw-lights {
+  display: inline-flex;
+  gap: .42rem;
+}
+.tw-lights i {
+  width: .72rem;
+  height: .72rem;
+  border-radius: 50%;
+  background: var(--faint);
+}
+/* tasteful traffic-light tint */
+.tw-lights i:nth-child(1) { background: #fb7185; opacity: .85; }
+.tw-lights i:nth-child(2) { background: #fbbf24; opacity: .85; }
+.tw-lights i:nth-child(3) { background: #4ade80; opacity: .85; }
+
+.tw-titlebar-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-left: .35rem;
+}
+.tw-titlebar-path { color: var(--muted); }
+.tw-titlebar-meta {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: .78rem;
+}
+
+/* body: sidebar | main | panel ------------------------------------------ */
+.tw-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* sidebar --------------------------------------------------------------- */
+.tw-sidebar {
+  flex: none;
+  width: 190px;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  padding: .6rem 0;
+  overflow-y: auto;
+}
+.sb-project {
+  padding: .35rem .9rem;
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+.sb-project--active {
+  color: var(--text);
+}
+.sb-project--active::before {
+  content: "▸ ";
+  color: var(--brand-2);
+}
+
+.sb-section { margin-bottom: .55rem; }
+.sb-head {
+  padding: .45rem .9rem .3rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sb-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem .9rem;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* active row = brand-soft fill + a 2px brand-gradient left edge + brighter ink */
+.sb-row--active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.sb-row--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--brand-grad);
+}
+
+/* status dot, colored by data-status (§5.2) */
+.sb-dot {
+  flex: none;
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.sb-dot[data-status="running"] {
+  background: var(--running);
+  box-shadow: 0 0 8px -1px rgba(74, 222, 128, .7);
+  animation: dot-pulse 2.4s ease-in-out infinite;
+}
+.sb-dot[data-status="exited"]  { background: var(--faint); }
+.sb-dot[data-status="stopped"] { background: var(--muted); }
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
+.sb-name {
+  flex: none;
+  font-weight: 500;
+}
+.sb-sub {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: .76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* coral attention bell; JS toggles [hidden] */
+.sb-bell {
+  flex: none;
+  margin-left: auto;
+  color: var(--attention);
+  font-size: .7rem;
+  animation: bell-pulse 1s ease-in-out infinite;
+}
+.sb-bell[hidden] { display: none; }
+@keyframes bell-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .5; transform: scale(.82); }
+}
+
+/* launcher rows: a muted "+ New …" that brightens to brand on hover */
+.sb-row--launcher {
+  color: var(--muted);
+}
+.sb-row--launcher .sb-name { font-weight: 400; }
+.sb-plus {
+  flex: none;
+  width: .5rem;
+  text-align: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+.sb-row--launcher:hover { color: var(--brand-2); }
+.sb-row--launcher:hover .sb-plus { color: var(--brand-2); }
+.sb-row--launcher.sb-row--active { color: var(--text); }
+
+/* main pane ------------------------------------------------------------- */
+.tw-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+}
+.tw-tab {
+  flex: none;
+  padding: .45rem .95rem;
+  font-size: .74rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  color: var(--text-2);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.tw-tab[hidden] { display: none; }
+
+.tw-screen {
+  flex: 1;
+  padding: .85rem 1rem;
+  overflow: auto;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.screen-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.screen-placeholder {
+  color: var(--muted);
+  white-space: pre-wrap;
+  padding: 1.5rem .5rem;
+}
+
+/* the blink block cursor appended to the last line (§5.4) */
+.screen-cursor {
+  display: inline-block;
+  color: var(--brand-3);
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+
+/* line-level tints (§5.4): faint colored backgrounds + a colored gutter feel */
+.ln-add {
+  background: rgba(74, 222, 128, .08);
+  color: var(--add);
+  box-shadow: inset 2px 0 0 rgba(74, 222, 128, .55);
+}
+.ln-del {
+  background: rgba(251, 113, 133, .08);
+  color: var(--del);
+  box-shadow: inset 2px 0 0 rgba(251, 113, 133, .55);
+}
+.ln-cmd { color: var(--text); }
+.ln-dim { color: var(--muted); }
+
+/* the active pane gets brighter ink when focus is on it (§10) */
+.tw--main-focus .tw-tab { color: var(--text); border-bottom-color: var(--border-2); }
+.tw--main-focus .tw-screen { color: var(--text); }
+
+/* panel (lazygit) ------------------------------------------------------- */
+.tw-panel {
+  flex: none;
+  width: 210px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-left: 1px solid var(--border);
+}
+.tw-panel[hidden] { display: none; }
+.tw-panel-head {
+  flex: none;
+  padding: .45rem .8rem;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.tw-panel-screen {
+  flex: 1;
+  padding: .6rem .55rem;
+  overflow: auto;
+  font-size: .76rem;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.tw--panel-focus .tw-panel-head { color: var(--text); border-bottom-color: var(--border-2); }
+.tw--panel-focus .tw-panel { box-shadow: inset 1px 0 0 var(--border-2); }
+
+/* status bar ------------------------------------------------------------ */
+.tw-status {
+  flex: none;
+  padding: .4rem .95rem;
+  font-size: .74rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* toast (scene 6) — a desktop-notification card sliding in over the screen */
+.tw-toast {
+  position: absolute;
+  top: 3.2rem;
+  right: 1rem;
+  z-index: 6;
+  max-width: 16rem;
+  padding: .7rem .85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow), var(--glow-brand);
+  animation: toast-in .35s ease;
+}
+.tw-toast[hidden] { display: none; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+.toast-head {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-bottom: .2rem;
+}
+.toast-dot { color: var(--ai); font-size: .6rem; }
+.toast-app { font-weight: 600; color: var(--text); }
+.toast-title { color: var(--text-2); font-size: .78rem; }
+.toast-body { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+
+/* overlay (scene 4) — ssh disconnect / reattach scrim over the body */
+.tw-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
-  color: var(--fg-bright);
-  letter-spacing: 0.12em;
-  text-transform: lowercase;
-  z-index: 2;
+  text-align: center;
+  padding: 1.5rem;
+  font-size: .92rem;
+  color: var(--text);
+  background: rgba(8, 9, 15, .72);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
-.tui-overlay[hidden] { display: none; }
+.tw-overlay[hidden] { display: none; }
+.tw-overlay[data-overlay="disconnected"] { color: var(--warn); }
+.tw-overlay[data-overlay="reattached"]   { color: var(--running); }
 
-/* sandbox hint (finale) — grayscale; cyan on engage handled on the widget */
-.tui-sandbox-hint {
+/* sandbox hint (finale) — "click in to play" pill at the bottom */
+.tw-sandbox-hint {
   position: absolute;
+  bottom: 2.6rem;
   left: 50%;
-  bottom: 2.4rem;
   transform: translateX(-50%);
-  padding: 0.4rem 0.7rem;
-  background: var(--panel-2);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-size: var(--fs-small);
-  white-space: nowrap;
-  z-index: 2;
+  z-index: 6;
+  padding: .4rem .9rem;
+  font-size: .78rem;
+  color: var(--text);
+  background: rgba(24, 27, 43, .92);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  box-shadow: var(--glow-sky);
+  animation: hint-bob 2s ease-in-out infinite;
 }
-.tui-sandbox-hint[hidden] { display: none; }
+.tw-sandbox-hint[hidden] { display: none; }
+@keyframes hint-bob {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, -3px); }
+}
 
-/* ===================================================================== */
-/* §4.4 features — box-drawn panels                                      */
-/* ===================================================================== */
-.cards {
+/* ============================================================================
+ * §5.4 — syntax token tones. Every .tok-<tone> renderLine() can emit.
+ * ========================================================================== */
+.tok-kw      { color: var(--tok-kw); }
+.tok-fn      { color: var(--tok-fn); }
+.tok-str     { color: var(--tok-str); }
+.tok-num     { color: var(--tok-num); }
+.tok-comment { color: var(--tok-comment); }
+.tok-type    { color: var(--tok-type); }
+.tok-path    { color: var(--tok-path); }
+.tok-op      { color: var(--tok-op); }
+.tok-add     { color: var(--add); }
+.tok-del     { color: var(--del); }
+.tok-ok      { color: var(--running); }
+.tok-warn    { color: var(--warn); }
+.tok-info    { color: var(--info); }
+.tok-ai      { color: var(--ai); font-weight: 600; }
+.tok-dim     { color: var(--muted); }
+.tok-prompt,
+.tok-brand {
+  font-weight: 700;
+  background: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ============================================================================
+ * §4.4 — features (real card grid, brand-tinted icon chips, hover lift)
+ * ========================================================================== */
+.feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
-  gap: var(--gap);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
 }
-.card {
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
+.feature {
+  padding: 1.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: transform .2s ease, border-color .2s ease, box-shadow .25s ease;
 }
-.card-top,
-.card-bottom {
-  color: var(--line-bright);
-  white-space: nowrap;
-  overflow: hidden;
+.feature:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-2);
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .8), var(--glow-brand);
 }
-.card-body {
-  flex: 1;
-  border-left: 1px solid var(--line);
-  border-right: 1px solid var(--line);
-  padding: 0.5rem 1rem 0.75rem;
-}
-.card-title {
-  margin: 0 0 0.4rem;
-  font-size: var(--fs-body);
-  color: var(--fg-bright);
-}
-.card-body p {
-  margin: 0;
-  color: var(--fg);
-  font-size: var(--fs-small);
-}
-
-/* ===================================================================== */
-/* §4.5 how it works — box-drawing diagram                               */
-/* ===================================================================== */
-.how-diagram {
-  margin: 0 0 1.5rem;
-  padding: 1rem;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  color: var(--fg);
-  font-size: clamp(0.6rem, 1.8vw, var(--fs-small));
-  line-height: 1.35;
-  overflow-x: auto; /* the fixed-width art may exceed tiny viewports */
-}
-.how-prose {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  max-width: var(--measure);
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-.how-prose li { color: var(--fg); }
-.how-prose em { color: var(--fg-bright); font-style: italic; }
-
-/* ===================================================================== */
-/* §4.6 install — code blocks + copy                                     */
-/* ===================================================================== */
-.install-blocks {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-  gap: var(--gap);
-  margin-bottom: 1.25rem;
-}
-.code-block--source { grid-column: 1 / -1; } /* from-source spans full width */
-.code-label {
-  color: var(--muted);
-  font-size: var(--fs-small);
-  margin-bottom: 0.35rem;
-}
-.code-row {
-  display: flex;
+.feature-icon {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.7rem;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-bottom: 1.1rem;
+  color: var(--brand-2);
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
-.code-cmd {
-  color: var(--fg-bright);
-  overflow-x: auto;
-  white-space: nowrap;
+.feature-icon svg {
+  width: 1.3rem;
+  height: 1.3rem;
 }
-.code-block--source .code-cmd { font-size: var(--fs-small); }
-.code-row .copy { margin-left: auto; flex: none; }
+.feature-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 .55rem;
+}
+.feature-desc {
+  font-size: .92rem;
+  line-height: 1.65;
+  color: var(--text-2);
+  margin: 0;
+}
 
-.install-run { color: var(--fg); }
-.run-cmd { color: var(--fg-bright); }
-.install-run-meta { color: var(--muted); font-size: var(--fs-small); }
+/* ============================================================================
+ * §9 — the how-it-works diagram (real nodes + SVG connector, not ascii)
+ * ========================================================================== */
+.how-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 3rem;
+}
 
-/* ===================================================================== */
-/* §4.7 footer                                                           */
-/* ===================================================================== */
-.footer {
-  padding-block: 2rem;
+/* the "your terminal" chip */
+.how-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .25rem;
+  padding: .9rem 1.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+/* the terminal node carries the sky glow — it's the entry point */
+.how-node--terminal { box-shadow: var(--shadow), var(--glow-sky); }
+.how-node-title { font-weight: 600; color: var(--text); }
+.how-node-sub { font-size: .8rem; color: var(--muted); }
+
+/* the brand-stroked connector down into the jail */
+.how-connector {
+  width: 40px;
+  height: 64px;
+}
+.how-connector-path {
+  /* a dash pattern for the subtle animated flow (motion-gated) */
+  stroke-dasharray: 5 6;
+  animation: dash-flow 1.4s linear infinite;
+}
+@keyframes dash-flow { to { stroke-dashoffset: -22; } }
+
+/* the tmux "jail" — dashed, brand-glowing container */
+.how-jail {
+  width: 100%;
+  max-width: 640px;
+  padding: 1.5rem;
+  background: linear-gradient(180deg, rgba(24, 27, 43, .5), rgba(11, 13, 21, .5));
+  border: 1.5px dashed var(--border-2);
+  border-radius: var(--radius);
+  box-shadow: var(--glow-brand);
+}
+.how-jail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: 1.1rem;
+}
+.how-jail-chip {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text);
+  padding: .35rem .8rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+}
+.how-jail-badge {
+  font-size: .76rem;
+  color: var(--brand-2);
+  padding: .3rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* miniature mmux window: three labeled bordered columns. Widths come from the
+ * column identity (--sidebar / --main / --panel) so the mini reads like the
+ * real window even if the grid order ever changes. */
+.how-mmux {
+  display: grid;
+  grid-template-columns: .8fr 1.6fr .7fr;
+  gap: .75rem;
+}
+.how-col {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  padding: .7rem;
+  min-height: 6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+/* the main column reads as the lit pane; the side columns sit on the deeper band */
+.how-col--main { background: var(--surface-2); }
+.how-col--sidebar,
+.how-col--panel { background: var(--bg-2); }
+.how-col-label {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
   color: var(--muted);
-  font-size: var(--fs-small);
+  margin-bottom: .15rem;
 }
-.footer a { color: var(--muted); }
-.footer a:hover,
-.footer a:focus-visible { color: var(--accent); }
-
-/* ===================================================================== */
-/* Responsive — below --bp-compact (680px): TUI single column, sidebar   */
-/* stacks above main, panel hidden; page sections single-column (§2,§9). */
-/* ===================================================================== */
-@media (max-width: 680px) {
-  .demo-grid {
-    grid-template-columns: 1fr;
-  }
-  .tui-body {
-    grid-template-columns: 1fr; /* collapse to one column */
-  }
-  .tui-sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--line); /* now stacks above main */
-    max-height: 12rem;
-  }
-  .tui-panel,
-  .tui--panel-focus .tui-panel { display: none; } /* panel hidden when compact */
-  .nav-pill-cmd { display: none; } /* keep the nav from overflowing */
+.how-row {
+  height: .5rem;
+  width: 70%;
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+.how-row--wide { width: 100%; }
+.how-row--active {
+  width: 85%;
+  background: var(--brand-grad);
+  opacity: .85;
 }
 
-/* ===================================================================== */
-/* prefers-reduced-motion: kill cursor blink, scroll choreography,       */
-/* caption transitions, smooth scroll (§0, §9).                          */
-/* ===================================================================== */
+.how-diagram-caption {
+  margin: 1.4rem 0 0;
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+/* the three supporting points under the diagram */
+.how-prose {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  max-width: var(--page-max);
+}
+.how-prose li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: .94rem;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.how-prose li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .55rem;
+  width: .45rem;
+  height: .45rem;
+  border-radius: 50%;
+  background: var(--brand-grad);
+}
+.how-prose em {
+  font-style: normal;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ============================================================================
+ * §4.6 — install CTA (single command, brew only)
+ * ========================================================================== */
+#install { text-align: center; }
+.install-row {
+  display: inline-flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .85rem .85rem .85rem 1.3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), 0 0 50px -22px rgba(129, 140, 248, .5);
+  max-width: 100%;
+}
+.install-row-prompt { color: var(--brand-2); font-weight: 700; }
+.install-row-cmd {
+  font-size: 1.05rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.install-then {
+  margin: 1.5rem 0 0;
+  color: var(--text-2);
+}
+.install-then-cmd {
+  padding: .15rem .5rem;
+  color: var(--brand-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.install-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+/* ============================================================================
+ * §4.7 — footer
+ * ========================================================================== */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: .8rem;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 4rem 1.5rem 5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: .92rem;
+}
+.footer-brand { font-weight: 700; }
+.footer-license { color: var(--muted); }
+.footer-sep { color: var(--faint); }
+.site-footer a { color: var(--text-2); }
+.site-footer a:hover { color: var(--brand-2); }
+.footer-caret {
+  color: var(--brand-3);
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+
+/* ============================================================================
+ * §2 breakpoints — responsive
+ *   --bp-md 900px: panel hides, grids → fewer cols, nav condenses
+ *   --bp-sm 640px: single column, sidebar simplifies
+ * ========================================================================== */
+@media (max-width: 900px) {
+  section { padding: 5rem 1.25rem; }
+
+  .feature-grid { grid-template-columns: repeat(2, 1fr); }
+  .how-prose { grid-template-columns: 1fr; gap: 1rem; }
+
+  /* demo stops pinning side-by-side; window over stacked captions */
+  .demo-grid { grid-template-columns: 1fr; gap: 2rem; }
+  .demo-caption { min-height: 9rem; }
+
+  /* §5: the right panel hides under 900px */
+  .tw-panel { display: none !important; }
+
+  /* nav condenses — drop the separators, tighten links */
+  .nav-sep { display: none; }
+  .nav-links { gap: 1rem; }
+}
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  section { padding: 4rem 1rem; }
+
+  .feature-grid { grid-template-columns: 1fr; }
+
+  /* §5: simplify the window — sidebar narrows, mini columns stack */
+  .tw { height: 26rem; font-size: .76rem; }
+  .tw-sidebar { width: 142px; }
+  .sb-sub { display: none; }
+
+  .how-mmux { grid-template-columns: 1fr; }
+
+  /* nav: hide the inline link list on the smallest screens, keep brand + CTA */
+  .nav-links { display: none; }
+  .nav-inner { gap: 1rem; }
+  .site-nav .btn-brand { margin-left: auto; }
+
+  .hero-install,
+  .install-row { width: 100%; }
+}
+
+/* very narrow: keep the window legible, never overflow */
+@media (max-width: 460px) {
+  .tw-sidebar { width: 120px; }
+  .demo-caption--static .caption { margin-bottom: 1.75rem; }
+}
+
+/* ============================================================================
+ * Accessibility — focus ring + reduced motion
+ * ========================================================================== */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* engaged sandbox window: a clear brand ring instead of a thin outline */
+.tw:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow), var(--glow-brand), var(--ring);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* honor §10/§3: keep static glows, kill all animation & smooth scroll */
   html { scroll-behavior: auto; }
-  .cursor,
-  .screen-cursor { animation: none; }
-  .caption { transition: none; }
-  /* collapse the tall demo travel so there's no dead scroll past the static
-     finale the JS lands on under reduced-motion. */
-  #demo { min-height: 0; }
-  .demo-stage { position: static; min-height: 0; }
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
+    animation-duration: .001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-duration: .001ms !important;
     scroll-behavior: auto !important;
   }
+  /* cursors/dots/bell/glow drift land on their resting state, no blink/pulse */
+  .hero-caret,
+  .footer-caret,
+  .screen-cursor { opacity: 1; }
+  .scroll-cue { display: none; }
 }
+
+/* ============================================================================
+ * polish & a11y — themed scrollbars, window-light depth, sr-only announcer
+ * ========================================================================== */
+
+/* themed thin scrollbars on the scrollable terminal regions (no default light bar) */
+.tw-screen,
+.tw-panel-screen,
+.tw-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.tw-screen::-webkit-scrollbar,
+.tw-panel-screen::-webkit-scrollbar,
+.tw-sidebar::-webkit-scrollbar { width: 8px; height: 8px; }
+.tw-screen::-webkit-scrollbar-thumb,
+.tw-panel-screen::-webkit-scrollbar-thumb,
+.tw-sidebar::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 4px; }
+.tw-screen::-webkit-scrollbar-track,
+.tw-panel-screen::-webkit-scrollbar-track,
+.tw-sidebar::-webkit-scrollbar-track { background: transparent; }
+
+/* a touch of physical depth on the traffic-light dots (real-window fidelity) */
+.tw-lights i {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 0 .5px rgba(0, 0, 0, .25);
+}
+
+/* visually-hidden live region — tui.js announces sandbox selection/spawn/stop here */
+.tw-a11y-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* skip-link target: focus the main without a giant ring around the whole page */
+main[tabindex="-1"]:focus { outline: none; }
