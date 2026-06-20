@@ -140,7 +140,7 @@
     sidebar: "↑↓ move   ⏎ open   x close   r restart   d detach",
     main: "keys → pane   drag = copy   ⌃b   h back   x close",
     panel: "keys → pane   drag = copy   ⌃b   h back   x close",
-    sandbox: "↑↓ move   ⏎ open   x close   ·   click out to scroll",
+    sandbox: "click a row · ↑↓ move · ⏎ open · x close · esc to leave",
   };
 
   var OVERLAY_TEXT = {
@@ -683,6 +683,7 @@
     var state = null; // live, mutable
     var enabled = false; // finale reached?
     var engaged = false; // keys trapped?
+    var ready = false; // finale currently active → sandbox is interactive
     var root = null;
     var hintEl = null;
     var liveEl = null;
@@ -742,7 +743,9 @@
         renderTUI(state);
         attachListeners();
       }
+      ready = true;
       setA11y("ready");
+      root.classList.add("tw--ready");
       if (!engaged) showHint(true);
     }
 
@@ -754,21 +757,25 @@
       state.focus = "sidebar";
       ensureSelection();
       renderTUI(state);
+      ready = true;
       setA11y("ready");
+      root.classList.add("tw--ready");
       showHint(true);
       attachListeners();
     }
 
     function disable() {
+      ready = false;
       if (engaged) release();
       if (hintEl) hintEl.hidden = true;
+      if (root) root.classList.remove("tw--ready");
       setA11y("decorative");
     }
 
     function showHint(show) {
       if (!hintEl) return;
       hintEl.hidden = !show;
-      if (show) hintEl.textContent = "your turn — click in to play";
+      if (show) hintEl.textContent = "click a row to play  ·  ↑↓ ⏎ x";
     }
 
     var listenersAttached = false;
@@ -789,9 +796,23 @@
     }
 
     function onTwClick(e) {
-      if (!enabled) return;
+      if (!ready) return;
       e.stopPropagation();
-      engage();
+      if (!engaged) engage();
+      // clicking a sidebar row plays it: launchers spawn, sessions focus (§6.2)
+      var rowEl = e.target && e.target.closest ? e.target.closest(".sb-row[data-id]") : null;
+      if (!rowEl) return;
+      var id = rowEl.getAttribute("data-id");
+      var rows = selectableRows();
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].id === id) {
+          selectRow(rows, i);
+          activate(rows[i]);
+          announce(describe(rows[i]));
+          renderTUI(state);
+          break;
+        }
+      }
     }
 
     function onDocClick(e) {
@@ -800,7 +821,7 @@
     }
 
     function engage() {
-      if (!enabled || engaged) return;
+      if (!ready || engaged) return;
       engaged = true;
       root.classList.add("tw--engaged");
       if (hintEl) hintEl.hidden = true;

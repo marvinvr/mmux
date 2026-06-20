@@ -31,18 +31,18 @@
   --faint:  #4f535a;
 
   /* accent — tmux green. used sparingly: status bar, active row, links, cursor */
-  --green:        #3fb950;
-  --green-bright: #57d268;   /* legible green text on dark */
-  --green-dim:    #2c8c3c;
-  --accent:       #3fb950;
-  --accent-soft:  rgba(63, 185, 80, .12);
+  --green:        #6e9e72;   /* muted sage — subtle, not neon */
+  --green-bright: #8bbf8f;   /* legible muted-green text on dark */
+  --green-dim:    #4f7355;
+  --accent:       #6e9e72;
+  --accent-soft:  rgba(110, 158, 114, .13);
 
   /* terminal ANSI-ish semantic (de-neoned, classic) — inside the window only */
-  --red:     #e0626f;
-  --yellow:  #d3a23e;
-  --blue:    #5aa6e0;
-  --magenta: #b07cd6;
-  --cyan:    #4bb7c4;
+  --red:     #cf8080;
+  --yellow:  #c6a96c;
+  --blue:    #7ea7c9;
+  --magenta: #a98cc4;
+  --cyan:    #6fa8ad;
 
   --running:   var(--green);
   --attention: var(--red);
@@ -53,13 +53,13 @@
   --ai:        var(--magenta);
 
   /* syntax token tones (terminal content) */
-  --tok-kw:      #b07cd6;
-  --tok-fn:      #5aa6e0;
-  --tok-str:     #8cc265;
-  --tok-num:     #d3a23e;
+  --tok-kw:      #a98cc4;
+  --tok-fn:      #7ea7c9;
+  --tok-str:     #8aa978;
+  --tok-num:     #c6a96c;
   --tok-comment: #7c8490;
-  --tok-type:    #5aa6e0;
-  --tok-path:    #6cb6e8;
+  --tok-type:    #7ea7c9;
+  --tok-path:    #88b0cf;
   --tok-op:      #abafb5;
 
   /* depth — one subtle shadow, no glows */
@@ -631,12 +631,12 @@ section {
 
 /* line-level tints: a faint colored wash + a colored gutter bar */
 .ln-add {
-  background: rgba(63, 185, 80, .08);
+  background: rgba(110, 158, 114, .1);
   color: var(--add);
   box-shadow: inset 2px 0 0 var(--green);
 }
 .ln-del {
-  background: rgba(224, 98, 111, .08);
+  background: rgba(207, 128, 128, .1);
   color: var(--del);
   box-shadow: inset 2px 0 0 var(--red);
 }
@@ -1114,3 +1114,9 @@ section {
 }
 
 main[tabindex="-1"]:focus { outline: none; }
+
+/* sandbox: when the finale is playable, sidebar rows look and behave clickable */
+.tw--ready .sb-row { cursor: pointer; }
+.tw--ready .sb-row:hover { background: var(--accent-soft); color: var(--text); }
+.tw--ready .sb-row--launcher:hover .sb-name,
+.tw--ready .sb-row--launcher:hover .sb-plus { color: var(--green-bright); }
