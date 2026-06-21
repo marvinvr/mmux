@@ -5,7 +5,7 @@
  *   1. renderTUI(state)  — idempotent DOM updater over the #tw skeleton (§5.3).
  *   2. renderLine(line)  — the realistic-content / token renderer (§5.4).
  *   3. scroll driver     — scrub window.MMUX_SCENES across the tall #demo (§6.1).
- *   4. sandbox driver    — make the finale keyboard-playable (§6.2).
+ *   4. sandbox driver    — make the standalone #tw-how terminal playable (§6.2).
  *   Plus: copy buttons + smooth-scroll nav (§11).
  *
  * No modules/imports (must work over file://). Everything guards: missing scenes
@@ -147,13 +147,17 @@
     return (root || document).querySelector(sel);
   }
 
-  // Cache the #tw sub-elements once; re-resolve lazily so a missing skeleton is harmless.
-  var TW = null;
-  function twRefs() {
-    if (TW && document.body.contains(TW.root)) return TW;
-    var root = document.getElementById("tw");
+  // Cache each terminal's sub-elements by root id; re-resolve lazily so a missing
+  // skeleton is harmless. Two terminals exist: #tw (the scrubbed demo) and #tw-how
+  // (the standalone, always-playable sandbox in the "how it works" section).
+  var TW_CACHE = {};
+  function twRefs(id) {
+    id = id || "tw";
+    var cached = TW_CACHE[id];
+    if (cached && document.body.contains(cached.root)) return cached;
+    var root = document.getElementById(id);
     if (!root) return null;
-    TW = {
+    var refs = {
       root: root,
       barName: $(".tw-titlebar-name", root),
       barPath: $(".tw-titlebar-path", root),
@@ -169,7 +173,8 @@
       overlay: $(".tw-overlay", root),
       sandboxHint: $(".tw-sandbox-hint", root),
     };
-    return TW;
+    TW_CACHE[id] = refs;
+    return refs;
   }
 
   /* =====================================================================
@@ -221,8 +226,8 @@
   /* =====================================================================
    * 1. renderTUI(state) — idempotent DOM updater. Does NOT animate (§5.3).
    * ===================================================================== */
-  function renderTUI(state) {
-    var t = twRefs();
+  function renderTUI(state, id) {
+    var t = twRefs(id);
     if (!t || !state) return;
 
     renderBar(t, state);
@@ -445,11 +450,9 @@
     var rafQueued = false;
     var currentScene = -1;
     var revealTimer = null;
-    var sandbox = null;
 
-    function init(opts) {
+    function init() {
       scenes = (window.MMUX_SCENES && window.MMUX_SCENES.slice()) || [];
-      sandbox = opts && opts.sandbox;
       demo = document.getElementById("demo");
       stage = $(".demo-stage", demo || document);
       captionHost = $(".demo-caption", demo || document);
@@ -509,7 +512,6 @@
       }
       var last = scenes.length ? scenes[scenes.length - 1].state : DEFAULT_STATE;
       renderTUI(last || DEFAULT_STATE);
-      if (sandbox) sandbox.enableStatic(); // sandbox playable immediately
     }
 
     function onScroll() {
@@ -558,14 +560,12 @@
         revealTimer = null;
       }
 
-      var isFinale = idx === scenes.length - 1;
       var base = sc.state || {};
       var reveal = sc.type; // optional reveal hint
 
       if (reveal && !reducedMotion()) {
         runReveal(base, reveal);
       } else if (
-        !isFinale && // at the finale the sandbox owns the state; don't stream over it
         !reducedMotion() &&
         base.main &&
         base.main.program === "claude" &&
@@ -576,12 +576,6 @@
         streamLines(base);
       } else {
         renderTUI(base);
-      }
-
-      if (isFinale && sandbox) {
-        sandbox.enable(base);
-      } else if (sandbox) {
-        sandbox.disable();
       }
     }
 
@@ -663,24 +657,31 @@
   })();
 
   /* =====================================================================
-   * 4. Sandbox driver (§6.2) — the finale makes #tw keyboard-playable.
-   * Owns a live mutable state cloned from the finale scene. Traps keys only
-   * while engaged (clicked/focused in); Esc / click-out / focusout releases.
+   * 4. Sandbox driver (§6.2) — makes the standalone #tw-how terminal in the
+   * "how it works" section click/keyboard-playable. Owns a live mutable state
+   * cloned from DEFAULT_STATE; it's a separate terminal from the scrubbed demo
+   * (#tw), so the two never fight over one element. Traps keys only while engaged
+   * (clicked/focused in); Esc / click-out / focusout releases.
    * ===================================================================== */
   var sandboxDriver = (function () {
+    var ROOT_ID = "tw-how"; // the standalone, always-playable terminal in #how
     var state = null; // live, mutable
-    var enabled = false; // finale reached?
     var engaged = false; // keys trapped?
-    var ready = false; // finale currently active → sandbox is interactive
+    var ready = false; // sandbox initialized → interactive
     var root = null;
     var hintEl = null;
     var liveEl = null;
     var seq = { claude: 1, terminal: 1, process: 1 };
 
     function refs() {
-      root = document.getElementById("tw");
+      root = document.getElementById(ROOT_ID);
       hintEl = root ? $(".tw-sandbox-hint", root) : null;
       liveEl = root ? $(".tw-a11y-live", root) : null;
+    }
+
+    // every sandbox render targets its own root (#tw-how), never the demo's #tw
+    function render() {
+      renderTUI(state, ROOT_ID);
     }
 
     /* Announce sandbox changes to AT: the navigable rows live in the aria-hidden
@@ -694,9 +695,9 @@
       return row.name + ", " + (row.status || "running");
     }
 
-    /* a11y: #tw is a decorative image until the finale (HTML ships it that way —
-     * no tabindex). When playable it becomes focusable; while engaged it's an
-     * application so AT passes keystrokes through (§6.2). */
+    /* a11y: #tw-how ships as a decorative image (no tabindex). start() makes it a
+     * focusable "ready" group; while engaged it's an application so AT passes
+     * keystrokes through (§6.2). The "decorative" branch is kept for completeness. */
     function setA11y(mode) {
       if (!root) return;
       if (mode === "active") {
@@ -720,44 +721,21 @@
       }
     }
 
-    function enable(baseState) {
+    // Initialize the standalone sandbox once: populate it, make it playable, wire
+    // its listeners. Called at boot — #tw-how is interactive whenever it's on
+    // screen (no scroll-finale gate anymore).
+    function start() {
       refs();
       if (!root) return;
-      if (!enabled) {
-        enabled = true;
-        state = cloneState(baseState || DEFAULT_STATE);
-        state.focus = "sidebar"; // visitor must click in to engage
-        ensureSelection();
-        renderTUI(state);
-        attachListeners();
-      }
-      ready = true;
-      setA11y("ready");
-      root.classList.add("tw--ready");
-      if (!engaged) showHint(true);
-    }
-
-    function enableStatic() {
-      refs();
-      if (!root) return;
-      enabled = true;
-      if (!state) state = cloneState(DEFAULT_STATE);
-      state.focus = "sidebar";
+      state = cloneState(DEFAULT_STATE);
+      state.focus = "sidebar"; // visitor clicks/tabs in to engage
       ensureSelection();
-      renderTUI(state);
+      render();
       ready = true;
       setA11y("ready");
       root.classList.add("tw--ready");
       showHint(true);
       attachListeners();
-    }
-
-    function disable() {
-      ready = false;
-      if (engaged) release();
-      if (hintEl) hintEl.hidden = true;
-      if (root) root.classList.remove("tw--ready");
-      setA11y("decorative");
     }
 
     function showHint(show) {
@@ -797,7 +775,7 @@
           selectRow(rows, i);
           activate(rows[i]);
           announce(describe(rows[i]));
-          renderTUI(state);
+          render();
           break;
         }
       }
@@ -815,7 +793,7 @@
       if (hintEl) hintEl.hidden = true;
       setA11y("active");
       state.focus = "sandbox";
-      renderTUI(state);
+      render();
       try {
         root.focus({ preventScroll: true });
       } catch (_) {
@@ -829,7 +807,7 @@
       root.classList.remove("tw--engaged");
       setA11y("ready");
       state.focus = "sidebar";
-      renderTUI(state);
+      render();
       showHint(true);
     }
 
@@ -914,7 +892,7 @@
 
       if (handled) {
         e.preventDefault();
-        renderTUI(state);
+        render();
       }
     }
 
@@ -1083,18 +1061,18 @@
       // lines visible. CSS can't catch this JS content-stream, so guard it here.
       if (reducedMotion()) {
         state.main.lines = lines;
-        renderTUI(state);
+        render();
         return;
       }
       var step = Math.max(80, Math.floor(800 / Math.max(1, lines.length)));
       var count = 1;
       state.main.lines = lines.slice(0, count);
-      renderTUI(state);
+      render();
       function next() {
         count++;
         if (!engaged) return; // bail if visitor left
         state.main.lines = lines.slice(0, count);
-        renderTUI(state);
+        render();
         if (count < lines.length) streamTimer = setTimeout(next, step);
       }
       if (lines.length > 1) streamTimer = setTimeout(next, step);
@@ -1119,9 +1097,7 @@
     }
 
     return {
-      enable: enable,
-      enableStatic: enableStatic,
-      disable: disable,
+      start: start,
     };
   })();
 
@@ -1219,14 +1195,15 @@
    * Boot
    * ===================================================================== */
   function boot() {
-    // Render an initial state so the window is never blank before scroll fires.
+    // Render an initial state so the demo window is never blank before scroll fires.
     var first =
       window.MMUX_SCENES && window.MMUX_SCENES.length
         ? window.MMUX_SCENES[0].state || DEFAULT_STATE
         : DEFAULT_STATE;
     renderTUI(first);
 
-    scrollDriver.init({ sandbox: sandboxDriver });
+    scrollDriver.init();    // scrubs the scenes across #tw
+    sandboxDriver.start();  // makes #tw-how (the "how it works" terminal) playable
     wireCopyButtons();
     wireNavAnchors();
   }

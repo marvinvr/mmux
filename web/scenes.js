@@ -1,11 +1,12 @@
 /* scenes.js — the data for the mmux.org scroll walkthrough (v2).
  *
  * One global: window.MMUX_SCENES — pure data, no logic, no console output.
- * Eight scenes (id 0..7). Each: { id, caption:{kicker?,title,body}, type?, state }.
+ * Seven scenes (id 0..6). Each: { id, caption:{kicker?,title,body}, type?, state }.
  *
  * The state shape, the Line/token model, and the field names are the contract
  * defined in DESIGN.md §5.3 / §5.4 and consumed verbatim by tui.js's
- * renderTUI / renderLine. scene 8 mirrors tui.js's DEFAULT_STATE.
+ * renderTUI / renderLine. The standalone, always-playable "how it works" sandbox
+ * (#tw-how) is seeded from tui.js's DEFAULT_STATE, not from a scene here.
  *
  * Every pane shows REAL, recognizable, syntax-colored software (DESIGN.md §8):
  * a real Claude Code session, a real zsh + cargo run, a real vite banner, and
@@ -79,7 +80,7 @@
   var L_PROCESS = { id: "new-process", launcher: true, name: "New Process" };
 
   /* =====================================================================
-   * The 9 scenes.
+   * The 7 scenes.
    * ===================================================================== */
   window.MMUX_SCENES = [
     /* 0 — it's one command. ------------------------------------------------ */
@@ -402,67 +403,6 @@
           title: "needs your input",
           body: "approve the edit to src/auth.rs?",
         },
-        overlay: null,
-      },
-    },
-
-    /* 7 — your turn. (finale; mirrors tui.js DEFAULT_STATE; sandbox) ------ */
-    {
-      id: 7,
-      caption: {
-        kicker: "// sandbox",
-        title: "your turn.",
-        body: "click a row to play — spawn an agent from a + New row, or open one that's running.",
-      },
-      state: {
-        title: "~/dev/app",
-        multiProject: false,
-        projects: [{ name: "app", active: true }],
-        sidebar: [
-          {
-            kind: "AGENTS",
-            rows: [
-              {
-                id: "claude",
-                name: "claude",
-                sub: "refactoring auth",
-                status: "running",
-                active: true,
-                attention: false,
-              },
-              L_CLAUDE,
-            ],
-          },
-          {
-            kind: "TERMINAL",
-            rows: [
-              { id: "zsh", name: "zsh", status: "running" },
-              L_TERMINAL,
-            ],
-          },
-          {
-            kind: "PROCESSES",
-            rows: [
-              {
-                id: "dev-server",
-                name: "dev server",
-                sub: "vite · :5173",
-                status: "running",
-              },
-              L_PROCESS,
-            ],
-          },
-        ],
-        main: {
-          program: "claude",
-          title: " claude — running ",
-          lines: CLAUDE_LINES,
-          placeholder: null,
-          cursor: true,
-        },
-        panel: { visible: true, branch: "main", lines: LAZYGIT_LINES },
-        focus: "sidebar",
-        toast: null,
         overlay: null,
       },
     },

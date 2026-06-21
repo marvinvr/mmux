@@ -184,35 +184,36 @@
     <section id="how">
       <p class="kicker">// the gist</p>
       <h2 class="section-h2">it all lives in <span class="grad">one terminal.</span></h2>
+      <p class="how-lede">agents, shells, dev servers and git — side by side in a single window. and this one's live: <strong>click a row</strong> to open a session or spawn a new one.</p>
 
-      <div class="how-window" role="img" aria-label="a single terminal window holding three panes side by side: agents and terminals on the left, your work in the middle, git on the right">
-        <div class="how-window-bar">
-          <span class="how-window-lights" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="how-window-name">mmux</span>
-          <span class="how-window-path">~/dev/app</span>
+      <!-- the standalone, always-playable terminal. Same skeleton as #tw above;
+           tui.js's sandbox driver owns this one (#tw-how) and upgrades it from a
+           decorative role="img" to a playable role="application" on interaction. -->
+      <div class="how-demo">
+        <div id="tw-how" class="tw" role="img" aria-label="an interactive mmux terminal — click a row to open a session or spawn a new one">
+          <div class="tw-bar">
+            <span class="tw-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="tw-titlebar-name">mmux</span>
+            <span class="tw-titlebar-path">~/dev/app</span>
+            <span class="tw-titlebar-meta" aria-hidden="true">⌁ tmux</span>
+          </div>
+          <div class="tw-body">
+            <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
+            <div class="tw-main">
+              <div class="tw-tab"></div>
+              <div class="tw-screen"></div>
+            </div>
+            <div class="tw-panel" hidden>
+              <div class="tw-panel-head"> git </div>
+              <div class="tw-panel-screen"></div>
+            </div>
+          </div>
+          <div class="tw-status"></div>
+          <div class="tw-a11y-live" aria-live="polite" aria-atomic="true"></div>
+          <div class="tw-toast" hidden></div>
+          <div class="tw-overlay" hidden></div>
+          <div class="tw-sandbox-hint" hidden></div>
         </div>
-        <div class="how-window-body">
-          <div class="how-pane how-pane--side">
-            <span class="how-pane-label">agents · terminals</span>
-            <span class="how-line"></span>
-            <span class="how-line how-line--on"></span>
-            <span class="how-line"></span>
-            <span class="how-line"></span>
-          </div>
-          <div class="how-pane how-pane--main">
-            <span class="how-pane-label">your work</span>
-            <span class="how-line how-line--wide"></span>
-            <span class="how-line how-line--wide"></span>
-            <span class="how-line how-line--wide"></span>
-            <span class="how-line how-line--wide"></span>
-          </div>
-          <div class="how-pane how-pane--git">
-            <span class="how-pane-label">git</span>
-            <span class="how-line"></span>
-            <span class="how-line"></span>
-          </div>
-        </div>
-        <div class="how-window-status">mmux · ~/dev/app</div>
       </div>
 
       <ul class="how-points">

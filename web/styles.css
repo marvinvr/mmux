@@ -350,7 +350,7 @@ section {
 
 /* ============================================================================
  * the demo — THE centerpiece. A TALL track so the sticky stage scrubs scenes.
- * #demo height drives how much scroll each scene gets (~80vh/scene over 9).
+ * #demo height drives how much scroll each scene gets (~97vh/scene over 7).
  * The driver (tui.js) maps demo scroll-progress → scene index.
  * ========================================================================== */
 #demo {
@@ -823,74 +823,23 @@ section {
 }
 
 /* ============================================================================
- * how it works — plain language: it's all one terminal. A simple window mock.
+ * how it works — plain language + a live, standalone terminal (#tw-how) the
+ * visitor can actually play with. The window itself reuses the .tw styles, so
+ * it gets the same height/chrome as the demo above and never feels cramped.
  * ========================================================================== */
-.how-window {
-  max-width: 720px;
+.how-lede {
+  font-size: 1.04rem;
+  line-height: 1.7;
+  color: var(--text-2);
+  max-width: 64ch;
+  margin: -1.25rem 0 2.25rem;
+}
+.how-lede strong { color: var(--text); font-weight: 700; }
+
+/* centers and bounds the reused .tw window so 3 columns have room to breathe */
+.how-demo {
+  max-width: 900px;
   margin: 0 auto 2.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-.how-window-bar {
-  display: flex;
-  align-items: center;
-  gap: .6rem;
-  padding: .5rem .85rem;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-}
-.how-window-lights { display: inline-flex; gap: .4rem; }
-.how-window-lights i {
-  width: .58rem;
-  height: .58rem;
-  border-radius: 50%;
-  background: var(--faint);
-}
-.how-window-name { font-weight: 600; color: var(--text); margin-left: .25rem; }
-.how-window-path { color: var(--muted); font-size: .85rem; }
-
-.how-window-body {
-  display: grid;
-  grid-template-columns: 1fr 1.7fr .9fr;
-  gap: .7rem;
-  padding: .9rem;
-}
-.how-pane {
-  display: flex;
-  flex-direction: column;
-  gap: .45rem;
-  padding: .75rem;
-  min-height: 7rem;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.how-pane--main { background: var(--surface-2); }
-.how-pane-label {
-  font-size: .72rem;
-  font-weight: 600;
-  letter-spacing: .03em;
-  color: var(--muted);
-  margin-bottom: .15rem;
-}
-.how-line {
-  height: .5rem;
-  width: 75%;
-  background: var(--surface-3);
-  border-radius: 2px;
-}
-.how-line--wide { width: 100%; }
-.how-line--on { width: 88%; background: var(--green); }
-
-.how-window-status {
-  padding: .35rem .85rem;
-  font-size: .76rem;
-  font-weight: 500;
-  color: #08130a;
-  background: var(--green);
 }
 
 /* three plain-language points */
@@ -1005,8 +954,6 @@ section {
   .tw { height: 28rem; font-size: .82rem; }
   .tw-sidebar { width: 142px; }
   .sb-sub { display: none; }
-
-  .how-window-body { grid-template-columns: 1fr; }
 
   .nav-links { gap: .8rem; font-size: .85rem; }
   .hero-install,
