@@ -211,7 +211,7 @@ fn node_row(label: &str, depth: usize, staged: Stage, selected: bool, width: u16
     let indent = "  ".repeat(depth);
     let (mark, mark_style) = checkbox(staged);
     let chrome = 6 + indent.chars().count(); // bar + "[x]" + space + "/"
-    let name = truncate_left(label, (width as usize).saturating_sub(chrome));
+    let name = truncate_middle(label, (width as usize).saturating_sub(chrome));
     let mut line = Line::from(vec![
         Span::styled(bar.to_string(), Style::default().fg(Color::Magenta)),
         Span::raw(indent),
@@ -238,7 +238,7 @@ fn file_row(file: &FileEntry, depth: usize, selected: bool, width: u16) -> Line<
     let (mark, mark_style) = checkbox(stage);
     let leaf = file.path.rsplit('/').next().unwrap_or(&file.path);
     let chrome = 5 + indent.chars().count(); // bar + "[x]" + space
-    let name = truncate_left(leaf, (width as usize).saturating_sub(chrome));
+    let name = truncate_middle(leaf, (width as usize).saturating_sub(chrome));
     let mut line = Line::from(vec![
         Span::styled(bar.to_string(), Style::default().fg(Color::Magenta)),
         Span::raw(indent),
@@ -479,13 +479,9 @@ fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
     for row in scroll..(scroll + list_h) {
         let Some(path) = p.path_at(row) else { break };
         let selected = row == sel;
-        // When too long, keep the tail (filename) visible behind a leading ellipsis.
-        let mut text = path.to_string();
-        let count = text.chars().count();
-        if count > width {
-            let skip = count - width.saturating_sub(1);
-            text = format!("…{}", text.chars().skip(skip).collect::<String>());
-        }
+        // When too long, elide the middle so both the leading dirs and the
+        // filename/extension stay visible.
+        let mut text = truncate_middle(path, width);
         let style = if selected {
             // Pad to the full width so the highlight bar spans the row.
             let pad = width.saturating_sub(text.chars().count());
@@ -589,4 +585,24 @@ fn truncate_left(s: &str, max: usize) -> String {
     }
     let tail: String = s.chars().skip(n - max + 1).collect();
     format!("…{tail}")
+}
+
+/// Trim `s` to fit `max` columns by eliding the *middle* with `…`, keeping the
+/// head and the tail so both the start of the name and its end (the file
+/// extension) stay visible. The tail keeps the spare column so the extension
+/// survives one-character-tighter fits.
+fn truncate_middle(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if max == 0 || n <= max {
+        return s.to_string();
+    }
+    if max == 1 {
+        return "…".to_string();
+    }
+    let budget = max - 1; // one column for the ellipsis
+    let tail = budget.div_ceil(2); // tail gets the spare column → keeps the extension
+    let head = budget - tail;
+    let head_str: String = s.chars().take(head).collect();
+    let tail_str: String = s.chars().skip(n - tail).collect();
+    format!("{head_str}…{tail_str}")
 }
