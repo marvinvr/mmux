@@ -5,6 +5,7 @@ use super::git::{Confirmed, Overlay, PromptKind, Section};
 use super::keymap::encode_key;
 use super::nav::Nav;
 use super::procform::{ProcForm, Step};
+use super::session::Kind;
 use super::view::FooterAction;
 use super::{App, Focus};
 use ratatui::crossterm::event::{
@@ -547,6 +548,16 @@ impl App {
             }
             // The git panel: single click opens it.
             Some(Nav::Panel) => self.focus = Focus::Right,
+            // Processes are monitored, not driven: a click selects one — its output
+            // shows in the main pane — but never grabs keyboard focus, so you stay in
+            // the sidebar and your keys keep driving the nav. Double-click restarts it
+            // in place (start if stopped, respawn if running) without jumping in.
+            Some(Nav::Session(i)) if self.sessions[i].kind == Kind::Process => {
+                if double {
+                    self.do_restart();
+                }
+                self.focus = Focus::Sidebar;
+            }
             // Items: single click jumps in if live; double click starts + jumps in.
             Some(nav) => {
                 if double {

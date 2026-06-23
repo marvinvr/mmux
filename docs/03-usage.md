@@ -165,10 +165,14 @@ autostart — it is started immediately.
 mmux drives its own focus, scrollback, and copy from the mouse; mouse events are **not** forwarded
 into the focused program.
 
-- **Sidebar.** Single-click selects a row (and jumps into a running session, clearing its
-  attention dot). Double-click a `+ New Agent`/`+ New Terminal` launcher to spawn it (`+ New
-  Process` opens the guided form), or a stopped session to start and enter it. In a [multi-project](04-configuration.md#linked-projects) workspace, clicking
-  another project's box switches to it.
+- **Sidebar.** Single-click selects a row. For an **agent or terminal** it also jumps into the
+  running session (clearing its attention dot); double-click a `+ New Agent`/`+ New Terminal`
+  launcher to spawn it (`+ New Process` opens the guided form), or a stopped session to start and
+  enter it. **Processes behave differently** — they are monitored, not driven: clicking one
+  selects it (its output shows in the main pane) but keeps focus on the sidebar, and
+  double-click **restarts** it in place — start if stopped, respawn if running — without jumping
+  in (the `r` key does the same). In a [multi-project](04-configuration.md#linked-projects)
+  workspace, clicking another project's box switches to it.
 - **Git panel.** Single-click focuses a box and selects a row; double-click a file to
   stage/unstage it or a branch to switch to it. The scroll wheel moves the cursor.
 - **Main pane.** Single-click focuses it. **Click and drag to select text and copy it** to the
