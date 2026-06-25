@@ -9,6 +9,7 @@ use crate::config::{AgentDef, ProcessDef};
 use crate::pane::{Notify, Pane};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Which sidebar bucket a session belongs to. Drives ordering, the badge, and
 /// the placeholder wording — never the lifecycle, which is identical for all.
@@ -174,6 +175,14 @@ impl Session {
 
     pub fn attention(&self) -> bool {
         self.pane.as_ref().map(Pane::attention).unwrap_or(false)
+    }
+
+    /// Whether this session looks like it's actively working: it's running and its
+    /// terminal title changed within `within`. Agents animate the title (a spinner /
+    /// moving glyph) while busy and leave it static once idle, so a running-but-quiet
+    /// agent is treated as "needs you" rather than busy. See the sidebar's `nav_row`.
+    pub fn working(&self, within: Duration) -> bool {
+        self.is_running() && self.pane.as_ref().map(|p| p.title_active(within)).unwrap_or(false)
     }
 
     /// Drain notifications captured from this session's pane since the last call.

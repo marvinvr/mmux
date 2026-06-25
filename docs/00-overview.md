@@ -24,9 +24,11 @@ defining properties:
   kill it. Run `mmux` again — or `mmux attach` from anywhere — to rejoin exactly where you
   left off.
 
-When a program rings the terminal bell or emits a notification escape (for example, Claude Code
-announcing it is done), mmux lights a red attention dot on the sidebar row **and** raises a
-native desktop notification — even across an SSH hop.
+mmux keeps the sidebar readable at a glance: an agent that's busy working stays gray, and the
+moment it goes idle — finished, or waiting on you — its row lights up **green**, so the only colored
+agents are the ones to go look at. When a program rings the terminal bell or emits a notification
+escape (for example, Claude Code announcing it is done), mmux also raises a native desktop
+notification, even across an SSH hop.
 
 ## Why mmux
 

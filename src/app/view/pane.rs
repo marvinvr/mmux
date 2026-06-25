@@ -4,6 +4,7 @@
 //! recipe/rect/resize target they touch.
 
 use super::theme::status_label;
+use crate::app::git::{DiffKind, DiffLine, DiffView};
 use crate::app::input::SelTarget;
 use crate::app::nav::Nav;
 use crate::app::session::Kind;
@@ -11,6 +12,7 @@ use crate::app::{App, Focus};
 use crate::pane::Pane;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 use tui_term::widget::{Cursor, PseudoTerminal};
@@ -18,17 +20,20 @@ use tui_term::widget::{Cursor, PseudoTerminal};
 impl App {
     pub(crate) fn render_main(&mut self, f: &mut Frame, area: Rect, compact_bar: bool) {
         let nav = self.current_nav();
-        let base = self.main_title(nav);
         let focus = self.focus;
         let border = if focus == Focus::Terminal {
             Color::Magenta
         } else {
             Color::DarkGray
         };
-        let title = if compact_bar {
-            format!(" ☰ {}", base.trim())
-        } else {
-            base
+        // A git diff preview re-titles the pane (file path + ±counts); otherwise the
+        // usual session/launcher name.
+        let title: Line = match &self.diff {
+            Some(v) => diff_title(v, compact_bar),
+            None => {
+                let base = self.main_title(nav);
+                Line::from(if compact_bar { format!(" ☰ {}", base.trim()) } else { base })
+            }
         };
         let block = Block::default()
             .borders(Borders::ALL)
@@ -60,6 +65,13 @@ impl App {
             return;
         }
         self.regions.main_inner = Some(inner);
+
+        // The diff preview takes over the pane as a read-only pager — no PTY resize,
+        // no drag-to-copy (it isn't a vt100 grid).
+        if let Some(v) = &self.diff {
+            render_diff(f, inner, v);
+            return;
+        }
 
         self.resize_current(inner.height, inner.width);
 
@@ -230,6 +242,44 @@ fn render_screen(f: &mut Frame, area: Rect, pane: &Pane, focused: bool) {
             f.set_cursor_position((cx, cy));
         }
     });
+}
+
+/// The diff pane's title: ` Δ path/to/file.rs  +12 −3 `, the counts coloured like
+/// the diff body. `compact_bar` prefixes the ☰ menu glyph like the other panes.
+fn diff_title(v: &DiffView, compact_bar: bool) -> Line<'static> {
+    let mut spans = Vec::new();
+    if compact_bar {
+        spans.push(Span::raw(" ☰"));
+    }
+    spans.push(Span::raw(" Δ "));
+    spans.push(Span::styled(
+        v.path.clone(),
+        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::styled(format!("  +{}", v.added), Style::default().fg(Color::Green)));
+    spans.push(Span::styled(format!(" −{} ", v.removed), Style::default().fg(Color::Red)));
+    Line::from(spans)
+}
+
+/// Render the diff body as a scrolled, colour-coded pager: additions green,
+/// deletions red, `@@` hunk headers cyan, context grey.
+fn render_diff(f: &mut Frame, area: Rect, v: &DiffView) {
+    if v.lines.is_empty() {
+        render_placeholder(f, area, "No textual diff — new, empty, or binary file.");
+        return;
+    }
+    let lines: Vec<Line> = v.lines.iter().map(diff_line).collect();
+    f.render_widget(Paragraph::new(lines).scroll((v.scroll as u16, 0)), area);
+}
+
+fn diff_line(l: &DiffLine) -> Line<'static> {
+    let color = match l.kind {
+        DiffKind::Add => Color::Green,
+        DiffKind::Del => Color::Red,
+        DiffKind::Hunk => Color::Cyan,
+        DiffKind::Context => Color::Gray,
+    };
+    Line::from(Span::styled(l.text.clone(), Style::default().fg(color)))
 }
 
 fn render_placeholder(f: &mut Frame, area: Rect, msg: &str) {

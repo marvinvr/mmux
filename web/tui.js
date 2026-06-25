@@ -48,8 +48,13 @@
    * stable contract. The content uses the token model so the pane looks real. */
   var DEFAULT_STATE = {
     title: "~/dev/app",
-    multiProject: false,
-    projects: [{ name: "app", active: true }],
+    multiProject: true,
+    // two linked clones: only the active one's sessions render; the sidebar pager
+    // (built when >1) switches between them. app-2 carries its own sessions.
+    projects: [
+      { name: "app", active: true },
+      { name: "app-2", active: false },
+    ],
     sidebar: [
       {
         kind: "AGENTS",
@@ -61,6 +66,14 @@
             status: "running",
             active: true,
             attention: false,
+            project: "app",
+          },
+          {
+            id: "claude-2",
+            name: "claude",
+            sub: "running tests",
+            status: "running",
+            project: "app-2",
           },
           { id: "new-claude", launcher: true, name: "New Claude" },
         ],
@@ -68,7 +81,7 @@
       {
         kind: "TERMINAL",
         rows: [
-          { id: "zsh", name: "zsh", status: "running" },
+          { id: "zsh", name: "zsh", status: "running", project: "app" },
           { id: "new-terminal", launcher: true, name: "New Terminal" },
         ],
       },
@@ -80,6 +93,14 @@
             name: "dev server",
             sub: "vite · :5173",
             status: "running",
+            project: "app",
+          },
+          {
+            id: "dev-server-2",
+            name: "dev server",
+            sub: "vite · :5174",
+            status: "running",
+            project: "app-2",
           },
           { id: "new-process", launcher: true, name: "New Process" },
         ],
@@ -261,25 +282,55 @@
     if (!host) return;
     host.textContent = ""; // rebuild wholesale: small DOM, simpler than diffing.
 
-    var byProject = !!state.multiProject && Array.isArray(state.projects);
+    // Linked workspaces show ONE clone at a time — stacking N clones' sections is
+    // unreadable in a narrow sidebar. Render only the active clone's rows; a quiet
+    // pager pinned to the bottom (built only when there's more than one) switches.
+    var projects =
+      state.multiProject && Array.isArray(state.projects) && state.projects.length
+        ? state.projects
+        : null;
+    var active = projects
+      ? (projects.filter(function (p) { return p.active; })[0] || projects[0]).name
+      : null;
 
-    if (byProject) {
-      state.projects.forEach(function (proj) {
-        var head = el(
-          "div",
-          "sb-project" + (proj.active ? " sb-project--active" : ""),
-          " " + proj.name + " "
-        );
-        host.appendChild(head);
-        (state.sidebar || []).forEach(function (section) {
-          appendSection(host, section, proj.name);
-        });
-      });
-    } else {
-      (state.sidebar || []).forEach(function (section) {
-        appendSection(host, section, null);
-      });
+    (state.sidebar || []).forEach(function (section) {
+      appendSection(host, section, active);
+    });
+
+    if (projects && projects.length > 1) {
+      host.appendChild(buildSwitch(projects, active));
     }
+  }
+
+  // The workspace pager (option A): chevrons + active name + position dots. A
+  // subtle footer; only built when >1 clone. The arrows carry data-switch; the
+  // sandbox driver wires the clicks (plus swipe and the [ / ] keys).
+  function buildSwitch(projects, activeName) {
+    var wrap = el("div", "sb-switch");
+
+    var prev = el("button", "sb-switch-arrow", "‹");
+    prev.type = "button";
+    prev.setAttribute("data-switch", "prev");
+    prev.setAttribute("aria-label", "previous project");
+
+    var mid = el("div", "sb-switch-mid");
+    mid.appendChild(el("span", "sb-switch-name", activeName || ""));
+    var dots = el("span", "sb-switch-dots");
+    dots.setAttribute("aria-hidden", "true");
+    projects.forEach(function (p) {
+      dots.appendChild(el("span", "sb-switch-dot" + (p.active ? " sb-switch-dot--on" : "")));
+    });
+    mid.appendChild(dots);
+
+    var next = el("button", "sb-switch-arrow", "›");
+    next.type = "button";
+    next.setAttribute("data-switch", "next");
+    next.setAttribute("aria-label", "next project");
+
+    wrap.appendChild(prev);
+    wrap.appendChild(mid);
+    wrap.appendChild(next);
+    return wrap;
   }
 
   // Append one section; when `projectName` is set, only rows for that project
@@ -752,7 +803,30 @@
       root.addEventListener("focus", engage); // tab into it
       root.addEventListener("keydown", onKey);
       root.addEventListener("focusout", onFocusOut);
+      root.addEventListener("touchstart", onTouchStart, { passive: true });
+      root.addEventListener("touchend", onTouchEnd, { passive: true });
       document.addEventListener("click", onDocClick, true);
+    }
+
+    /* horizontal swipe over the sandbox switches the active workspace (mobile).
+     * vertical-dominant or short gestures fall through so page scrolling is intact. */
+    var swipeX = null, swipeY = null;
+    function onTouchStart(e) {
+      var t = e.touches && e.touches[0];
+      swipeX = t ? t.clientX : null;
+      swipeY = t ? t.clientY : null;
+    }
+    function onTouchEnd(e) {
+      if (swipeX == null) return;
+      var t = e.changedTouches && e.changedTouches[0];
+      var x0 = swipeX, y0 = swipeY;
+      swipeX = swipeY = null;
+      if (!t) return;
+      var dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Math.abs(dx) < 44 || Math.abs(dx) <= Math.abs(dy)) return;
+      if (!state.multiProject || (state.projects || []).length < 2) return;
+      if (!engaged) engage();
+      switchWorkspace(dx < 0 ? "next" : "prev");
     }
 
     function onFocusOut(e) {
@@ -765,6 +839,12 @@
       if (!ready) return;
       e.stopPropagation();
       if (!engaged) engage();
+      // pager arrows switch the active workspace (option A)
+      var swEl = e.target && e.target.closest ? e.target.closest(".sb-switch-arrow[data-switch]") : null;
+      if (swEl) {
+        switchWorkspace(swEl.getAttribute("data-switch"));
+        return;
+      }
       // clicking a sidebar row plays it: launchers spawn, sessions focus (§6.2)
       var rowEl = e.target && e.target.closest ? e.target.closest(".sb-row[data-id]") : null;
       if (!rowEl) return;
@@ -812,9 +892,8 @@
     }
 
     /* --- flat list of selectable rows (sessions + launchers), in DOM order.
-     * In multi-project mode the sidebar repeats sections per project, but the
-     * underlying row objects are shared; we walk the data once, picking the
-     * rows that belong to the active project (+ all launchers). --- */
+     * With linked projects the sidebar shows one clone at a time; we walk the
+     * data once, picking the rows of the active project (+ all launchers). --- */
     function selectableRows() {
       var out = [];
       var activeProj = state.multiProject ? activeProjectName() : null;
@@ -849,6 +928,33 @@
       }
     }
 
+    /* Linked workspaces: switch the active clone (pager arrows, swipe, [ / ]).
+     * Re-points the active project, re-selects that clone's first row, follows it
+     * in the title bar, and previews its session in main. */
+    function switchWorkspace(dir) {
+      var projs = state.projects || [];
+      if (!state.multiProject || projs.length < 2) return;
+      var cur = 0;
+      for (var n = 0; n < projs.length; n++) if (projs[n].active) cur = n;
+      var to = dir === "prev"
+        ? (cur - 1 + projs.length) % projs.length
+        : (cur + 1) % projs.length;
+      if (to === cur) return;
+      projs.forEach(function (p, idx) { p.active = idx === to; });
+
+      var name = projs[to].name;
+      state.title = "~/dev/" + name; // the whole window follows the active clone
+      state.focus = "sandbox";
+
+      var rows = selectableRows();
+      if (rows.length) selectRow(rows, 0); // first row of the now-active clone
+      var first = rows[0];
+      if (first && !first.launcher) state.main = mainFor(first);
+
+      render();
+      announce("project " + name);
+    }
+
     function onKey(e) {
       if (!engaged) return;
       var rows = selectableRows();
@@ -877,6 +983,14 @@
           break;
         case "x":
           closeRow(rows[i]);
+          break;
+        case "[":
+          if (state.multiProject) { switchWorkspace("prev"); return; }
+          handled = false;
+          break;
+        case "]":
+          if (state.multiProject) { switchWorkspace("next"); return; }
+          handled = false;
           break;
         case "Escape":
           if (state.focus === "main") {

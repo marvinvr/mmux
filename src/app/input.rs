@@ -41,7 +41,7 @@ impl App {
 
     fn key_sidebar(&mut self, k: KeyEvent) {
         match k.code {
-            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('q') => self.request_quit(),
             KeyCode::Char('j') | KeyCode::Down => self.move_sel(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_sel(-1),
             KeyCode::Char('g') => self.sel = 0,
@@ -67,6 +67,28 @@ impl App {
     }
 
     fn key_pane(&mut self, k: KeyEvent) {
+        // A diff preview occupies the main pane as a read-only pager: keys scroll it
+        // (vi/less-style) rather than reaching any underlying PTY, and Esc/q/h close
+        // it back to the git panel it came from.
+        if self.diff.is_some() {
+            let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+            match k.code {
+                KeyCode::Char('j') | KeyCode::Down => self.diff_scroll(1),
+                KeyCode::Char('k') | KeyCode::Up => self.diff_scroll(-1),
+                KeyCode::Char('d') if ctrl => self.diff_scroll(10),
+                KeyCode::Char('u') if ctrl => self.diff_scroll(-10),
+                KeyCode::Char(' ') | KeyCode::PageDown => self.diff_scroll(20),
+                KeyCode::PageUp => self.diff_scroll(-20),
+                KeyCode::Char('g') => self.diff_scroll(i32::MIN / 2),
+                KeyCode::Char('G') => self.diff_scroll(i32::MAX / 2),
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('h') | KeyCode::Left => {
+                    self.clear_diff();
+                    self.focus = Focus::Right;
+                }
+                _ => {}
+            }
+            return;
+        }
         // Leader (Ctrl-b) prefixed commands.
         if self.pending_leader {
             self.pending_leader = false;
@@ -81,7 +103,7 @@ impl App {
                     self.reload();
                     self.focus = Focus::Sidebar; // surface any newly added items
                 }
-                KeyCode::Char('q') => self.should_quit = true,
+                KeyCode::Char('q') => self.request_quit(),
                 KeyCode::Char('b') => self.send_focused(vec![0x02]), // literal Ctrl-b
                 _ => {}
             }
@@ -110,16 +132,19 @@ impl App {
                 if let Some(g) = self.active_git_mut() {
                     g.move_cursor(1);
                 }
+                self.git_preview_follow();
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 if let Some(g) = self.active_git_mut() {
                     g.move_cursor(-1);
                 }
+                self.git_preview_follow();
             }
             // Tab moves between the Changes and Branches boxes; ⏎/space acts on the
-            // active one (stage a file / switch to a branch).
+            // active one (stage a file / switch to a branch); v previews the file's diff.
             KeyCode::Tab => self.git_section_toggle(),
             KeyCode::Char(' ') | KeyCode::Enter => self.git_activate(),
+            KeyCode::Char('v') => self.git_toggle_diff(),
             KeyCode::Char('b') => self.git_focus_branches(),
             KeyCode::Char('a') => self.git_stage_all(),
             KeyCode::Char('d') => self.git_discard_prompt(),
@@ -133,7 +158,15 @@ impl App {
                     g.refresh();
                 }
             }
-            KeyCode::Char('h') | KeyCode::Left | KeyCode::Esc => self.focus = Focus::Sidebar,
+            // Esc/h backs out one level: close the diff preview if open, else leave
+            // the panel for the sidebar.
+            KeyCode::Char('h') | KeyCode::Left | KeyCode::Esc => {
+                if self.diff.is_some() {
+                    self.clear_diff();
+                } else {
+                    self.focus = Focus::Sidebar;
+                }
+            }
             _ => {}
         }
     }
@@ -151,6 +184,7 @@ impl App {
         enum Act {
             None,
             Close,
+            Detach,
             Submit(PromptKind, String),
             Confirm(Confirmed),
             OpenFile(usize, String),
@@ -206,11 +240,13 @@ impl App {
                 }
                 _ => Act::None,
             },
-            // A confirmation: y/⏎ accepts, anything else (n/Esc) cancels.
+            // A confirmation: y/⏎ accepts, anything else (n/Esc) cancels. The quit
+            // confirm additionally offers d to detach — keeping every pane alive.
             Some(Overlay::Confirm { action, .. }) => match k.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                     Act::Confirm(action.clone())
                 }
+                KeyCode::Char('d') if matches!(action, Confirmed::Quit) => Act::Detach,
                 _ => Act::Close,
             },
             // Handled above by `procform_key`; arm kept for match exhaustiveness.
@@ -220,6 +256,10 @@ impl App {
         match act {
             Act::None => {}
             Act::Close => self.overlay = None,
+            Act::Detach => {
+                self.overlay = None;
+                crate::tmux::detach();
+            }
             Act::Submit(kind, buf) => {
                 self.overlay = None;
                 self.overlay_submit(kind, buf);
@@ -356,6 +396,12 @@ impl App {
             return;
         }
         if hit(self.regions.main, c, r) {
+            // A diff preview owns the pane: clicking focuses it for keyboard scrolling,
+            // but there's no vt100 grid to drag-select.
+            if self.diff.is_some() {
+                self.focus = Focus::Terminal;
+                return;
+            }
             if let Some(nav) = self.current_nav() {
                 if self.pane_at(nav).is_some() {
                     self.focus = Focus::Terminal;
@@ -386,7 +432,7 @@ impl App {
                 self.focus = Focus::Sidebar; // surface any newly added items
             }
             FooterAction::Detach => crate::tmux::detach(),
-            FooterAction::Quit => self.should_quit = true,
+            FooterAction::Quit => self.request_quit(),
             FooterAction::FocusPanel => {
                 if self.active_git().is_some() {
                     self.focus = Focus::Right;
@@ -396,6 +442,11 @@ impl App {
             FooterAction::SendLeaderB => self.send_focused(vec![0x02]),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
+            FooterAction::GitDiff => self.git_toggle_diff(),
+            FooterAction::DiffClose => {
+                self.clear_diff();
+                self.focus = Focus::Right;
+            }
             FooterAction::GitDiscard => self.git_discard_prompt(),
             FooterAction::GitStash => self.git_stash(),
             FooterAction::GitCommit => self.git_commit_prompt(),
@@ -537,6 +588,11 @@ impl App {
             if p == idx && now.duration_since(t) < Duration::from_millis(400));
         self.last_click = Some((idx, now));
         self.sel = idx;
+        // Selecting any sidebar row other than the panel reveals that row in the main
+        // pane, so drop any open diff preview occupying it.
+        if !matches!(self.current_nav(), Some(Nav::Panel)) {
+            self.clear_diff();
+        }
         match self.current_nav() {
             // Launchers: single click selects, double click spawns / opens the form.
             Some(Nav::NewAgent(..)) | Some(Nav::NewTerminal(_)) | Some(Nav::NewProcess(_)) => {
@@ -589,6 +645,17 @@ impl App {
                     }
                     if double {
                         self.git_toggle_stage();
+                    } else {
+                        // Single click previews the file's diff in the main pane (it
+                        // then follows the cursor). On a folder/root row this leaves
+                        // the previous preview up.
+                        self.git_open_diff();
+                        // When the main pane isn't visible beside the panel (compact, or
+                        // a narrow split where the focused panel borrows the main
+                        // column), reveal the preview by focusing it.
+                        if self.diff.is_some() && self.regions.main.is_none() {
+                            self.focus = Focus::Terminal;
+                        }
                     }
                 }
             }
@@ -644,14 +711,30 @@ impl App {
             // Scroll moves (and activates) the box under the cursor; over Recent or a
             // border it does nothing.
             if let Some(sec) = self.git_section_at(col, row) {
+                let changes = sec == Section::Changes;
                 if let Some(g) = self.active_git_mut() {
                     g.section = sec;
                     g.move_cursor(if delta > 0 { -1 } else { 1 });
                 }
+                // Keep an open preview in step when scrolling the file list.
+                if changes {
+                    self.git_preview_follow();
+                }
             }
         } else if hit(self.regions.main, col, row) {
-            if let Some(p) = self.current_nav().and_then(|n| self.pane_at(n)) {
-                p.scroll(delta);
+            // The diff preview is a pager, not a vt100 buffer — scroll its offset.
+            if self.diff.is_some() {
+                self.diff_scroll(if delta > 0 { -3 } else { 3 });
+            } else if let Some(p) = self.current_nav().and_then(|n| self.pane_at(n)) {
+                // On the alternate screen (nano, micro, less, …) there's no
+                // scrollback to reveal, so hand the wheel to the program instead;
+                // on the normal screen `wheel_input` returns `None` and we drive
+                // our own scrollback as before.
+                let (ox, oy) = self.regions.main_inner.map_or((0, 0), |r| (r.x, r.y));
+                match p.wheel_input(delta > 0, 3, col, row, ox, oy) {
+                    Some(bytes) => p.send(bytes),
+                    None => p.scroll(delta),
+                }
             }
         }
     }

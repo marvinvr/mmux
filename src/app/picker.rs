@@ -163,7 +163,10 @@ fn walk(root: &Path, cur: &Path, out: &mut Vec<String>) {
 /// Fuzzy subsequence score, case-insensitive. `None` if `needle` is not a
 /// subsequence of `hay`. Higher is better: consecutive matches and matches right
 /// after a path/word boundary score more, so `apge` favours `app/page.tsx`.
-fn score(needle: &str, hay: &str) -> Option<i32> {
+///
+/// Shared with the `mmux attach` session picker (`tmux::rank`), which scores project
+/// names + directories with the same boundary-aware heuristic.
+pub(crate) fn score(needle: &str, hay: &str) -> Option<i32> {
     let n: Vec<char> = needle
         .chars()
         .filter(|c| !c.is_whitespace())

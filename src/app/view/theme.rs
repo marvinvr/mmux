@@ -4,6 +4,12 @@ use crate::app::Status;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
+/// "Needs your attention" accent, reserved for an agent that's gone idle/awaiting you
+/// (or a terminal that rang the bell). Color is the scarce signal here: busy agents
+/// recede to gray, so the only thing the eye lands on is the one that's ready for you.
+/// Red stays for genuine errors.
+pub(crate) const ATTN: Color = Color::Green;
+
 pub(crate) fn status_style(s: Status) -> Style {
     match s {
         Status::Running => Style::default().fg(Color::Green),
@@ -26,6 +32,34 @@ pub(crate) fn badge(s: Status) -> &'static str {
         Status::Running => "●",
         Status::Exited => "○",
         Status::Stopped => "·",
+    }
+}
+
+/// Frames of the "working" spinner shown before a busy agent's name — the classic
+/// rotating braille dots. The caller picks the frame from a time-based index (see
+/// [`crate::app::App::spinner`]) so every agent's spinner turns in step.
+pub(crate) const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// The leading glyph + name style for an agent or terminal row. Unlike a process
+/// (where green = "it's up" is what you want to know), an agent's useful signal is
+/// "does it need *me*". So color is held back until it does: an idle/awaiting agent
+/// (or a bell) lights the row green (`●`); while it's running-and-busy it recedes to
+/// gray, showing the `working` glyph the caller passes (an animated [`SPINNER`] frame
+/// for agents, a plain `·` for terminals); when it's not running it's a dim hollow
+/// `○`, turning red only if it failed to start.
+pub(crate) fn agent_glyph_style(
+    s: Status,
+    attention: bool,
+    error: bool,
+    working: &'static str,
+) -> (&'static str, Style) {
+    if attention {
+        return ("●", Style::default().fg(ATTN).add_modifier(Modifier::BOLD));
+    }
+    match s {
+        Status::Running => (working, Style::default().fg(Color::Gray)),
+        _ if error => ("○", Style::default().fg(Color::Red)),
+        _ => ("○", Style::default().fg(Color::DarkGray)),
     }
 }
 
@@ -86,7 +120,7 @@ pub(crate) fn entry_line(
     if attention {
         spans.push(Span::styled(
             " ●".to_string(),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default().fg(ATTN).add_modifier(Modifier::BOLD),
         ));
     }
     let mut line = Line::from(spans);

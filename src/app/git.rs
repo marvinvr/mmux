@@ -265,6 +265,89 @@ impl GitPanel {
     }
 }
 
+/// A read-only diff of one changed file, shown in the centre pane (where an agent
+/// usually lives) as a live preview of the file under the Changes cursor. It is not
+/// a [`Session`](super::Session) — there's no PTY, just parsed `git diff` text we
+/// draw ourselves and scroll on our own. Built on click / `v`, kept in sync as the
+/// cursor moves, and dropped when a session is selected (see [`App::diff_upkeep`]).
+pub(crate) struct DiffView {
+    /// Which project's repo this diff belongs to — so a project switch invalidates it.
+    pub project: usize,
+    /// The changed-file path it shows (also its identity for the live refresh).
+    pub path: String,
+    /// Added / removed line counts, for the header (`+N −M`).
+    pub added: u32,
+    pub removed: u32,
+    /// The classified, header-stripped diff body.
+    pub lines: Vec<DiffLine>,
+    /// First visible line (the pager scroll offset).
+    pub scroll: usize,
+    /// When the body was last built, to throttle the live re-read.
+    built_at: Instant,
+}
+
+/// One diff body line plus how to colour it.
+pub(crate) struct DiffLine {
+    pub text: String,
+    pub kind: DiffKind,
+}
+
+/// The visible diff line kinds (the noisy `diff --git`/`index`/`+++`/`---` headers
+/// are dropped at build time, so they need no variant).
+#[derive(Clone, Copy)]
+pub(crate) enum DiffKind {
+    Add,
+    Del,
+    Hunk,
+    Context,
+}
+
+impl DiffView {
+    /// Shell out to `git diff` for `file` and parse it into render-ready lines. Once
+    /// inside a hunk, a leading `+`/`-` is unambiguously an addition/deletion (the
+    /// `+++`/`---` file headers only appear *before* the first `@@`), so a simple
+    /// in-hunk flag classifies every line without the header lines confusing it.
+    fn build(project: usize, dir: &Path, file: &FileEntry) -> DiffView {
+        let raw = git::diff(dir, &file.path, file.untracked);
+        let mut lines = Vec::new();
+        let (mut added, mut removed) = (0u32, 0u32);
+        let mut in_hunk = false;
+        for l in raw.lines() {
+            if l.starts_with("diff ") {
+                in_hunk = false; // a new file section — back to header noise
+            } else if l.starts_with("@@") {
+                in_hunk = true;
+                lines.push(DiffLine { text: l.to_string(), kind: DiffKind::Hunk });
+            } else if l.starts_with("Binary files") {
+                lines.push(DiffLine { text: l.to_string(), kind: DiffKind::Context });
+            } else if in_hunk {
+                let kind = match l.as_bytes().first() {
+                    Some(b'+') => {
+                        added += 1;
+                        DiffKind::Add
+                    }
+                    Some(b'-') => {
+                        removed += 1;
+                        DiffKind::Del
+                    }
+                    _ => DiffKind::Context,
+                };
+                lines.push(DiffLine { text: l.to_string(), kind });
+            }
+            // else: header lines before the first hunk — hidden for a clean read.
+        }
+        DiffView {
+            project,
+            path: file.path.clone(),
+            added,
+            removed,
+            lines,
+            scroll: 0,
+            built_at: Instant::now(),
+        }
+    }
+}
+
 /// Clamp-step a cursor within `len` items.
 fn step(cursor: usize, len: usize, delta: i32) -> usize {
     if len == 0 {
@@ -285,6 +368,8 @@ pub(crate) enum Overlay {
     Confirm {
         title: &'static str,
         body: String,
+        /// The footer hint line, e.g. `"y discard · n cancel"` — wording varies per action.
+        hint: &'static str,
         action: Confirmed,
     },
     /// The Ctrl+P fuzzy file picker (state in [`super::picker`]).
@@ -304,6 +389,9 @@ pub(crate) enum PromptKind {
 pub(crate) enum Confirmed {
     /// Discard all changes under this pathspec (a file, a dir, or `.` for everything).
     Discard { path: String },
+    /// Quit mmux. The inner tmux session ends with it, killing every running pane,
+    /// so this is gated behind the modal whenever anything is still alive.
+    Quit,
 }
 
 impl Overlay {
@@ -323,8 +411,27 @@ impl Overlay {
         }
     }
 
-    pub(crate) fn confirm(title: &'static str, body: String, action: Confirmed) -> Overlay {
-        Overlay::Confirm { title, body, action }
+    pub(crate) fn confirm(
+        title: &'static str,
+        body: String,
+        hint: &'static str,
+        action: Confirmed,
+    ) -> Overlay {
+        Overlay::Confirm { title, body, hint, action }
+    }
+
+    /// The pre-quit confirmation. Quitting tears down the inner tmux session and with
+    /// it every agent, terminal, and process — detach (offered right in the modal) is
+    /// the non-destructive way out, leaving everything running in the background.
+    pub(crate) fn quit() -> Overlay {
+        Overlay::Confirm {
+            title: "Quit mmux",
+            body: "This stops every running agent, terminal and process.\n\
+                   Detach instead to leave them running in the background."
+                .into(),
+            hint: "y quit · d detach · n cancel",
+            action: Confirmed::Quit,
+        }
     }
 
     pub(crate) fn new_process(project: usize) -> Overlay {
@@ -418,7 +525,12 @@ impl App {
     /// destructive, so it always routes through the yes/no modal.
     pub(crate) fn git_discard_prompt(&mut self) {
         if let Some((path, body)) = self.active_git().and_then(|g| g.discard_target()) {
-            self.overlay = Some(Overlay::confirm("Discard", body, Confirmed::Discard { path }));
+            self.overlay = Some(Overlay::confirm(
+                "Discard",
+                body,
+                "y discard · n cancel",
+                Confirmed::Discard { path },
+            ));
         }
     }
 
@@ -467,10 +579,85 @@ impl App {
                 Some(Err(e)) => self.flash_git(first_line(&e)),
                 None => {}
             },
+            Confirmed::Quit => self.should_quit = true,
         }
     }
 
     fn flash_git(&mut self, msg: String) {
         self.flash = Some((msg, Instant::now()));
+    }
+
+    /// Open (or replace) the centre-pane diff preview for the file under the Changes
+    /// cursor. A no-op when the cursor is on a directory/root row, so navigating onto
+    /// a folder leaves the last file's diff up rather than blanking the pane.
+    pub(crate) fn git_open_diff(&mut self) {
+        let proj = self.active;
+        let built = self.active_git().and_then(|g| match g.rows.get(g.cursor) {
+            Some(TreeRow::File { idx, .. }) => {
+                g.files.get(*idx).map(|f| DiffView::build(proj, &g.dir, f))
+            }
+            _ => None,
+        });
+        if let Some(view) = built {
+            self.diff = Some(view);
+        }
+    }
+
+    /// Keep the open diff in step with the cursor (called after a cursor move). Does
+    /// nothing unless a preview is already open — moving the cursor never *opens* one.
+    pub(crate) fn git_preview_follow(&mut self) {
+        if self.diff.is_some() {
+            self.git_open_diff();
+        }
+    }
+
+    /// `v`: open the current file's diff, or close it if one's already showing.
+    pub(crate) fn git_toggle_diff(&mut self) {
+        if self.diff.is_some() {
+            self.diff = None;
+        } else {
+            self.git_open_diff();
+        }
+    }
+
+    pub(crate) fn clear_diff(&mut self) {
+        self.diff = None;
+    }
+
+    /// Scroll the open diff pager by `delta` lines (positive = down), clamped to the
+    /// body. A no-op when no diff is open.
+    pub(crate) fn diff_scroll(&mut self, delta: i32) {
+        if let Some(v) = self.diff.as_mut() {
+            let max = v.lines.len().saturating_sub(1) as i32;
+            v.scroll = (v.scroll as i32 + delta).clamp(0, max) as usize;
+        }
+    }
+
+    /// Per-tick upkeep for the preview: drop it when its project is no longer active
+    /// or its file stopped being changed (committed/discarded), and otherwise re-read
+    /// it on a throttle so an agent's edits to the shown file appear live. Scroll is
+    /// preserved across a re-read (clamped to the new length).
+    pub(crate) fn diff_upkeep(&mut self) {
+        let Some(view) = self.diff.as_ref() else {
+            return;
+        };
+        if view.project != self.active {
+            self.diff = None;
+            return;
+        }
+        let (path, scroll, due) =
+            (view.path.clone(), view.scroll, view.built_at.elapsed() >= REFRESH_EVERY);
+        let entry = self
+            .active_git()
+            .and_then(|g| g.files.iter().find(|f| f.path == path).cloned().map(|f| (g.dir.clone(), f)));
+        match entry {
+            None => self.diff = None, // committed or discarded — nothing left to show
+            Some((dir, f)) if due => {
+                let mut nv = DiffView::build(self.active, &dir, &f);
+                nv.scroll = scroll.min(nv.lines.len().saturating_sub(1));
+                self.diff = Some(nv);
+            }
+            Some(_) => {}
+        }
     }
 }

@@ -12,6 +12,23 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 impl App {
+    /// True when any agent, terminal, or process still has a live pane — i.e. quitting
+    /// right now would kill running work.
+    fn any_running(&self) -> bool {
+        self.sessions.iter().any(Session::is_running)
+    }
+
+    /// `q` / the quit chip. Quitting ends the inner tmux session and kills every pane,
+    /// so when anything is still running we confirm first (the modal offers detach as
+    /// the non-destructive alternative). With nothing alive, quit straight away.
+    pub(crate) fn request_quit(&mut self) {
+        if self.any_running() {
+            self.overlay = Some(Overlay::quit());
+        } else {
+            self.should_quit = true;
+        }
+    }
+
     pub(crate) fn spawn_agent(&mut self, pi: usize, t: usize) {
         let def = self.projects[pi].cfg.agents[t].clone();
         let recipe = Recipe::agent(&def, &self.projects[pi].cfg.dir);
@@ -89,6 +106,9 @@ impl App {
     /// the same spawn path as [`spawn_terminal`](Self::spawn_terminal); the editor
     /// row reads as a normal terminal and can be closed/returned-to like any other.
     pub(crate) fn open_in_editor(&mut self, pi: usize, rel: String) {
+        // The editor session takes over the main pane, so drop any diff preview —
+        // same as selecting something in the sidebar.
+        self.clear_diff();
         let dir = self.projects[pi].cfg.dir.clone();
         let recipe = Recipe::editor(&dir, &rel);
         let base = std::path::Path::new(&rel)
@@ -110,6 +130,11 @@ impl App {
         let Some(nav) = self.current_nav() else {
             return;
         };
+        // Opening anything but the panel puts a session in the main pane, so drop a
+        // diff preview that was occupying it.
+        if !matches!(nav, Nav::Panel) {
+            self.clear_diff();
+        }
         match nav {
             Nav::NewAgent(p, t) => {
                 self.spawn_agent(p, t);

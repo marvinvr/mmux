@@ -12,10 +12,14 @@ mmux watches each program's output for two kinds of attention signal:
 - a program-emitted **notification escape**: `OSC 9`, `OSC 777`, or (best-effort) kitty's
   `OSC 99`.
 
-Either one lights the red **`●`** attention dot on the sidebar row *and* emits a desktop
-notification. A rich escape (with a title/body) carries that text through; a bare bell shows
-`<session> — needs attention`. The dot clears when you focus the session, and no notification
-fires for the pane you are currently looking at (see `only_when_unfocused`).
+Either one emits a desktop notification. A rich escape (with a title/body) carries that text
+through; a bare bell shows `<session> — needs attention`. No notification fires for the pane you
+are currently looking at (see `only_when_unfocused`).
+
+The bell also lights a **terminal** or **process** row **green** until you focus it. **Agent** rows
+use a different, more reliable cue — they go green when their terminal title goes quiet (i.e. the
+agent stopped working), independent of the bell. See
+[Status and Attention](03-usage.md#status-and-attention).
 
 ## How It Reaches Your Desktop — Even Over SSH
 

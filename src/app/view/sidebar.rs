@@ -1,7 +1,9 @@
 //! The left sidebar: section headers plus one row per nav entry. Every row is
 //! built by [`App::nav_row`], so adding a row kind is a single match arm.
 
-use super::theme::{badge, entry_line, header, project_header, status_style};
+use super::theme::{
+    agent_glyph_style, badge, entry_line, header, project_header, status_style, SPINNER,
+};
 use crate::app::nav::Nav;
 use crate::app::session::Kind;
 use crate::app::{App, Focus};
@@ -10,6 +12,12 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
+use std::time::Duration;
+
+/// How long after an agent's terminal title last changed we still count it as
+/// "working". Agents animate the title while busy; once it's been static this long
+/// the agent is treated as idle/awaiting you and its sidebar row lights up green.
+const TITLE_IDLE: Duration = Duration::from_secs(2);
 
 impl App {
     pub(crate) fn render_sidebar(&mut self, f: &mut Frame, area: Rect) {
@@ -234,6 +242,14 @@ impl App {
         }
     }
 
+    /// The current frame of the working spinner. Time-based (≈12 fps) rather than
+    /// frame-counted, so every agent's spinner rotates in step and at a steady speed
+    /// no matter how often the UI happens to repaint.
+    pub(crate) fn spinner(&self) -> &'static str {
+        let i = (self.start.elapsed().as_millis() / 80 % SPINNER.len() as u128) as usize;
+        SPINNER[i]
+    }
+
     /// Build the styled line for nav entry `n` at nav position `pos`. `width` is the
     /// sidebar's inner width, used to stretch the selection highlight full-width.
     fn nav_row(&self, pos: usize, n: Nav, width: u16) -> Line<'static> {
@@ -265,18 +281,51 @@ impl App {
             ),
             Nav::Session(i) => {
                 let s = &self.sessions[i];
-                let label = match s.kind {
-                    Kind::Process => format!("{} {}", badge(s.status()), s.name),
-                    _ => s.name.clone(),
-                };
-                // The bell is suppressed on the agent/terminal you're actively viewing.
-                let attn = match s.kind {
-                    Kind::Agent | Kind::Terminal => {
-                        s.attention() && !(sel && self.focus == Focus::Terminal)
+                match s.kind {
+                    // Processes keep the "is it up" model: a status badge plus a
+                    // green-when-running name, with the bell as a trailing dot.
+                    Kind::Process => entry_line(
+                        &format!("{} {}", badge(s.status()), s.name),
+                        sel,
+                        status_style(s.status()),
+                        s.subtitle().as_deref(),
+                        s.attention(),
+                        width,
+                    ),
+                    // Agents/terminals: the leading glyph + name color carry the whole
+                    // state (busy → gray spinner, needs-you → green `●`, stopped → dim
+                    // `○`), so there's no separate trailing dot.
+                    //
+                    // An *agent* "needs you" when it's running but its terminal title has
+                    // gone static: it animates the title while working, so a quiet title
+                    // means it's idle/awaiting input. This is the agent's actual state, so
+                    // it holds even while you're viewing the pane — selecting an idle agent
+                    // must not make it look like it's working again. A *terminal* has no
+                    // such signal, so it falls back to the bell, which (being a momentary
+                    // ping) is acknowledged — suppressed — on the pane you're viewing.
+                    _ => {
+                        let attn = match s.kind {
+                            Kind::Agent => s.is_running() && !s.working(TITLE_IDLE),
+                            _ => s.attention() && !(sel && self.focus == Focus::Terminal),
+                        };
+                        // A busy agent gets the rotating spinner before its name; a
+                        // terminal has no "working" notion, so it keeps a static dot.
+                        let working = match s.kind {
+                            Kind::Agent => self.spinner(),
+                            _ => "·",
+                        };
+                        let (glyph, base) =
+                            agent_glyph_style(s.status(), attn, s.error.is_some(), working);
+                        entry_line(
+                            &format!("{glyph} {}", s.name),
+                            sel,
+                            base,
+                            s.subtitle().as_deref(),
+                            false,
+                            width,
+                        )
                     }
-                    _ => s.attention(),
-                };
-                entry_line(&label, sel, status_style(s.status()), s.subtitle().as_deref(), attn, width)
+                }
             }
             Nav::Panel => {
                 let branch = self.active_git().map(|g| g.branch.clone()).unwrap_or_default();

@@ -224,18 +224,32 @@ impl Config {
 
     /// The workspace name to show: the configured `name`, or the directory's basename.
     pub fn display_name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| {
-            self.dir
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "mmux".into())
-        })
+        self.name.clone().unwrap_or_else(|| dir_basename(&self.dir))
     }
 
     /// Whether the git panel should be shown (subject to the dir being a repo).
     pub fn git_panel_enabled(&self) -> bool {
         self.git_panel.as_ref().map(|g| g.enabled).unwrap_or(true)
     }
+}
+
+/// The directory's basename, or `"mmux"` if it has none (e.g. the filesystem root).
+fn dir_basename(dir: &Path) -> String {
+    dir.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "mmux".into())
+}
+
+/// The project's own display name for `dir`, as the attach picker labels its rows:
+/// the project `mmux.yaml`'s `name:` if set, else the directory's basename. Unlike
+/// [`Config::display_name`] this reads only the *project* config, never the global
+/// one — so a global `name:` can't leak onto every unrelated directory in the picker.
+pub fn project_name(dir: &Path) -> String {
+    load_file(config_path(dir).as_deref())
+        .ok()
+        .flatten()
+        .and_then(|c| c.name)
+        .unwrap_or_else(|| dir_basename(dir))
 }
 
 fn load_file(path: Option<&Path>) -> Result<Option<Config>> {

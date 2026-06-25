@@ -63,6 +63,8 @@ pub(crate) enum FooterAction {
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
+    GitDiff,
+    DiffClose,
     GitDiscard,
     GitStash,
     GitCommit,
@@ -219,6 +221,16 @@ impl App {
     fn footer_segments(&self) -> Vec<Seg> {
         use FooterAction::*;
         match self.focus {
+            // A focused diff preview is a pager: scroll + close, plus the usual way back.
+            Focus::Terminal if self.diff.is_some() => {
+                let mut v = vec![Seg::hint("↑↓ scroll"), Seg::btn("esc", "close", DiffClose)];
+                v.push(if self.compact {
+                    Seg::btn("☰", "menu", FocusSidebar)
+                } else {
+                    Seg::btn("h", "back", DiffClose)
+                });
+                v
+            }
             Focus::Sidebar if self.compact => vec![
                 Seg::hint("↑↓ move"),
                 Seg::btn("⏎", "open", Activate),
@@ -257,9 +269,11 @@ impl App {
                     Seg::btn("Tab", "section", GitSection),
                     Seg::btn("⏎", activate, GitActivate),
                 ];
-                // Discard targets the changes tree, so only offer it there; stash is
-                // whole-tree and always available.
+                // Diff preview and discard both target a file in the changes tree, so
+                // only offer them there; stash is whole-tree and always available.
                 if section != Some(Section::Branches) {
+                    let diff_label = if self.diff.is_some() { "close" } else { "diff" };
+                    v.push(Seg::btn("v", diff_label, GitDiff));
                     v.push(Seg::btn("d", "discard", GitDiscard));
                 }
                 v.extend([

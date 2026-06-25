@@ -331,7 +331,7 @@ fn window(len: usize, cursor: usize, rows: usize) -> (usize, usize) {
 pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
     match ov {
         Overlay::Prompt { title, buf, kind } => render_prompt(f, area, title, buf, *kind),
-        Overlay::Confirm { title, body, .. } => render_confirm(f, area, title, body),
+        Overlay::Confirm { title, body, hint, .. } => render_confirm(f, area, title, body, hint),
         Overlay::Picker(p) => render_picker(f, area, p),
         Overlay::NewProcess(form) => render_procform(f, area, form),
     }
@@ -514,9 +514,20 @@ fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
 
 /// A destructive-action confirmation: the question, then `y discard · n cancel`. Red
 /// border to signal it can't be undone.
-fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str) {
-    let w = (body.chars().count() as u16 + 4).clamp(20, 60);
-    let rect = centered(area, w, 4);
+/// A yes/no modal. The body may span several lines (split on `\n`); the box sizes
+/// itself to the widest line and the per-action `hint` sits below a blank spacer.
+fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str, hint: &str) {
+    let body_lines: Vec<&str> = body.lines().collect();
+    let widest = body_lines
+        .iter()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(hint.chars().count());
+    let w = (widest as u16 + 4).clamp(20, 64);
+    // Body lines + a blank spacer + the hint, wrapped in the two borders.
+    let h = body_lines.len() as u16 + 4;
+    let rect = centered(area, w, h);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(format!(" {title} "))
@@ -527,13 +538,15 @@ fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str) {
     if inner.width == 0 || inner.height == 0 {
         return;
     }
-    let lines = vec![
-        Line::from(Span::styled(body.to_string(), Style::default().fg(Color::White))),
-        Line::from(Span::styled(
-            "y discard · n cancel",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ];
+    let mut lines: Vec<Line> = body_lines
+        .iter()
+        .map(|l| Line::from(Span::styled(l.to_string(), Style::default().fg(Color::White))))
+        .collect();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        hint.to_string(),
+        Style::default().fg(Color::DarkGray),
+    )));
     f.render_widget(Paragraph::new(lines), inner);
 }
 

@@ -13,13 +13,13 @@ mod input;
 mod keymap;
 mod lifecycle;
 mod nav;
-mod picker;
+pub(crate) mod picker;
 mod procform;
 mod session;
 mod view;
 
 pub(crate) use session::{Kind, Recipe, Session, Status};
-use git::{first_line, GitPanel, JobDone, Overlay};
+use git::{first_line, DiffView, GitPanel, JobDone, Overlay};
 use input::Selection;
 use nav::Nav;
 use view::Regions;
@@ -73,6 +73,9 @@ pub(crate) struct App {
     flash: Option<(String, Instant)>, // transient footer note (e.g. the reload result)
     last_inner: (u16, u16),           // last main-pane inner size (rows, cols)
     last_click: Option<(usize, Instant)>, // (nav idx, time) for double-click detection
+    /// Monotonic start, used only to drive the working-spinner frame so every agent's
+    /// spinner rotates in step regardless of per-frame redraw jitter.
+    start: Instant,
 
     // View scratch, recomputed every frame.
     compact: bool,     // single-column (phone) mode
@@ -86,6 +89,12 @@ pub(crate) struct App {
     /// An active modal overlay (commit prompt / branch switcher / Ctrl+P file
     /// picker), drawn over the whole UI and eating all keys while open.
     overlay: Option<Overlay>,
+
+    /// The git panel's diff preview: when set, it takes over the main pane (a
+    /// read-only pager of the changed file under the Changes cursor) instead of the
+    /// selected session. Set by clicking a file / `v`; follows the cursor; cleared
+    /// when a session is selected (see [`git`] and [`App::diff_upkeep`]).
+    diff: Option<DiffView>,
 
     // Notifications.
     in_tmux: bool,                          // wrap notification OSCs in tmux passthrough?
@@ -150,11 +159,13 @@ impl App {
             flash: None,
             last_inner: (24, 80),
             last_click: None,
+            start: Instant::now(),
             compact: false,
             regions: Regions::default(),
             drag: None,
             drag_scroll: 0,
             overlay: None,
+            diff: None,
             // Our stdout flows through the tmux jail, so notification OSCs need the
             // passthrough wrapper to reach the real terminal.
             in_tmux: std::env::var_os("TMUX").is_some(),
@@ -219,6 +230,8 @@ impl App {
         if let Some(g) = self.projects[active].git.as_mut() {
             g.maybe_refresh();
         }
+        // Drop a stale diff preview, or refresh it so an agent's live edits show.
+        self.diff_upkeep();
     }
 
     /// Drain every pane's captured notifications and return the escape bytes to

@@ -482,26 +482,73 @@ section {
   min-height: 0;
 }
 
-/* sidebar */
+/* sidebar — a flex column so the workspace pager can pin to the bottom */
 .tw-sidebar {
   flex: none;
   width: 188px;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-2);
   border-right: 1px solid var(--border);
   padding: .55rem 0;
   overflow-y: auto;
 }
-.sb-project {
-  padding: .35rem .85rem;
-  font-size: .76rem;
-  font-weight: 700;
-  letter-spacing: .03em;
-  color: var(--muted);
-}
-.sb-project--active { color: var(--text); }
-.sb-project--active::before { content: "▸ "; color: var(--green); }
 
-.sb-section { margin-bottom: .5rem; }
+/* workspace pager (option A) — linked clones show one at a time; this subtle
+ * footer switches between them. margin-top:auto pins it to the bottom when the
+ * list is short; sticky keeps it in view (rows scroll under it) when it's long. */
+.sb-switch {
+  flex: none;
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .45rem .55rem;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+}
+.sb-switch-arrow {
+  flex: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  padding: .1rem .35rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.sb-switch-arrow:hover { color: var(--green); }
+.sb-switch-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+}
+.sb-switch-name {
+  min-width: 0;
+  font-size: .76rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-switch-dots { flex: none; display: inline-flex; gap: .22rem; }
+.sb-switch-dot {
+  width: .3rem;
+  height: .3rem;
+  border-radius: 50%;
+  background: var(--surface-3);
+}
+.sb-switch-dot--on { background: var(--green); }
+
+.sb-section { flex: none; margin-bottom: .5rem; }
 .sb-head {
   padding: .45rem .85rem .3rem;
   font-size: .67rem;

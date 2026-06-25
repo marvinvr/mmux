@@ -49,7 +49,8 @@ and singleton-per-directory:
 - Attaching runs with `TMUX` unset, so mmux works even when launched inside another tmux.
 
 `mmux attach` is a separate path: it lists running `mmux-*` sessions plus recent directories
-(from `~/.mmux/history`) in a small picker and attaches to or launches the chosen one.
+(from `~/.mmux/history`) in a small picker — with an always-on, type-to-fuzzy-filter search bar
+(reusing the file picker's scorer) — and attaches to or launches the chosen one.
 
 ## The Event Loop
 
@@ -155,6 +156,18 @@ fuzzy-ranks them. The new-process form (`procform.rs`) collects fields step-by-s
 `finish_new_process` splices the entry into `mmux.yaml` via `config::append_process` (raw-text
 editing, to preserve comments) and reloads.
 
+### The Diff Preview
+
+Clicking a changed file (or `v`) opens `App.diff: Option<DiffView>` — a parsed `git diff` of the
+file under the Changes cursor, rendered in the **main pane** as a read-only pager instead of the
+selected session. It is **not** a `Session` (no PTY) and **not** an overlay (it doesn't eat keys
+globally); it's a third main-pane mode alongside "live pane" and "placeholder", checked first in
+`render_main`. It is a *live preview*: `git_preview_follow` rebuilds it as the Changes cursor
+moves, and `App::diff_upkeep` (in `tick`) re-reads it on the panel's throttle and drops it when
+its file stops being changed, its project is no longer active, or a session is selected. The diff
+is `HEAD` vs the working tree (staged + unstaged together); an untracked file is diffed against
+`/dev/null` so it shows all-added.
+
 ## Navigation, Focus, and Regions
 
 - **Navigation is positional.** `App.sel` is an index into the `Vec<Nav>` returned by
@@ -172,8 +185,10 @@ editing, to preserve comments) and reloads.
 
 ## Data Flow Summary
 
-- **Output:** program → PTY → reader thread → vt100 parser → `Pane` (title/bell/notifications via
-  `Callbacks`). The app reads it through `Session::subtitle/attention/take_notifications`.
+- **Output:** program → PTY → reader thread → vt100 parser → `Pane` (title + when it last changed,
+  bell, notifications via `Callbacks`). The app reads it through
+  `Session::subtitle/attention/working/take_notifications` (`working` keys off the title-change
+  time so a quiet agent reads as "needs you").
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then by focus). In a pane,
   `keymap::encode_key` translates the key to PTY bytes and `Pane::send` queues them.
 - **Notifications:** captured pane events → `collect_notifications` → `notify.rs` builds the OSC
@@ -181,6 +196,9 @@ editing, to preserve comments) and reloads.
   renders the popup. See [Notifications](05-notifications.md).
 - **Copy:** mouse drag → a `Selection` in buffer coordinates → on release `Pane::contents_block`
   stitches the text across scrollback → `clipboard::copy` (OSC 52 + a local helper).
+- **Wheel:** over the normal screen it drives our own scrollback; over a program on the alternate
+  screen (which has none) `Pane::wheel_input` hands the notch to the program — a forwarded
+  mouse-wheel event if it tracks the mouse, else synthesized arrow keys ("alternate scroll").
 
 ## Why It's Built This Way
 
@@ -196,6 +214,6 @@ editing, to preserve comments) and reloads.
 ## Planned
 
 The v1 architecture has known limits — persistence covers detach/disconnect but not a TUI crash;
-selection is positional; mouse events aren't forwarded into panes; the linked-project set is fixed
-at launch. These, and the planned daemon/client split, are tracked in
+selection is positional; mouse events other than the wheel aren't forwarded into panes; the
+linked-project set is fixed at launch. These, and the planned daemon/client split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

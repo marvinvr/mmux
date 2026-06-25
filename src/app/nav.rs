@@ -109,6 +109,8 @@ impl App {
         if let Some(pos) = pos {
             self.sel = pos;
             self.active = pi;
+            // The preview is scoped to one project's repo; a switch invalidates it.
+            self.clear_diff();
         }
     }
 

@@ -216,7 +216,6 @@ A single reusable, high-fidelity component. **`index.html` ships the static skel
 
 Sidebar inner (JS-produced):
 ```html
-<div class="sb-project sb-project--active"> app </div>       <!-- multi-project only -->
 <div class="sb-section">
   <div class="sb-head">AGENTS</div>
   <div class="sb-row sb-row--active" data-id="claude">
@@ -228,6 +227,16 @@ Sidebar inner (JS-produced):
   <div class="sb-row sb-row--launcher" data-id="new-claude">
     <span class="sb-plus" aria-hidden="true">+</span><span class="sb-name">New Claude</span>
   </div>
+</div>
+<!-- linked workspaces: ONE clone's rows show at a time; this pager (built only
+     when projects.length > 1) is pinned to the sidebar bottom and switches them. -->
+<div class="sb-switch">
+  <button class="sb-switch-arrow" data-switch="prev" aria-label="previous project">‹</button>
+  <span class="sb-switch-mid">
+    <span class="sb-switch-name">app</span>
+    <span class="sb-switch-dots" aria-hidden="true"><span class="sb-switch-dot sb-switch-dot--on"></span><span class="sb-switch-dot"></span></span>
+  </span>
+  <button class="sb-switch-arrow" data-switch="next" aria-label="next project">›</button>
 </div>
 ```
 
@@ -247,14 +256,20 @@ Sidebar inner (JS-produced):
 - **Panel `.tw-panel`:** ~210px right col, `--bg-2`, 1px left border; `.tw-panel-head` = ` git `
   chip. lazygit-style content inside.
 - **Status bar `.tw-status`:** thin bottom bar, `--surface-2`, muted key hints; keys in `--text-2`.
+- **Workspace pager `.sb-switch`:** linked clones render **one at a time** (stacking N clones is
+  unreadable in a ~120–190px column). Only the active clone's rows show; a quiet footer pinned to
+  the sidebar bottom — `‹ name •∘ ›` (chevrons + active name + position dots) — switches between
+  them, and is built only when there's more than one clone. Switch by tapping the chevrons,
+  swiping the terminal horizontally, or the `[` / `]` keys (sandbox only); the title-bar path and
+  the focused main pane follow the active clone.
 
 ### 5.3 `state` shape (contract between tui.js / scenes.js / renderTUI)
 
 ```js
 state = {
-  title: "~/dev/app",                 // path shown in the title bar
-  multiProject: false,
-  projects: [{ name, active }],
+  title: "~/dev/app",                 // path shown in the title bar (follows the active clone)
+  multiProject: false,                // when true: render only the active clone + a pager
+  projects: [{ name, active }],       // exactly one active; the pager switches which
   sidebar: [ { kind:"AGENTS"|"TERMINAL"|"PROCESSES", rows: [
       // session row:
       { id, name, sub?, status:"running"|"exited"|"stopped", active?, attention?, project? },
@@ -395,8 +410,11 @@ then the narrative implies reattach. Keep sidebar/main state intact underneath (
 title:"needs your input", body:"approve the edit to src/auth.rs?" }`. Main may show claude paused
 awaiting input.
 
-**Scene 7 — linked projects:** `multiProject:true`, projects `app` (active) + `app-2`. app-2 has its
-own claude (sub "running tests"). Sidebar regroups under project headers.
+**Linked workspaces** (`multiProject:true`, e.g. `app` active + `app-2`): the sidebar shows **one
+clone at a time** — only the active clone's rows render, with a bottom pager (`‹ name •∘ ›`) to
+switch (no stacked per-project headers). Demonstrated live in the always-playable sandbox
+(`#tw-how`, tui.js `DEFAULT_STATE`), where `app-2` carries its own claude (sub "running tests") and
+dev server; switch via the chevrons, a horizontal swipe, or `[` / `]`.
 
 **Scene 8 — finale:** a sensible populated state (matches tui.js DEFAULT_STATE), focus sidebar,
 ready for the sandbox; sandbox hint shown.

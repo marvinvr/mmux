@@ -10,8 +10,8 @@ use anyhow::{Context, Result};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
-        MouseEventKind,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
+        KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
     },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -105,12 +105,24 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
         .args(["attach-session", "-t", &name])
         .status()
         .context("attaching tmux session")?;
+    reset_outer_terminal();
     std::process::exit(status.code().unwrap_or(0));
 }
 
 /// Detach the attached tmux client; the session (and the inner TUI) keep running.
 pub fn detach() {
     let _ = Command::new("tmux").arg("detach-client").status();
+}
+
+/// Scrub terminal modes the inner TUI turned on, on the *outer* terminal we hold here.
+/// When a client detaches — or the TUI exits and tmux tears the session down — tmux
+/// doesn't reliably reset the private modes the inner TUI set, so mouse tracking is left
+/// enabled and every mouse move leaks into the shell as `35;36;18M` junk (likewise
+/// bracketed paste). The inner TUI's own teardown writes into the pane *as tmux is
+/// destroying it*, so it races; this wrapper owns the real terminal once `attach-session`
+/// returns, so it's the reliable place to clean up. Idempotent if tmux already did.
+fn reset_outer_terminal() {
+    let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
 }
 
 /// Deterministic, tmux-safe session name from a canonical path.
@@ -170,6 +182,9 @@ fn which_tmux() -> Option<()> {
 /// directory with no live session (`running == false`, selecting it launches one).
 struct Entry {
     name: String,
+    /// The project's display name (its `mmux.yaml` `name:`, else the folder), shown
+    /// as the row's primary label with `dir` trailing in dim text.
+    display: String,
     dir: String,
     running: bool,
     attached: bool,
@@ -195,6 +210,7 @@ pub fn attach_picker() -> Result<()> {
             .args(["attach-session", "-t", &entry.name])
             .status()
             .context("attaching tmux session")?;
+        reset_outer_terminal();
         std::process::exit(status.code().unwrap_or(0));
     }
     // Recent directory with no live session — attach-or-create it, exactly as if the
@@ -214,7 +230,8 @@ fn build_entries() -> Vec<Entry> {
         if running.contains(&name) {
             continue;
         }
-        entries.push(Entry { name, dir, running: false, attached: false });
+        let display = crate::config::project_name(Path::new(&dir));
+        entries.push(Entry { name, display, dir, running: false, attached: false });
     }
     entries
 }
@@ -238,7 +255,8 @@ fn list_sessions() -> Vec<Entry> {
         }
         let attached = parts.next().unwrap_or("0").trim() != "0";
         let dir = session_dir(&name).unwrap_or_else(|| name.clone());
-        sessions.push(Entry { name, dir, running: true, attached });
+        let display = crate::config::project_name(Path::new(&dir));
+        sessions.push(Entry { name, display, dir, running: true, attached });
     }
     sessions
 }
@@ -312,16 +330,27 @@ fn pretty(dir: &str) -> String {
     dir.to_string()
 }
 
-/// A tiny ratatui picker. Returns the chosen entry's index, or None if cancelled.
+/// A tiny ratatui picker with an always-present fuzzy search bar. Returns the chosen
+/// entry's index (into `entries`), or None if cancelled.
+///
+/// The search bar is never the selection: the first match is highlighted by default
+/// and `↑`/`↓` move through the list. You don't have to focus the bar — the moment you
+/// type a letter it fuzzy-filters by name + directory, `Backspace` trims the query, and
+/// `Esc` clears it (quitting on a second press).
 fn pick(entries: &[Entry]) -> Result<Option<usize>> {
     enable_raw_mode()?;
     let mut out = stdout();
     execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
 
+    let mut query = String::new();
+    // `filtered`: the entry indices to show, in display order. Recomputed only when the
+    // query changes. `sel` indexes into `filtered`, so it never points at the search bar.
+    let mut filtered: Vec<usize> = rank(entries, &query);
     let mut sel = 0usize;
     let mut chosen: Option<usize> = None;
-    let mut row_y: Vec<u16> = Vec::new();
+    // (screen row, entry index) for each visible result, for click routing.
+    let mut row_y: Vec<(u16, usize)> = Vec::new();
 
     let res = (|| -> Result<()> {
         loop {
@@ -336,26 +365,68 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
 
                 row_y.clear();
                 let mut lines: Vec<Line> = Vec::new();
-                let mut y = inner.y;
-                for (i, e) in entries.iter().enumerate() {
-                    // A dim header introduces the recents the moment we cross from the
-                    // last running session into the not-running ones.
-                    if i > 0 && entries[i - 1].running && !e.running {
+
+                // The search bar: always drawn, never selected. A caret marks it as the
+                // live input target; an empty query shows a dim hint in its place.
+                let mut search = vec![Span::styled("  ", Style::default())];
+                if query.is_empty() {
+                    search.push(Span::styled("▏", Style::default().fg(Color::Magenta)));
+                    search.push(Span::styled(
+                        " type to search",
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                } else {
+                    search.push(Span::styled(
+                        query.clone(),
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    ));
+                    search.push(Span::styled("▏", Style::default().fg(Color::Magenta)));
+                }
+                lines.push(Line::from(search));
+                lines.push(Line::from(""));
+
+                if filtered.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        "  no matches",
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
+
+                for (pos, &ei) in filtered.iter().enumerate() {
+                    let e = &entries[ei];
+                    // In the default (unfiltered) view, a dim header — set off by a blank
+                    // line so it reads as a clear break — introduces the recents the moment
+                    // we cross from the last running session into the not-running ones. A
+                    // ranked search mixes both states, so the grouping is dropped then.
+                    if query.is_empty()
+                        && pos > 0
+                        && entries[filtered[pos - 1]].running
+                        && !e.running
+                    {
+                        lines.push(Line::from(""));
                         lines.push(Line::from(Span::styled(
                             "  recent (not running)".to_string(),
                             Style::default().fg(Color::DarkGray),
                         )));
-                        y += 1;
                     }
-                    let bar = if i == sel { "▌ " } else { "  " };
-                    let style = if i == sel {
+                    let selected = pos == sel;
+                    let bar = if selected { "▌ " } else { "  " };
+                    let style = if selected {
                         Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
                     } else if e.running {
                         Style::default().fg(Color::Gray)
                     } else {
                         Style::default().fg(Color::DarkGray)
                     };
-                    let mut spans = vec![Span::styled(format!("{bar}{}", pretty(&e.dir)), style)];
+                    // Project name is the primary key; its directory trails in dim
+                    // text so the name reads first and the path stays secondary.
+                    let mut spans = vec![
+                        Span::styled(format!("{bar}{}", e.display), style),
+                        Span::styled(
+                            format!("  {}", pretty(&e.dir)),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ];
                     if e.attached {
                         spans.push(Span::styled(
                             "  (attached)".to_string(),
@@ -363,16 +434,17 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
                         ));
                     }
                     let mut line = Line::from(spans);
-                    if i == sel {
+                    if selected {
                         line.style = Style::default().bg(Color::Rgb(45, 45, 60));
                     }
+                    // The line's eventual screen row is its index in `lines` from the top.
+                    let y = inner.y + lines.len() as u16;
                     lines.push(line);
-                    row_y.push(y);
-                    y += 1;
+                    row_y.push((y, ei));
                 }
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    " ↑↓ move · Enter/click open · q quit ",
+                    " ↑↓ move · type to search · Enter/click open · Esc clear/quit ",
                     Style::default().fg(Color::DarkGray),
                 )));
                 f.render_widget(Paragraph::new(lines), inner);
@@ -380,27 +452,62 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
 
             if event::poll(Duration::from_millis(200))? {
                 match event::read()? {
-                    Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {
-                        KeyCode::Char('q') | KeyCode::Esc => break,
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            if sel + 1 < entries.len() {
-                                sel += 1;
-                            }
-                        }
-                        KeyCode::Char('k') | KeyCode::Up => sel = sel.saturating_sub(1),
-                        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => {
-                            chosen = Some(sel);
+                    Event::Key(k) if k.kind == KeyEventKind::Press => {
+                        // Raw mode delivers Ctrl+C as a key, not a SIGINT — handle it
+                        // ourselves so it always cancels the picker.
+                        if k.code == KeyCode::Char('c')
+                            && k.modifiers.contains(KeyModifiers::CONTROL)
+                        {
                             break;
                         }
-                        _ => {}
-                    },
-                    Event::Mouse(m) => {
-                        if let MouseEventKind::Down(MouseButton::Left) = m.kind {
-                            if let Some(i) = row_y.iter().position(|y| *y == m.row) {
-                                if i < entries.len() {
-                                    chosen = Some(i);
+                        match k.code {
+                            // Esc clears the query first (search-bar convention), then quits.
+                            KeyCode::Esc => {
+                                if query.is_empty() {
                                     break;
                                 }
+                                query.clear();
+                                filtered = rank(entries, &query);
+                                sel = 0;
+                            }
+                            KeyCode::Down => {
+                                if sel + 1 < filtered.len() {
+                                    sel += 1;
+                                }
+                            }
+                            KeyCode::Up => sel = sel.saturating_sub(1),
+                            KeyCode::Enter | KeyCode::Right => {
+                                if let Some(&ei) = filtered.get(sel) {
+                                    chosen = Some(ei);
+                                    break;
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                query.pop();
+                                filtered = rank(entries, &query);
+                                sel = 0;
+                            }
+                            // Any other printable key types into the search bar — no need
+                            // to focus it first. Control/Alt chords stay free for shortcuts.
+                            KeyCode::Char(c)
+                                if !k
+                                    .modifiers
+                                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                            {
+                                query.push(c);
+                                filtered = rank(entries, &query);
+                                sel = 0;
+                            }
+                            _ => {}
+                        }
+                    }
+                    Event::Mouse(m) => {
+                        if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+                            if let Some(ei) =
+                                row_y.iter().find(|(y, _)| *y == m.row).map(|(_, ei)| *ei)
+                            {
+                                chosen = Some(ei);
+                                break;
                             }
                         }
                     }
@@ -416,4 +523,28 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
     terminal.show_cursor()?;
     res?;
     Ok(chosen)
+}
+
+/// The entry indices to display for `query`, in order. An empty query keeps the natural
+/// order (running sessions first, then recents). A non-empty query fuzzy-matches each
+/// entry's name + directory and ranks the survivors best-first — reusing the file
+/// picker's boundary-aware scorer — dropping the entries that don't match at all.
+fn rank(entries: &[Entry], query: &str) -> Vec<usize> {
+    if query.trim().is_empty() {
+        return (0..entries.len()).collect();
+    }
+    let mut scored: Vec<(i32, usize)> = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            let hay = format!("{}  {}", e.display, pretty(&e.dir));
+            crate::app::picker::score(query, &hay).map(|s| (s, i))
+        })
+        .collect();
+    // Best score first; tie-break on the shorter name (the more specific match).
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| entries[a.1].display.len().cmp(&entries[b.1].display.len()))
+    });
+    scored.into_iter().map(|(_, i)| i).collect()
 }

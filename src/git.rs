@@ -346,6 +346,21 @@ pub fn commit(dir: &Path, msg: &str) -> Result<String, String> {
     Ok(out.lines().next().unwrap_or("committed").trim().to_string())
 }
 
+/// A unified diff of one path for the preview pane. For a tracked file we diff
+/// `HEAD` against the working tree, so staged *and* unstaged edits show together
+/// ("what changed in this file since the last commit"). A brand-new untracked file
+/// has nothing in HEAD, so we diff it against `/dev/null` to render it all-added.
+/// Returns the raw diff text (empty when there's nothing to show).
+pub fn diff(dir: &Path, path: &str, untracked: bool) -> String {
+    if untracked {
+        // `--no-index` exits non-zero precisely *because* the files differ (the whole
+        // point here), so read stdout regardless of the status code.
+        run_lossy(dir, &["diff", "--no-index", "--", "/dev/null", path])
+    } else {
+        run(dir, &["diff", "HEAD", "--", path]).unwrap_or_default()
+    }
+}
+
 pub fn switch(dir: &Path, name: &str) -> Result<(), String> {
     run(dir, &["switch", name]).map(drop)
 }
@@ -369,6 +384,18 @@ pub fn push(dir: &Path) -> Result<String, String> {
 pub fn stash(dir: &Path) -> Result<String, String> {
     let out = run(dir, &["stash", "push", "-u"])?;
     Ok(out.lines().next().unwrap_or("stashed").trim().to_string())
+}
+
+/// Like [`run`] but hands back stdout no matter the exit status. Some porcelain
+/// (notably `diff --no-index`) exits non-zero *because* there's output to show, so
+/// the usual success/failure split would throw the diff away.
+fn run_lossy(dir: &Path, args: &[&str]) -> String {
+    Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 /// Run `git <args>` in `dir`, returning stdout on success or git's stderr (falling
