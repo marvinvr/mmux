@@ -517,8 +517,10 @@ web/
   styles.css    # the whole v2 system (§2,§3) + every class in §4/§5/§9. no @import/remote url().
   scenes.js     # window.MMUX_SCENES (§7) with realistic content (§8). pure data.
   tui.js        # renderTUI(state)+renderLine (§5.4) + scroll & sandbox drivers + copy + nav.
-  Dockerfile    # unchanged (nginx:alpine). nginx.conf unchanged.
-  nginx.conf    # unchanged.
+  Dockerfile    # nginx:alpine. Build-time fingerprints css/js to <name>.<hash>.<ext>
+                #   and rewrites the quoted refs in index.html (so the 1y immutable
+                #   cache is safe — changed file ⇒ new URL ⇒ refetch, no purge on deploy).
+  nginx.conf    # gzip + strict CSP + 1y immutable cache on the fingerprinted assets.
   DESIGN.md     # this file.
   README.md / fonts/README.md / .dockerignore  # unchanged.
 ```

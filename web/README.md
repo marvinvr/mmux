@@ -1,7 +1,11 @@
 # web/ — the mmux.org static site
 
-A single static page: plain HTML + CSS + vanilla JS, no framework, no build step.
-It renders fully offline and makes **zero external calls**.
+A single static page: plain HTML + CSS + vanilla JS, no framework, no dev build step
+(open `index.html` directly). It renders fully offline and makes **zero external calls**.
+
+The production Docker image fingerprints the CSS/JS at build time (renames each to
+`<name>.<contenthash>.<ext>` and rewrites the refs in `index.html`) so a long
+`immutable` edge cache is safe and deploys never need a Cloudflare purge.
 
 ## View it
 

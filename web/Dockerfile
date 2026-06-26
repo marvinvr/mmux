@@ -6,6 +6,21 @@ FROM nginx:1.27-alpine
 COPY index.html styles.css tui.js scenes.js /usr/share/nginx/html/
 COPY fonts/ /usr/share/nginx/html/fonts/
 
+# Fingerprint the assets: rename each to <name>.<contenthash>.<ext> and rewrite
+# the quoted references in index.html to match. This is what makes the 1y
+# `immutable` cache in nginx.conf safe — a changed file gets a new hash, hence a
+# new URL, so browsers and Cloudflare fetch it fresh; unchanged files keep their
+# hash and stay cached. No cache purging on deploy. The quotes in the sed match
+# the real `src="…"`/`href="…"` references, never the plain-text mentions of
+# these filenames in index.html's comments.
+RUN cd /usr/share/nginx/html && \
+    for f in styles.css scenes.js tui.js; do \
+      h=$(sha256sum "$f" | cut -c1-8); \
+      new="${f%.*}.$h.${f##*.}"; \
+      mv "$f" "$new"; \
+      sed -i "s|\"$f\"|\"$new\"|g" index.html; \
+    done
+
 # Server block: cache headers, gzip, strict CSP (see nginx.conf).
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
