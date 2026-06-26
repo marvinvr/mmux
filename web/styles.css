@@ -679,10 +679,16 @@ section {
   white-space: pre-line;
   padding: 1.4rem .5rem;
 }
-/* green block cursor on the last line */
+/* green block cursor on the last line — a real block sized to the text height
+ * (the ▮ glyph rendered shorter than the text), drawn with a solid background */
 .screen-cursor {
   display: inline-block;
-  color: var(--green);
+  width: .55ch;
+  height: 1.1em;
+  vertical-align: middle;
+  margin: 0 .02em;
+  background: var(--green);
+  color: transparent;
   animation: caret-blink 1.1s steps(1) infinite;
 }
 
@@ -765,9 +771,17 @@ section {
 /* the focused section is bordered magenta in the tool */
 .git-box--active { border-color: var(--magenta); }
 .git-box--active .git-box-title { color: var(--magenta); }
-/* tree rows are column-aligned; never wrap them */
-.git-box-body .screen-line { white-space: pre; }
+/* tree rows are column-aligned (pre); a long line (e.g. a Recent commit summary)
+ * is clipped with an ellipsis instead of spilling outside the box. */
+.git-box-body .screen-line {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .git-sel { background: rgba(169, 140, 196, .16); }
+/* the Changes box is clickable in the sandbox: files stage / unstage on click */
+.tw--ready .git-file { cursor: pointer; border-radius: 2px; }
+.tw--ready .git-file:hover { background: rgba(110, 158, 114, .16); }
 
 /* bare mode (scene 0): a plain terminal — the mmux chrome is hidden, the screen
  * fills the window. The launch reveal types `mmux` here, then boots the UI. */

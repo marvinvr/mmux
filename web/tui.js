@@ -50,13 +50,8 @@
    * stable contract. The content uses the token model so the pane looks real. */
   var DEFAULT_STATE = {
     title: "~/dev/app",
-    multiProject: true,
-    // two linked clones: only the active one's sessions render; the sidebar pager
-    // (built when >1) switches between them. app-2 carries its own sessions.
-    projects: [
-      { name: "app", active: true },
-      { name: "app-2", active: false },
-    ],
+    multiProject: false,
+    projects: [{ name: "app", active: true }],
     // Launchers come FIRST in every section, matching the real sidebar order
     // (src/app/nav.rs build_nav). Both Claude and Codex are configured agents.
     sidebar: [
@@ -72,14 +67,12 @@
             status: "running",
             active: true,
             attention: false,
-            project: "app",
           },
           {
-            id: "codex-2",
+            id: "codex",
             name: "Codex",
             sub: "running tests",
             status: "running",
-            project: "app-2",
           },
         ],
       },
@@ -87,7 +80,7 @@
         kind: "TERMINAL",
         rows: [
           { id: "new-terminal", launcher: true, name: "New Terminal" },
-          { id: "zsh", name: "zsh", status: "running", project: "app" },
+          { id: "zsh", name: "zsh", status: "running" },
         ],
       },
       {
@@ -99,14 +92,6 @@
             name: "dev server",
             sub: "vite · :5173",
             status: "running",
-            project: "app",
-          },
-          {
-            id: "dev-server-2",
-            name: "dev server",
-            sub: "vite · :5174",
-            status: "running",
-            project: "app-2",
           },
         ],
       },
@@ -118,7 +103,7 @@
       title: " Claude — ready ",
       lines: [
         { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
-        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }], cls: "art" },
+        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) with xhigh effort · Claude Max", c: "dim" }], cls: "art" },
         { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
         "",
         { tokens: [{ t: "  Ask Claude to do something — type a prompt and press enter.", c: "dim" }] },
@@ -414,15 +399,11 @@
   }
 
   function renderMain(t, main) {
-    // tab: program label, or hidden when program is null
+    // No program tab — the real mmux doesn't label the pane with "claude"/"zsh",
+    // so keep it hidden (the skeleton element stays for layout stability).
     if (t.tab) {
-      if (main.program) {
-        t.tab.textContent = main.program;
-        t.tab.hidden = false;
-      } else {
-        t.tab.textContent = "";
-        t.tab.hidden = true;
-      }
+      t.tab.textContent = "";
+      t.tab.hidden = true;
     }
     if (!t.screen) return;
 
@@ -483,7 +464,13 @@
         box.appendChild(el("div", "git-box-title", sec.title || ""));
         var body = el("div", "git-box-body");
         (sec.lines || []).forEach(function (line) {
-          body.appendChild(renderLine(line));
+          var ld = renderLine(line);
+          // a stageable file row → clickable hook (the sandbox toggles staging)
+          if (line && line.gitFile) {
+            ld.classList.add("git-file");
+            ld.setAttribute("data-git-file", line.gitFile);
+          }
+          body.appendChild(ld);
         });
         box.appendChild(body);
         t.panelScreen.appendChild(box);
@@ -924,12 +911,22 @@
       state = cloneState(DEFAULT_STATE);
       state.focus = "sidebar"; // visitor clicks/tabs in to engage
       ensureSelection();
+      initGit();         // the Changes box becomes clickable (stage/unstage files)
+      openActivePane();  // the open session is a LIVE, typeable pane right away
       render();
       ready = true;
       setA11y("ready");
       root.classList.add("tw--ready");
       showHint(true);
       attachListeners();
+    }
+
+    // Make the initially-shown pane a real freshPane (typeable), so you can type into
+    // the open Claude/Codex/terminal without first switching to another row and back.
+    function openActivePane() {
+      var rows = selectableRows();
+      var sel = rows[selectedIndex(rows)];
+      if (sel && !sel.launcher && sel.status === "running") state.main = mainFor(sel);
     }
 
     function showHint(show) {
@@ -982,25 +979,39 @@
       if (!ready) return;
       e.stopPropagation();
       if (!engaged) engage();
-      // pager arrows switch the active workspace (option A)
-      var swEl = e.target && e.target.closest ? e.target.closest(".sb-switch-arrow[data-switch]") : null;
-      if (swEl) {
-        switchWorkspace(swEl.getAttribute("data-switch"));
+      var tgt = e.target;
+      var closest = tgt && tgt.closest ? function (s) { return tgt.closest(s); } : function () { return null; };
+
+      // pager arrows switch the active workspace (only present with linked projects)
+      var swEl = closest(".sb-switch-arrow[data-switch]");
+      if (swEl) { switchWorkspace(swEl.getAttribute("data-switch")); return; }
+
+      // clicking a file in the git Changes box stages / unstages it (feels real)
+      var gfEl = closest(".git-file[data-git-file]");
+      if (gfEl) { toggleGitFile(gfEl.getAttribute("data-git-file")); return; }
+
+      // clicking a sidebar row plays it: launchers spawn, sessions focus (§6.2)
+      var rowEl = closest(".sb-row[data-id]");
+      if (rowEl) {
+        var id = rowEl.getAttribute("data-id");
+        var rows = selectableRows();
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].id === id) {
+            selectRow(rows, i);
+            activate(rows[i]);
+            announce(describe(rows[i]));
+            render();
+            break;
+          }
+        }
         return;
       }
-      // clicking a sidebar row plays it: launchers spawn, sessions focus (§6.2)
-      var rowEl = e.target && e.target.closest ? e.target.closest(".sb-row[data-id]") : null;
-      if (!rowEl) return;
-      var id = rowEl.getAttribute("data-id");
-      var rows = selectableRows();
-      for (var i = 0; i < rows.length; i++) {
-        if (rows[i].id === id) {
-          selectRow(rows, i);
-          activate(rows[i]);
-          announce(describe(rows[i]));
-          render();
-          break;
-        }
+
+      // clicking inside the main pane focuses it, so a typeable session takes input
+      var mainEl = closest(".tw-main");
+      if (mainEl && state.main && state.main.typeable) {
+        state.focus = "main";
+        render();
       }
     }
 
@@ -1015,7 +1026,9 @@
       root.classList.add("tw--engaged");
       if (hintEl) hintEl.hidden = true;
       setA11y("active");
-      state.focus = "sandbox";
+      // Land in the open pane if it's a typeable session (type right away); otherwise
+      // land on the sidebar list to navigate/spawn. Esc steps main → sidebar → out.
+      state.focus = (state.main && state.main.typeable) ? "main" : "sandbox";
       render();
       try {
         root.focus({ preventScroll: true });
@@ -1219,8 +1232,11 @@
       } else if (kind === "codex") {
         program = "codex"; glyph = "› "; tone = "codex";
         history = codexBox([
-          [{ t: ">_ ", c: "codex" }, { t: "OpenAI Codex" }, { t: "  v0.142.2", c: "dim" }],
-          [{ t: "model:      ", c: "dim" }, { t: "gpt-5.5 high" }],
+          [{ t: ">_ ", c: "codex" }, { t: "OpenAI Codex " }, { t: "(v0.142.2)", c: "dim" }],
+          [{ t: "" }],
+          [{ t: "model:       ", c: "dim" }, { t: "gpt-5.5 high" }, { t: "   /model to change", c: "dim" }],
+          [{ t: "directory:   ", c: "dim" }, { t: "~/dev/app", c: "path" }],
+          [{ t: "permissions: ", c: "dim" }, { t: "YOLO mode", c: "warn" }],
         ]).concat([
           "",
           { tokens: [{ t: "  Ask Codex to do something — type a prompt and press enter.", c: "dim" }] },
@@ -1586,6 +1602,58 @@
       return p ? p.name : undefined;
     }
 
+    /* --- the native git panel, made interactive ---------------------------
+     * The Changes box's files are clickable: a click stages / unstages a file
+     * (the `[ ]`↔`[✓]` checkbox flips and the cursor `▌` moves to it), so the
+     * panel feels like the real one. The other two boxes stay informational. */
+    function initGit() {
+      state._git = {
+        files: [
+          { name: "auth.rs", change: "modified", staged: true, cursor: true },
+          { name: "token.rs", change: "modified", staged: false, cursor: false },
+          { name: "lib.rs", change: "added", staged: true, cursor: false },
+        ],
+      };
+      rebuildGit();
+    }
+    function rebuildGit() {
+      if (state.panel && Array.isArray(state.panel.sections) && state.panel.sections.length) {
+        state.panel.sections[0] = buildGitSection();
+      }
+    }
+    function buildGitSection() {
+      var rows = [
+        { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " app/", c: "info" }] },
+        { tokens: [{ t: " " }, { t: "  [~]", c: "warn" }, { t: " src/", c: "info" }] },
+      ];
+      (state._git.files || []).forEach(function (f) {
+        var box = f.staged ? "[✓]" : "[ ]";
+        var nameTone = f.change === "added" ? "ok" : "warn";
+        var line = {
+          tokens: [
+            { t: f.cursor ? "▌" : " ", c: "ai" },
+            { t: "    " + box, c: f.staged ? "ok" : "dim" },
+            { t: " " + f.name, c: nameTone },
+          ],
+          gitFile: f.name,
+        };
+        if (f.cursor) line.cls = "git-sel";
+        rows.push(line);
+      });
+      return { title: "Changes · main ↑1", active: true, lines: rows };
+    }
+    function toggleGitFile(name) {
+      var files = (state._git && state._git.files) || [];
+      var hit = null;
+      files.forEach(function (f) { f.cursor = false; if (f.name === name) hit = f; });
+      if (!hit) return;
+      hit.staged = !hit.staged;
+      hit.cursor = true;
+      rebuildGit();
+      announce(name + (hit.staged ? " staged" : " unstaged"));
+      render();
+    }
+
     return {
       start: start,
     };
@@ -1602,7 +1670,7 @@
   function claudeBanner() {
     return [
       { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
-      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }], cls: "art" },
+      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) with xhigh effort · Claude Max", c: "dim" }], cls: "art" },
       { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
     ];
   }
@@ -1611,7 +1679,7 @@
   // right border lines up. `rows` is an array of token-segment arrays. (Mirrors the
   // builder in scenes.js; the sandbox spawns its own canned content.)
   function codexBox(rows) {
-    var W = 40;
+    var W = 48;
     var dash = "─".repeat(W - 2);
     var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }], cls: "art" }];
     rows.forEach(function (segs) {

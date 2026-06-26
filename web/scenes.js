@@ -26,7 +26,7 @@
   // of tearing apart at the screen's 1.7 line-height.
   var CLAUDE_BANNER = [
     { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
-    { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }], cls: "art" },
+    { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) with xhigh effort · Claude Max", c: "dim" }], cls: "art" },
     { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
   ];
 
@@ -56,7 +56,7 @@
   // Build the real Codex rounded banner box from row segments, padding each row so
   // the right border lines up. `rows` is an array of token-segment arrays.
   function codexBox(rows) {
-    var W = 40;
+    var W = 48;
     var dash = "─".repeat(W - 2);
     // cls:"art" → tight leading so the box borders (│ ╭ ╰) connect into one frame.
     var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }], cls: "art" }];
@@ -75,10 +75,11 @@
   // The real OpenAI Codex banner (captured verbatim from `codex`): the >_ mark,
   // the version, the model and directory. `codex` tone = Codex's teal accent.
   var CODEX_BANNER = codexBox([
-    [{ t: ">_ ", c: "codex" }, { t: "OpenAI Codex" }, { t: "  v0.142.2", c: "dim" }],
+    [{ t: ">_ ", c: "codex" }, { t: "OpenAI Codex " }, { t: "(v0.142.2)", c: "dim" }],
     [{ t: "" }],
-    [{ t: "model:      ", c: "dim" }, { t: "gpt-5.5 high" }],
-    [{ t: "directory:  ", c: "dim" }, { t: "~/dev/app", c: "path" }],
+    [{ t: "model:       ", c: "dim" }, { t: "gpt-5.5 high" }, { t: "   /model to change", c: "dim" }],
+    [{ t: "directory:   ", c: "dim" }, { t: "~/dev/app", c: "path" }],
+    [{ t: "permissions: ", c: "dim" }, { t: "YOLO mode", c: "warn" }],
   ]);
 
   // A real Codex session: the banner, a prompt (›), • action lines each with a └
@@ -450,53 +451,9 @@
       },
     },
 
-    /* 6 — it survives you. (ssh disconnect overlay over a live state) ----- */
+    /* 6 — a git panel, pinned. (native git panel visible) ----------------- */
     {
       id: 6,
-      caption: {
-        kicker: "// persistence",
-        title: "it survives you.",
-        body: "the whole thing lives in a per-directory tmux session. close the terminal, drop ssh, come back — nothing lost.",
-      },
-      state: {
-        title: "~/dev/app",
-        status: "ssh dropped — mmux keeps every session alive",
-        multiProject: false,
-        projects: [{ name: "app", active: true }],
-        sidebar: [
-          {
-            kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running", active: true }), codex({ status: "running" })],
-          },
-          {
-            kind: "TERMINAL",
-            rows: [L_TERMINAL, { id: "zsh", name: "zsh", status: "running" }],
-          },
-          {
-            kind: "PROCESSES",
-            rows: [
-              L_PROCESS,
-              { id: "dev-server", name: "dev server", sub: "vite · :5173", status: "running" },
-            ],
-          },
-        ],
-        main: {
-          program: "claude",
-          title: " Claude — running ",
-          lines: CLAUDE_LINES,
-          placeholder: null,
-          cursor: true,
-        },
-        panel: { visible: false, branch: "main", sections: [] },
-        focus: "main",
-        toast: null,
-        overlay: "disconnected",
-      },
-    },
-
-    /* 7 — a git panel, pinned. (native git panel visible) ----------------- */
-    {
-      id: 7,
       caption: {
         kicker: "// the panel",
         title: "a git panel, pinned.",
@@ -538,9 +495,9 @@
       },
     },
 
-    /* 8 — it taps you on the shoulder. (attention + toast) ---------------- */
+    /* 7 — it taps you on the shoulder. (attention + toast) ---------------- */
     {
-      id: 8,
+      id: 7,
       caption: {
         kicker: "// attention",
         title: "it taps you on the shoulder.",
@@ -588,6 +545,51 @@
           body: "approve the edit to src/auth.rs?",
         },
         overlay: null,
+      },
+    },
+
+    /* 8 — it survives you. (ssh disconnect overlay) — the closer: persistence
+     * is the payoff, so it lands last, not in the middle. ----------------- */
+    {
+      id: 8,
+      caption: {
+        kicker: "// persistence",
+        title: "it survives you.",
+        body: "the whole thing lives in a per-directory tmux session. close the terminal, drop ssh, come back — nothing lost.",
+      },
+      state: {
+        title: "~/dev/app",
+        status: "ssh dropped — mmux keeps every session alive",
+        multiProject: false,
+        projects: [{ name: "app", active: true }],
+        sidebar: [
+          {
+            kind: "AGENTS",
+            rows: [L_CLAUDE, L_CODEX, claude({ status: "running", active: true }), codex({ status: "running" })],
+          },
+          {
+            kind: "TERMINAL",
+            rows: [L_TERMINAL, { id: "zsh", name: "zsh", status: "running" }],
+          },
+          {
+            kind: "PROCESSES",
+            rows: [
+              L_PROCESS,
+              { id: "dev-server", name: "dev server", sub: "vite · :5173", status: "running" },
+            ],
+          },
+        ],
+        main: {
+          program: "claude",
+          title: " Claude — running ",
+          lines: CLAUDE_LINES,
+          placeholder: null,
+          cursor: true,
+        },
+        panel: { visible: false, branch: "main", sections: [] },
+        focus: "main",
+        toast: null,
+        overlay: "disconnected",
       },
     },
   ];

@@ -257,14 +257,19 @@ Sidebar inner (JS-produced):
   selection (`#2d2d3c`) + a green cursor edge + brighter text. Status dot `.sb-dot` colored by
   `data-status` (running → `--running`, exited → `--faint`, stopped → `--muted`). Launchers: a green
   `+` and green name (the tool paints them `Color::Green`), hover → `--green`. Bell `.sb-bell` coral.
-- **Main `.tw-main`:** the focused program. `.tw-tab` = a small top label (program name, a faint
-  status). `.tw-screen` = the content (§5.4), comfortable line-height (~1.6), left-padded.
+- **Main `.tw-main`:** the focused program. **No program tab** — the real mmux doesn't label the
+  pane with `claude`/`zsh`, so `.tw-tab` stays hidden (the skeleton element is kept for layout
+  stability). `.tw-screen` = the content (§5.4), comfortable line-height (~1.6), left-padded. The
+  block cursor is a real CSS block sized to the text height (the `▮` glyph renders short).
 - **Panel `.tw-panel`:** ~196px right col, `--bg-2`, 1px left border. The **native git panel**:
   three bordered `.git-box`es — **Changes** (a file tree with `[✓]`/`[~]`/`[ ]` staging checkboxes,
   names colored by change type, the cursor row on a magenta bar), **Branches** (current `●` green),
   **Recent** (short hash + summary) — each with its title sitting on the top border like a ratatui
   `Block`; the focused box is bordered magenta. The stack **fills the panel's full height** — the
-  Changes box (the file tree, first box) takes the slack — so there's no dead space below Recent.
+  Changes box (the file tree, first box) takes the slack — so there's no dead space below Recent. A
+  long line (e.g. a Recent commit summary) is clipped with an ellipsis, never spilling outside the
+  box. In the **sandbox**, the Changes files are **clickable** (`.git-file`): a click stages /
+  unstages the file (`[ ]`↔`[✓]`, the `▌` cursor moves to it) with a hover affordance.
   Mirrors `src/app/view/git.rs`.
 - **Status bar `.tw-status`:** thin bottom bar. In the scroll demo it shows a per-scene **hint of
   what's happening** (the demo isn't interactive); in the playable sandbox it shows the real,
@@ -365,6 +370,12 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 - `#tw-how` is interactive whenever on screen (`tabindex`/role managed in JS — decorative
   `role="img"` until focused, then `role="application"`; keys trapped only while engaged;
   Esc/click-out releases).
+- **Type out of the box:** the initially-shown pane is a real `freshPane` (the active session), and
+  **engaging focuses it** when it's typeable — so you can type into the open Claude/terminal right
+  away, without first switching to another row and back. (If the open pane isn't typeable, engaging
+  lands on the sidebar list instead.) `Esc` steps main → sidebar → out.
+- **Single project:** the sandbox is one project (`app`) — no linked-workspace pager / switcher.
+- **Git panel is live:** clicking a file in the Changes box stages / unstages it (§5.2).
 - **Sidebar nav** (focus sidebar/sandbox): `↑/k` `↓/j` move the selection over the flat row list
   (launchers included), `Enter` activates (launcher → spawn a session of that kind; running row →
   focus it), `x` stops the selected session.
@@ -396,9 +407,9 @@ weight?, boot?, term?, state }`. Captions terse, lowercase, confident. Caption c
 - 3 — **or codex. or whatever you run.** / claude and codex come configured out of the box — any agent is one line of yaml away. *(the real Codex banner + session)*
 - 4 — **a terminal when you need one.** / drop into a shell in the same window. *(zsh + cargo run)*
 - 5 — **every process in one place.** / your dev server, your tests, your watcher — start, stop and tail them all here, just like your agents. *(PROCESSES: dev server, tests, typecheck + vite pane)*
-- 6 — **it survives you.** / lives in a per-directory tmux session. close the terminal, drop ssh, come back — nothing lost. *(disconnect overlay)*
-- 7 — **a git panel, pinned.** / a native git panel right where you work, following whichever project is active. *(Changes/Branches/Recent boxes)*
-- 8 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification. even over ssh. *(attention + toast)*
+- 6 — **a git panel, pinned.** / a native git panel right where you work, following whichever project is active. *(Changes/Branches/Recent boxes; files clickable in the sandbox)*
+- 7 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification. even over ssh. *(attention + toast)*
+- 8 — **it survives you.** / lives in a per-directory tmux session. close the terminal, drop ssh, come back — nothing lost. *(disconnect overlay — the closer; moved last, it's the payoff)*
 
 The bottom bar (`.tw-status`) shows a per-scene **hint of what's happening** (`state.status`), not key
 bindings — the scroll demo isn't interactive (the playable sandbox below it is).
@@ -428,22 +439,25 @@ The Claude scene is preceded by the **real Claude Code welcome banner** (its blo
 captured verbatim from `claude`; `claude` tone = warm orange; each row `cls:"art"` so the glyph tiles):
 ```
  ▐▛███▜▌   Claude Code v2.1.193
-▝▜█████▛▘  Opus 4.8 · Claude Max
+▝▜█████▛▘  Opus 4.8 (1M context) with xhigh effort · Claude Max
   ▘▘ ▝▝    ~/dev/app
 ```
+(captured verbatim from a running `claude`, with the demo's `~/dev/app` cwd.)
 sidebar: AGENTS → `+ New Claude`, `+ New Codex`, then Claude (running, sub "refactoring auth", active).
 
 **Scene 3 — Codex session** (`main.program:"codex"`). The **real OpenAI Codex banner** (captured
 verbatim from `codex`; `codex` tone = teal; box rows `cls:"art"`), then a `›` prompt + `•` action
 lines each with a `└` result + a diff:
 ```
-╭──────────────────────────────────────╮
-│ >_ OpenAI Codex  v0.142.2            │
-│                                      │
-│ model:      gpt-5.5 high             │
-│ directory:  ~/dev/app                │
-╰──────────────────────────────────────╯
+╭──────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.142.2)                   │
+│                                              │
+│ model:       gpt-5.5 high   /model to change │
+│ directory:   ~/dev/app                       │
+│ permissions: YOLO mode                       │
+╰──────────────────────────────────────────────╯
 ```
+(captured verbatim from a running `codex`, with the demo's `~/dev/app` cwd.)
 sidebar AGENTS shows Claude (running) and Codex (running, active) under both launchers.
 
 **Scene 4 — shell** (`main.program:"zsh"`): `❯ cargo run`, Compiling/Finished/Running, "listening on".
@@ -457,10 +471,7 @@ active), tests (running, "vitest · watch"), typecheck (stopped, "tsc --watch").
  10:42:01 [vite] hmr update /src/App.tsx                     (time dim, "[vite]" brand, path path)
 ```
 
-**Scene 6 — overlay:** `overlay:"disconnected"` (text like `ssh disconnected — session kept alive`).
-Keep sidebar/main state intact underneath (dimmed by overlay).
-
-**Scene 7 — native git panel** (`panel.visible`, `panel.sections`, branch "main"). Three boxes,
+**Scene 6 — native git panel** (`panel.visible`, `panel.sections`, branch "main"). Three boxes,
 mirroring `src/app/view/git.rs`:
 ```
 ┌ Changes · main ↑1 ┐
@@ -476,16 +487,20 @@ mirroring `src/app/view/git.rs`:
  e2e6087 add token service (hash dim, summary text)
 ```
 
-**Scene 8 — attention:** Claude row `attention:true` (coral bell pulses) + `toast:{ app:"Claude",
+**Scene 7 — attention:** Claude row `attention:true` (coral bell pulses) + `toast:{ app:"Claude",
 title:"needs your input", body:"approve the edit to src/auth.rs?" }`. Main shows Claude paused at an
 approval prompt (below its banner).
 
-**Linked workspaces** (`multiProject:true`, e.g. `app` active + `app-2`): the sidebar shows **one
-clone at a time** — only the active clone's rows render, with a bottom pager (`‹ name •∘ ›`) to
-switch (no stacked per-project headers). Demonstrated live in the always-playable sandbox
-(`#tw-how`, tui.js `DEFAULT_STATE`), where `app-2` carries its own Codex (sub "running tests") and
-dev server; switch via the chevrons, a horizontal swipe, or `[` / `]`. The sandbox keeps the real,
-working key hints in its status bar (those keys do work there).
+**Scene 8 — overlay (the closer):** `overlay:"disconnected"` (text like `ssh disconnected — session
+kept alive`). Keep sidebar/main state intact underneath (dimmed by overlay). Persistence is the
+payoff, so this lands last rather than mid-walkthrough.
+
+**Linked workspaces** (`multiProject:true`, e.g. `app` active + `app-2`): a real mmux feature the
+renderer still supports — the sidebar shows **one clone at a time** (only the active clone's rows
+render) with a bottom pager (`‹ name •∘ ›`) to switch (no stacked per-project headers), driven by
+the chevrons, a horizontal swipe, or `[` / `]`. It is **not shown in the sandbox** — `#tw-how`
+(`DEFAULT_STATE`) is intentionally single-project (`app`), so the bottom-left project switcher is
+absent; the playable demo stays focused on spawning/typing and the git panel.
 
 Footer hints (`.tw-status`, by focus): sidebar `↑↓ move   ⏎ open   x close   r restart   d detach`,
 main/panel `keys → pane   drag = copy   ⌃b   h back   x close`, sandbox `↑↓ move   ⏎ open   x close   ·   click out to scroll`.
