@@ -13,8 +13,10 @@ pub(crate) const ATTN: Color = Color::Green;
 pub(crate) fn status_style(s: Status) -> Style {
     match s {
         Status::Running => Style::default().fg(Color::Green),
-        Status::Exited => Style::default().fg(Color::DarkGray),
-        Status::Stopped => Style::default().fg(Color::Gray),
+        Status::Failed => Style::default().fg(Color::Red),
+        // A process that finished cleanly reads the same as one that was never
+        // started or was stopped: just "not running", not a dim-gray husk.
+        Status::Exited | Status::Stopped => Style::default().fg(Color::Gray),
     }
 }
 
@@ -23,6 +25,7 @@ pub(crate) fn status_label(s: Status) -> &'static str {
         Status::Running => "running",
         Status::Exited => "exited",
         Status::Stopped => "stopped",
+        Status::Failed => "crashed",
     }
 }
 
@@ -30,8 +33,9 @@ pub(crate) fn status_label(s: Status) -> &'static str {
 pub(crate) fn badge(s: Status) -> &'static str {
     match s {
         Status::Running => "●",
-        Status::Exited => "○",
-        Status::Stopped => "·",
+        Status::Failed => "○",
+        // Finished and never-started share the dim dot — both are just "not running".
+        Status::Exited | Status::Stopped => "·",
     }
 }
 

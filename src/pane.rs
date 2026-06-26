@@ -111,6 +111,12 @@ pub struct Pane {
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     running: Arc<AtomicBool>,
+    /// Set the moment *we* kill the child (stop/restart), so its non-zero exit
+    /// reads as a deliberate stop rather than a crash. See [`Pane::crashed`].
+    killed: Arc<AtomicBool>,
+    /// The child's exit code once it has been reaped — `None` while it's still
+    /// running (or briefly, just after exit, before `wait()` returns).
+    exit_code: Arc<Mutex<Option<u32>>>,
     size: (u16, u16),
 }
 
@@ -157,6 +163,8 @@ impl Pane {
             PaneEvents::default(),
         )));
         let running = Arc::new(AtomicBool::new(true));
+        let killed = Arc::new(AtomicBool::new(false));
+        let exit_code: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
 
         // Reader thread: blocking reads from the PTY feed the vt100 parser.
         {
@@ -193,10 +201,18 @@ impl Pane {
             });
         }
 
-        // Reaper: wait on the child so it doesn't linger as a zombie.
-        thread::spawn(move || {
-            let _ = child.wait();
-        });
+        // Reaper: wait on the child so it doesn't linger as a zombie, and record
+        // its exit code so the sidebar can tell a crash from a clean finish.
+        {
+            let exit_code = exit_code.clone();
+            thread::spawn(move || {
+                if let Ok(status) = child.wait() {
+                    if let Ok(mut slot) = exit_code.lock() {
+                        *slot = Some(status.exit_code());
+                    }
+                }
+            });
+        }
 
         Ok(Pane {
             parser,
@@ -204,12 +220,28 @@ impl Pane {
             master,
             killer,
             running,
+            killed,
+            exit_code,
             size: (rows, cols),
         })
     }
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
+    }
+
+    /// Whether the program exited abnormally *on its own* — a non-zero exit status
+    /// that we didn't cause by killing it. Drives the red "crashed" badge; a clean
+    /// exit (status 0) or a deliberate stop both read as plain "not running".
+    pub fn crashed(&self) -> bool {
+        if self.is_running() || self.killed.load(Ordering::SeqCst) {
+            return false;
+        }
+        self.exit_code
+            .lock()
+            .ok()
+            .and_then(|c| *c)
+            .is_some_and(|code| code != 0)
     }
 
     pub fn send(&self, bytes: Vec<u8>) {
@@ -346,6 +378,9 @@ impl Pane {
     }
 
     pub fn kill(&mut self) {
+        // Mark this as a deliberate stop first, so the resulting non-zero exit
+        // isn't mistaken for a crash (see [`Pane::crashed`]).
+        self.killed.store(true, Ordering::SeqCst);
         let _ = self.killer.kill();
     }
 

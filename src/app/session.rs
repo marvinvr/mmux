@@ -25,6 +25,10 @@ pub enum Status {
     Stopped,
     Running,
     Exited,
+    /// Exited abnormally on its own (non-zero status, not a deliberate stop).
+    /// Surfaced as a red badge for processes; agents/terminals treat it like
+    /// `Exited`. See [`crate::pane::Pane::crashed`].
+    Failed,
 }
 
 /// Everything needed to (re)spawn a pane identically.
@@ -113,6 +117,8 @@ impl Session {
             Some(p) => {
                 if p.is_running() {
                     Status::Running
+                } else if p.crashed() {
+                    Status::Failed
                 } else {
                     Status::Exited
                 }

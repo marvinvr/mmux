@@ -206,7 +206,7 @@ impl App {
             .sessions
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.ephemeral && matches!(s.status(), Status::Exited))
+            .filter(|(_, s)| s.ephemeral && matches!(s.status(), Status::Exited | Status::Failed))
             .map(|(i, _)| i)
             .collect();
         if dead.is_empty() {

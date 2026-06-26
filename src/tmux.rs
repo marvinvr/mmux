@@ -151,7 +151,10 @@ fn configure_session(name: &str, title: &str) {
         ("status", "off"),            // no tmux status bar
         ("prefix", "None"),           // don't steal keys — everything goes to the TUI
         ("prefix2", "None"),          //
-        ("mouse", "off"),             // let the TUI's own mouse handling work
+        ("mouse", "on"),              // tmux enables outer-terminal mouse reporting and, since the
+                                      // TUI sets its own mouse mode, forwards events to it rather
+                                      // than acting itself. `off` silently drops wheel/clicks when
+                                      // attached over SSH (nothing tells the terminal to report).
         ("set-clipboard", "on"),      // pass our OSC 52 copies through to the outer terminal
         ("allow-passthrough", "on"),  // let our notification OSCs reach the outer terminal
         ("destroy-unattached", "off"), // keep running after detach (default; explicit)

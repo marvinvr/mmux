@@ -32,8 +32,10 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 
 ### Status and Attention
 
-- **Process rows** show a leading status glyph: `●` running, `○` exited, `·` stopped, with a
-  green-when-running name — for a long-lived process what you want to know is "is it up".
+- **Process rows** show a leading status glyph + a matching name color: green `●` running, a dim
+  `·` when it's not running (whether it finished on its own, was stopped, or was never started —
+  they all read alike), and a red `○` only when it **crashed** (exited non-zero on its own). For a
+  long-lived process what you want to know is "is it up, and did it die badly".
 - **Agent and terminal rows** hold color back for the one thing that matters there — "does it
   need *me*". A leading glyph + name color carry the whole state: a busy agent shows a small gray
   **spinner** (rotating braille dots) before its name (a running terminal keeps a static `·`), a

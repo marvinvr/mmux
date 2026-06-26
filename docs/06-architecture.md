@@ -41,8 +41,10 @@ and singleton-per-directory:
 - **Singleton.** A second `mmux` in the same directory computes the same name and attaches
   instead of creating. If creation loses a race, mmux falls through to attaching to the winner.
 - **Invisible & non-interfering.** `configure_session` sets options on *that session only*
-  (never `-g`): status bar off, no tmux prefix (mmux owns its own `Ctrl-b` leader), mouse off
-  (the TUI handles its own mouse), `destroy-unattached off` (survives detach),
+  (never `-g`): status bar off, no tmux prefix (mmux owns its own `Ctrl-b` leader), `mouse on`
+  (so tmux enables outer-terminal mouse reporting and forwards events to the TUI, which sets its
+  own mouse mode — `off` silently drops wheel/clicks when attached over SSH), `destroy-unattached
+  off` (survives detach),
   `allow-passthrough on` (lets [notification](05-notifications.md) escapes reach the outer
   terminal), and `set-clipboard on` (lets OSC 52 copies through). The outer terminal's tab title
   is set to the project name.
@@ -96,8 +98,10 @@ struct Session {
     and restart**; callers decide *when*.
   - `stop()` kills the process but keeps the now-exited pane (so it reads as `Status::Exited`).
   - `kill()` kills and drops the pane entirely (back to `Status::Stopped`).
-- `Status` (`Stopped`/`Running`/`Exited`) is derived from the `Option<Pane>` and whether the
-  process is alive — it is not stored.
+- `Status` (`Stopped`/`Running`/`Exited`/`Failed`) is derived from the `Option<Pane>` and whether
+  the process is alive — it is not stored. `Failed` means it exited non-zero *on its own* (a
+  deliberate `stop()`/`kill()` is flagged on the pane so it stays `Exited`, not `Failed`); the
+  process sidebar paints it red, while agents/terminals treat it like `Exited`.
 
 > Do **not** re-introduce per-kind collections or per-kind spawn/stop methods. That triplication
 > was deliberately removed; the unified model is the point.
