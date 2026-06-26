@@ -20,9 +20,9 @@ setting up a config).
 
 The project file is layered on top of the global one, and **project values win**:
 
-- `name`, `git-panel`, and `notifications` — the project's value replaces the global one
-  **wholesale** if set. (There is no field-level merge: a project `notifications:` block that
-  sets only `enabled: true` does **not** inherit the global `mechanism`/`throttle_secs` — unset
+- `name`, `git-panel`, `notifications`, and `auto-update` — the project's value replaces the
+  global one **wholesale** if set. (There is no field-level merge: a project `notifications:` block
+  that sets only `enabled: true` does **not** inherit the global `mechanism`/`throttle_secs` — unset
   sub-fields fall back to their built-in defaults, not to the global value.)
 - `agents` and `processes` — merged **by name**: a project entry with the same `name` replaces
   the global one; otherwise it is appended.
@@ -70,6 +70,7 @@ processes:
 | `processes` | list | [Process](#process) definitions you start/stop and watch. |
 | `git-panel` | map | [Git panel](#git-panel) settings. |
 | `notifications` | map | [Notification](05-notifications.md) settings. |
+| `auto-update` | map | [Self-update](#auto-update) settings (Homebrew installs only). |
 | `linked-projects` | list of paths | Sibling directories to open in one sidebar. Honored **only** in the launch directory's config. |
 
 ### Agent
@@ -109,6 +110,39 @@ git-panel:
 
 See [Notifications](05-notifications.md) for the full reference. Defaults are sensible (on,
 `osc9`, unfocused-only, 5-second throttle), so most configs omit this block entirely.
+
+### Auto-update
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `enabled` | bool | Defaults to `true`. Set to `false` to turn background self-update off. |
+
+See [Auto-Update](#auto-update) for how it behaves. The block only exists to turn it off:
+
+```yaml
+auto-update:
+  enabled: false
+```
+
+## Auto-Update
+
+When mmux was installed with Homebrew (the only install path it ships today), it keeps itself
+current in the background:
+
+- **On startup, and once a day** thereafter (sessions can run for days), it checks the
+  [tap formula](https://github.com/marvinvr/homebrew-mmux) for a newer release. The check is a
+  single lightweight request — it does **not** run `brew update`.
+- **If a newer version exists, it installs it in the background** (`brew update` + `brew upgrade
+  mmux`). This only swaps the on-disk binary; nothing you're running is disturbed.
+- **Once the update is staged, a quiet `↻ restart to update` badge** appears in the bottom-right.
+  Press **`U`** (in the sidebar) or click the badge to restart **in place** onto the new version —
+  no need to quit and relaunch. Because the running process is what holds the old code, this
+  restart ends the live agents/terminals (autostart processes come back); it's never automatic, so
+  a long task is yours to interrupt when convenient.
+
+It is **inert** for non-Homebrew installs (e.g. `cargo install`) and dev builds — no badge, no
+network calls. Turn it off per-project or globally with `auto-update: { enabled: false }`, or for a
+single run with the `MMUX_NO_UPDATE` environment variable.
 
 ## Linked Projects
 

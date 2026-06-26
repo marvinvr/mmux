@@ -27,6 +27,7 @@ use view::Regions;
 use crate::config::{Config, NotifyConfig, NotifyMechanism, Workspace};
 use crate::notify::{self, Note};
 use crate::pane::Notify;
+use crate::update::{self, UpdateMsg};
 use anyhow::Result;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
@@ -40,6 +41,7 @@ use ratatui::crossterm::{
 use ratatui::Terminal;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 /// Which region currently receives keyboard input.
@@ -48,6 +50,20 @@ pub(crate) enum Focus {
     Sidebar,
     Terminal,
     Right,
+}
+
+/// Background self-update progress, surfaced as the quiet bottom-right footer badge.
+/// Driven by [`crate::update`]: a check runs at startup (and daily); a found update is
+/// installed in the background; the badge then invites an in-place restart to apply it.
+pub(crate) enum UpdateState {
+    /// Nothing known/in flight. The daily timer may start a check from here.
+    Idle,
+    /// A version check is running.
+    Checking,
+    /// A newer `version` is installing via brew in the background.
+    Installing(String),
+    /// `version` is installed and staged; the badge offers the restart.
+    Ready(String),
 }
 
 pub(crate) struct App {
@@ -99,6 +115,15 @@ pub(crate) struct App {
     // Notifications.
     in_tmux: bool,                          // wrap notification OSCs in tmux passthrough?
     last_notified: HashMap<String, Instant>, // per-session throttle, keyed by name
+
+    // Background self-update (brew installs only). Workers report check/install results
+    // over `update_rx`, drained in `tick`; the badge reflects `update`. `restart` is set
+    // when the user applies a staged update, unwinding the loop into an in-place re-exec.
+    update: UpdateState,
+    update_tx: Sender<UpdateMsg>,
+    update_rx: Receiver<UpdateMsg>,
+    last_update_check: Instant,
+    restart: bool,
 }
 
 /// One project in the workspace: its config plus the runtime state scoped to it
@@ -147,6 +172,7 @@ impl App {
         }
 
         let nproj = projects.len();
+        let (update_tx, update_rx) = mpsc::channel();
         let mut app = App {
             projects,
             active: 0,
@@ -170,11 +196,23 @@ impl App {
             // passthrough wrapper to reach the real terminal.
             in_tmux: std::env::var_os("TMUX").is_some(),
             last_notified: HashMap::new(),
+            update: UpdateState::Idle,
+            update_tx,
+            update_rx,
+            last_update_check: Instant::now(),
+            restart: false,
         };
 
         // Surface any non-fatal workspace-load problems (missing linked dirs, etc.).
         if !ws.warnings.is_empty() {
             app.flash = Some((ws.warnings.join(" · "), Instant::now()));
+        }
+
+        // Kick off a background update check when allowed (brew install, not a dev build,
+        // not opted out). The worker re-verifies it's brew-managed before doing anything.
+        if update::permitted(app.root_cfg().auto_update_enabled()) {
+            app.update = UpdateState::Checking;
+            update::spawn_check(app.update_tx.clone());
         }
 
         let (rows, cols) = app.last_inner;
@@ -232,6 +270,69 @@ impl App {
         }
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
+        // Advance the background self-update (drain workers, run the daily re-check).
+        self.poll_update();
+    }
+
+    /// Drive the self-update state machine: drain finished check/install steps, auto-start
+    /// the install for a found update, and re-check once a day on a long-running session.
+    fn poll_update(&mut self) {
+        while let Ok(msg) = self.update_rx.try_recv() {
+            match msg {
+                // A newer version exists — stage it immediately in the background; the
+                // badge appears once it's installed (Ready), not before.
+                UpdateMsg::Available(v) => {
+                    update::spawn_install(self.update_tx.clone(), v.clone());
+                    self.update = UpdateState::Installing(v);
+                }
+                // Installed and ready: light the badge and announce it once via the flash.
+                UpdateMsg::Installed(v) => {
+                    self.flash = Some((
+                        format!("update {v} ready — press U or click ↻ to restart"),
+                        Instant::now(),
+                    ));
+                    self.update = UpdateState::Ready(v);
+                }
+                // A check came back current, or a step failed (network/brew): fall back
+                // to idle so the daily timer retries. A failed *install* (we found an
+                // update but couldn't apply it) gets one quiet flash; a failed *check*
+                // (commonly just offline) stays silent. A staged update is left untouched.
+                UpdateMsg::UpToDate => {
+                    if matches!(self.update, UpdateState::Checking) {
+                        self.update = UpdateState::Idle;
+                    }
+                }
+                UpdateMsg::Failed(reason) => {
+                    if matches!(self.update, UpdateState::Installing(_)) {
+                        self.flash = Some((
+                            format!("update failed — {reason}; will retry later"),
+                            Instant::now(),
+                        ));
+                    }
+                    if !matches!(self.update, UpdateState::Ready(_)) {
+                        self.update = UpdateState::Idle;
+                    }
+                }
+            }
+        }
+        // Daily re-check, only while idle (don't disturb an in-flight or staged update).
+        if matches!(self.update, UpdateState::Idle)
+            && self.last_update_check.elapsed() >= update::CHECK_EVERY
+            && update::permitted(self.root_cfg().auto_update_enabled())
+        {
+            self.last_update_check = Instant::now();
+            self.update = UpdateState::Checking;
+            update::spawn_check(self.update_tx.clone());
+        }
+    }
+
+    /// Apply a staged update by restarting into the freshly-installed binary. Only acts
+    /// once the update is [`UpdateState::Ready`]; sets the flag the event loop unwinds on
+    /// to perform the in-place re-exec (which necessarily ends the live panes).
+    pub(crate) fn apply_update(&mut self) {
+        if matches!(self.update, UpdateState::Ready(_)) {
+            self.restart = true;
+        }
     }
 
     /// Drain every pane's captured notifications and return the escape bytes to
@@ -340,7 +441,15 @@ pub fn run(ws: Workspace) -> Result<()> {
         DisableBracketedPaste
     )?;
     terminal.show_cursor()?;
-    res
+    res?;
+
+    // The user applied a staged self-update: with the terminal restored, re-exec the
+    // freshly-installed binary in place (same tmux pane). On success this never returns.
+    if app.restart {
+        let e = update::exec_restart();
+        eprintln!("mmux: could not restart into the update ({e}); reopen with `mmux`.");
+    }
+    Ok(())
 }
 
 /// Fold a batch of captured events for one session into a single notification,
@@ -376,7 +485,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             out.write_all(&notes)?;
             out.flush()?;
         }
-        if app.should_quit {
+        if app.should_quit || app.restart {
             break;
         }
         // Poll with a timeout so live process output redraws even without input.

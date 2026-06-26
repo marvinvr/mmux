@@ -36,6 +36,10 @@ pub struct Config {
     /// across clones can never expand recursively. See [`Config::load_workspace`].
     #[serde(default, rename = "linked-projects")]
     pub linked_projects: Vec<String>,
+    /// Background self-update (Homebrew installs only). `None`/unset ⇒ enabled; see
+    /// [`AutoUpdateConfig`] and [`crate::update`].
+    #[serde(default, rename = "auto-update")]
+    pub auto_update: Option<AutoUpdateConfig>,
     /// The directory the config was loaded from. Relative `cwd`s resolve against this.
     #[serde(skip)]
     pub dir: PathBuf,
@@ -55,6 +59,17 @@ pub struct Workspace {
 pub struct GitPanelConfig {
     /// Show the panel (default: true, whenever the project is a git repo). Its width
     /// always matches the left sidebar's, so there's no width knob.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// Settings for background self-update (only acts on Homebrew installs). When enabled
+/// and mmux was installed via brew, it checks for a newer release on startup and once a
+/// day, installs it in the background, and shows a quiet "restart to update" badge.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AutoUpdateConfig {
+    /// Master switch (default: true). The updater is also inert for non-brew installs
+    /// and dev builds, and can be turned off for a single run with `MMUX_NO_UPDATE`.
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
@@ -231,6 +246,12 @@ impl Config {
     pub fn git_panel_enabled(&self) -> bool {
         self.git_panel.as_ref().map(|g| g.enabled).unwrap_or(true)
     }
+
+    /// Whether background self-update is allowed by config (default: true). The updater
+    /// applies further gates of its own (brew-managed, not a dev build); see [`crate::update`].
+    pub fn auto_update_enabled(&self) -> bool {
+        self.auto_update.as_ref().map(|a| a.enabled).unwrap_or(true)
+    }
 }
 
 /// The directory's basename, or `"mmux"` if it has none (e.g. the filesystem root).
@@ -271,6 +292,7 @@ fn merge(base: Option<Config>, project: Config) -> Config {
         processes: merge_named(base.processes, project.processes, |p| p.name.clone()),
         git_panel: project.git_panel.or(base.git_panel),
         notifications: project.notifications.or(base.notifications),
+        auto_update: project.auto_update.or(base.auto_update),
         // Linking is a per-project concern; the project file wins, falling back to
         // the global only if the project lists none.
         linked_projects: if project.linked_projects.is_empty() {

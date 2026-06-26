@@ -75,6 +75,7 @@ region they apply to.
 | `x` | Close: **removes** an agent/terminal row entirely; **stops** a process (row stays) |
 | `r` | Restart the selected session (or spawn a launcher) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
+| `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
 | `[` · `]` | Switch to the previous / next project ([linked projects](04-configuration.md#linked-projects); no-op with one project) |
 | `Tab` | Jump to the git panel (or into the selected pane if there is no panel) |
 | `d` | Detach (the session keeps running in the background) |

@@ -70,8 +70,9 @@ then `run_loop` cycles:
 
 `tick()` runs every loop: it steps drag auto-scroll, prunes exited agent/terminal rows, makes the
 selected row's project the **active** one (see [follow-active](#workspaces-and-projects)), drains
-finished background git jobs from every project's panel, and gives the *visible* git panel a
-throttled refresh.
+finished background git jobs from every project's panel, gives the *visible* git panel a throttled
+refresh, and advances the [self-updater](#self-update) (drains its worker channel, runs the daily
+re-check).
 
 ## The Unified Session Model
 
@@ -178,6 +179,31 @@ its file stops being changed, its project is no longer active, or a session is s
 is `HEAD` vs the working tree (staged + unstaged together); an untracked file is diffed against
 `/dev/null` so it shows all-added.
 
+## Self-Update
+
+`update.rs` keeps a Homebrew-installed mmux current without interrupting your work. It splits
+cleanly along the inner/outer grain:
+
+- **Check + install are automatic and invisible.** A check (`brew` can't see a new release without
+  a global `brew update`, so we instead `curl` the tap formula and compare its `version` to ours)
+  runs at startup and once a day. It's cheap, so it gates the heavier install (`brew update` +
+  `brew upgrade mmux`). Both run on throwaway threads and report back over an `mpsc` channel drained
+  in `tick()` — the same shape as the git panel's pull/push jobs. Replacing the on-disk binary while
+  mmux runs is safe: brew relinks the symlink, the running process keeps its inode.
+- **Applying is user-gated.** Running the *new* code means replacing the inner process, which
+  necessarily ends the live panes (the same reason a TUI crash loses sessions — see
+  [Planned](#planned)). So the `UpdateState::Ready` step only lights a quiet bottom-right footer
+  badge; pressing `U` or clicking it sets `App.restart`, and `run()` — after restoring the
+  terminal — `exec`s the freshly-installed binary **in place** (via the stable `brew --prefix`
+  symlink, since `current_exe()` may point into a Cellar dir brew has already pruned). Same PID, so
+  tmux keeps the pane and the new TUI just redraws; `MMUX_INNER`/`MMUX_DIR` are inherited through
+  the exec. Autostart processes come back; ephemeral agents/terminals don't — which is why the
+  restart is never automatic.
+
+The updater is inert for non-brew installs (`is_brew_managed` fails) and dev builds, and is gated
+by `auto-update` config + the `MMUX_NO_UPDATE` env var. See
+[Configuration → Auto-Update](04-configuration.md#auto-update).
+
 ## Navigation, Focus, and Regions
 
 - **Navigation is positional.** `App.sel` is an index into the `Vec<Nav>` returned by
@@ -220,6 +246,7 @@ is `HEAD` vs the working tree (staged + unstaged together); an untracked file is
 | Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |
+| Self-update: auto install, user-gated restart | The on-disk swap is safe mid-run, but applying it ends the panes — so the disruptive step waits for you, behind a quiet badge, while a long task runs undisturbed. |
 
 ## Planned
 

@@ -60,6 +60,8 @@ pub(crate) enum FooterAction {
     FocusPanel,
     FocusSidebar,
     SendLeaderB,
+    /// Restart into a staged self-update (the bottom-right badge).
+    ApplyUpdate,
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
@@ -162,9 +164,11 @@ impl App {
 
     fn render_footer(&mut self, f: &mut Frame, area: Rect) {
         self.regions.footer_btns.clear();
-        // A recent reload (or its error) takes over the footer for a few seconds.
-        if let Some((msg, at)) = &self.flash {
-            if at.elapsed() < std::time::Duration::from_secs(4) {
+        // A recent reload (or its error) takes over the footer for a few seconds. The
+        // update badge still floats on top of it (rendered last), so it's never hidden.
+        let flashing = matches!(&self.flash, Some((_, at)) if at.elapsed() < std::time::Duration::from_secs(4));
+        if flashing {
+            if let Some((msg, _)) = &self.flash {
                 f.render_widget(
                     Paragraph::new(Line::from(Span::styled(
                         format!(" {msg} "),
@@ -172,8 +176,9 @@ impl App {
                     ))),
                     area,
                 );
-                return;
             }
+            self.render_update_badge(f, area);
+            return;
         }
 
         let bg = Color::Cyan;
@@ -214,6 +219,44 @@ impl App {
 
         f.render_widget(Paragraph::new(Line::from(spans)), area);
         self.regions.footer_btns = btns;
+        // The self-update badge floats on the right, drawn after the shortcuts so it sits
+        // above them and registers its own click target.
+        self.render_update_badge(f, area);
+    }
+
+    /// The bottom-right self-update badge: a faint "updating…" while brew runs in the
+    /// background, then a clickable "↻ restart to update" once the new binary is staged.
+    /// Deliberately quiet — present and discoverable, never modal or alarming. A click
+    /// (or `U` in the sidebar) restarts in place onto the new version.
+    fn render_update_badge(&mut self, f: &mut Frame, area: Rect) {
+        use super::UpdateState;
+        let (text, style, clickable) = match &self.update {
+            UpdateState::Installing(v) => (
+                format!(" ↻ updating to v{v}… "),
+                Style::default().fg(Color::DarkGray),
+                false,
+            ),
+            UpdateState::Ready(v) => (
+                format!(" ↻ restart to update → v{v} "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
+                true,
+            ),
+            UpdateState::Idle | UpdateState::Checking => return,
+        };
+        let w = (text.chars().count() as u16).min(area.width);
+        if w == 0 {
+            return;
+        }
+        let rect = Rect { x: area.x + area.width - w, y: area.y, width: w, height: 1 };
+        f.render_widget(Paragraph::new(Line::from(Span::styled(text, style))), rect);
+        if clickable {
+            // Insert at the front: the badge is drawn over the shortcut chips, so it must
+            // also win hit-testing where they overlap (`on_left_down` takes the first match).
+            self.regions.footer_btns.insert(0, (rect, FooterAction::ApplyUpdate));
+        }
     }
 
     /// The footer's segments for the current focus/layout: plain hints plus the

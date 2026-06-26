@@ -6,6 +6,7 @@ mod git;
 mod notify;
 mod pane;
 mod tmux;
+mod update;
 mod wizard;
 
 fn main() -> anyhow::Result<()> {

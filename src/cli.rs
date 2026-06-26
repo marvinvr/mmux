@@ -213,10 +213,14 @@ LINKED PROJECTS — one sidebar for several clones
 
 FIELD REFERENCE
     top level   name (str, optional) · agents[] · processes[] · git-panel (optional)
-                · notifications (optional) · linked-projects[] (paths, root config only)
+                · notifications (optional) · auto-update (optional)
+                · linked-projects[] (paths, root config only)
     agent       name* · cmd* · args[] · cwd · env{{}}
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
     git-panel   enabled (bool, default true; the panel is automatic for git repos)
+    auto-update enabled (bool, default true; Homebrew installs only — checks on start
+                and daily, installs in the background, shows a "restart to update" badge.
+                Off for non-brew/dev builds or with MMUX_NO_UPDATE=1)
     (* required. cwd is relative to the file's directory. Omitted lists/maps are empty.)
 
 QUICK START

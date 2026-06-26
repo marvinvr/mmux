@@ -17,6 +17,7 @@ The binary has two halves: a thin CLI/tmux outer shell, and the `app/` TUI it la
 | `config.rs` | The `mmux.yaml` + `~/.mmux/config.yaml` schema, load & merge (project over global; agents/processes by name), and `load_workspace` (root + linked projects, one level deep, path-deduped, capped at 8). Also the comment-preserving `append_process` YAML writer used by the `+ New Process` form. Clean — touch sparingly. |
 | `pane.rs` | One PTY-backed pane: `portable-pty` + a `vt100` parser on a reader thread, a writer thread draining an input channel, a reaper thread. A `Callbacks` impl captures the OSC title, bell, and notification OSCs (9/777/99), and `contents_block` stitches scrollback text for copy. Clean — touch sparingly. |
 | `notify.rs` | Pure formatting of the desktop-notification escape (OSC 9/777/bell), the tmux passthrough wrapping, and the `command` fallback. Unit-tested. |
+| `update.rs` | Background self-update for Homebrew installs: a cheap version check (curl the tap formula, compare versions — unit-tested) that gates a background `brew upgrade`, both reporting over an `mpsc` channel; plus the in-place re-exec (`exec_restart`) that applies a staged update. Inert for non-brew/dev builds. |
 | `clipboard.rs` | `copy(text)` — writes an OSC 52 escape to stdout **and** pipes to a local helper (`pbcopy`/`wl-copy`/`xclip`/`xsel`), with a hand-rolled base64 encoder. |
 | `git.rs` | Stateless, synchronous wrappers over the `git` CLI for the native git panel: parse `status`/`log`/`branch`; stage/discard/commit/switch/pull/push/stash; `diff` one file for the preview; build the flattened changed-files tree. Errors come back as plain strings. |
 
@@ -27,7 +28,7 @@ One inherent `impl App`, split across files. `mod.rs` defines the struct; the ot
 
 | File | Responsibility |
 | --- | --- |
-| `mod.rs` | The `App` struct (all state) and the `Project` struct (per-project cfg / counters / git panel) + `new()` + the `run()`/`run_loop()` event loop + `tick()` (follow-active, git job drain, panel refresh, exited-agent/terminal pruning) + notification drain/emit + focus/resize helpers. |
+| `mod.rs` | The `App` struct (all state) and the `Project` struct (per-project cfg / counters / git panel) + `new()` + the `run()`/`run_loop()` event loop (incl. the apply-update re-exec on exit) + `tick()` (follow-active, git job drain, panel refresh, exited-agent/terminal pruning, self-update polling) + the `UpdateState` badge state machine + notification drain/emit + focus/resize helpers. |
 | `session.rs` | The unified pane-backed model: `Session` / `Recipe` / `Kind` / `Status`. One `spawn()`/`stop()`/`kill()` lifecycle for agents, terminals, and processes. `Recipe` builders: `agent`/`process`/`shell`/`editor`. |
 | `nav.rs` | The sidebar nav list (`build_nav`) + the positional selection cursor (`sel`) + resolvers: `project_of`/`current_nav`/`pane_at`/`move_sel`/`jump_project`/`focus_project`/`select_session`/`focused_pane`. |
 | `lifecycle.rs` | Sidebar-driven actions: `spawn_agent`/`spawn_terminal`, `open_new_process`/`finish_new_process`, `open_picker`/`open_in_editor`, `activate`, `do_start`/`do_stop`/`do_restart`, `close_session`/`prune_exited`, and `reload` (live config re-read & reconcile). |

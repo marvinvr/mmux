@@ -33,6 +33,10 @@ mmux needs **tmux** on your `PATH`. The git panel uses `git`; the `Ctrl+P` file 
 files in your `$EDITOR`. See [Installation](docs/02-installation.md) for prebuilt binaries and
 the macOS code-signing note.
 
+A Homebrew install **keeps itself up to date**: it checks in the background on startup and once a
+day, installs new releases automatically, and shows a quiet `↻ restart to update` badge — press
+`U` (or click it) to restart in place. See [Auto-Update](docs/04-configuration.md#auto-update).
+
 ## Quick Start
 
 ```sh

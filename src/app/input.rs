@@ -51,6 +51,9 @@ impl App {
             KeyCode::Char('x') => self.do_stop(),
             KeyCode::Char('r') => self.do_restart(),
             KeyCode::Char('R') => self.reload(),
+            // Apply a staged self-update (only acts when the "↻ restart to update" badge
+            // is showing); otherwise a no-op.
+            KeyCode::Char('U') => self.apply_update(),
             KeyCode::Char('d') => crate::tmux::detach(),
             // Jump between projects (no-op in a single-project workspace).
             KeyCode::Char(']') => self.jump_project(1),
@@ -440,6 +443,7 @@ impl App {
             }
             FooterAction::FocusSidebar => self.focus = Focus::Sidebar,
             FooterAction::SendLeaderB => self.send_focused(vec![0x02]),
+            FooterAction::ApplyUpdate => self.apply_update(),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
             FooterAction::GitDiff => self.git_toggle_diff(),
