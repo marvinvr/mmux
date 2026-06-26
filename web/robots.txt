@@ -1,0 +1,39 @@
+# mmux.org — everyone is welcome: humans, search crawlers, and AI agents.
+# Agent-oriented guide:  https://mmux.org/llms.txt
+# Source of truth:       https://github.com/marvinvr/mmux
+
+User-agent: *
+Allow: /
+
+# AI assistants & crawlers are explicitly allowed to read, index, and cite mmux.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://mmux.org/sitemap.xml

@@ -579,22 +579,32 @@ product diagram, not characters.
 
 ```
 web/
-  index.html    # all sections (§4) + the #tw skeleton (§5.1) + inline SVG icons. Loads:
+  index.html    # all sections (§4) + the #tw skeleton (§5.1) + inline SVG icons. <head> also
+                #   carries canonical + Open Graph/Twitter tags, a sitemap/llms.txt alternate,
+                #   and a schema.org SoftwareApplication application/ld+json block. Loads:
                 #   <link rel="stylesheet" href="styles.css">
                 #   <script defer src="scenes.js"></script>   (before tui.js)
                 #   <script defer src="tui.js"></script>
   styles.css    # the whole v2 system (§2,§3) + every class in §4/§5/§9. no @import/remote url().
   scenes.js     # window.MMUX_SCENES (§7) with realistic content (§8). pure data.
   tui.js        # renderTUI(state)+renderLine (§5.4) + scroll & sandbox drivers + copy + nav.
+  robots.txt    # welcomes humans, search crawlers, and named AI bots; points to the sitemap.
+  sitemap.xml   # the single canonical URL (https://mmux.org/).
+  llms.txt      # llmstxt.org-format guide: summary + install + links to the GitHub docs.
+  assets/
+    og-image.png  # 1200×630 social card referenced by the og/twitter tags.
+    og-image.svg  # editable source for og-image.png (regenerate: see the comment in the file).
   Dockerfile    # nginx:alpine. Build-time fingerprints css/js to <name>.<hash>.<ext>
                 #   and rewrites the quoted refs in index.html (so the 1y immutable
                 #   cache is safe — changed file ⇒ new URL ⇒ refetch, no purge on deploy).
+                #   robots/sitemap/llms + assets/ are copied verbatim (stable URLs, not hashed).
   nginx.conf    # gzip + strict CSP + 1y immutable cache on the fingerprinted assets.
   DESIGN.md     # this file.
   README.md / fonts/README.md / .dockerignore  # unchanged.
 ```
 - Copy buttons: `button.copy[data-copy]` → clipboard + textarea fallback; flash `copied` ~1s.
-- No inline JS handlers (CSP `script-src 'self'`). Inline SVG icons + a `data:` favicon are fine.
+- No inline JS handlers (CSP `script-src 'self'`). Inline SVG icons, a `data:` favicon, and a
+  single `application/ld+json` data block (CSP does not treat data blocks as script) are fine.
 - One global namespace `window.MMUX` + `window.MMUX_SCENES`.
 
 ---

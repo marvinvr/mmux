@@ -5,6 +5,11 @@ FROM nginx:1.27-alpine
 # Static assets (per DESIGN.md §8). DESIGN.md / README.md are NOT copied.
 COPY index.html styles.css tui.js scenes.js /usr/share/nginx/html/
 COPY fonts/ /usr/share/nginx/html/fonts/
+COPY assets/ /usr/share/nginx/html/assets/
+
+# Agent/SEO files served from the root with stable (un-fingerprinted) URLs:
+# robots.txt + sitemap.xml for crawlers, llms.txt as an LLM-readable guide.
+COPY robots.txt sitemap.xml llms.txt /usr/share/nginx/html/
 
 # Fingerprint the assets: rename each to <name>.<contenthash>.<ext> and rewrite
 # the quoted references in index.html to match. This is what makes the 1y

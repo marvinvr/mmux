@@ -1,0 +1,60 @@
+# mmux
+
+> A persistent, per-directory terminal multiplexer for AI coding agents and dev processes. A single
+> Rust binary opens a TUI — a sidebar of agents, terminals and processes, a main pane, and a native
+> git panel — running inside an invisible per-directory tmux session, so every session survives
+> closing the terminal or dropping SSH.
+
+mmux gives each project directory exactly one multiplexer. Type `mmux` in a directory and you get a
+terminal UI: a left sidebar of **Agents** (Claude, Codex, or any command you spawn on demand),
+**Terminals**, and **Processes** (dev servers and scripts you start, stop and watch), a main pane
+showing the focused program, and a built-in **git panel** on the right. Because the whole thing
+runs inside a per-directory tmux session, it keeps running after you close the terminal or drop
+SSH — run `mmux` again, or `mmux attach` from anywhere, to rejoin. When an agent rings the bell or
+emits a notification escape (for example, Claude Code announcing it is done), mmux lights a red
+attention dot on the sidebar row and raises a native desktop notification, even over SSH.
+
+- Homepage: https://mmux.org
+- Source, issues, releases: https://github.com/marvinvr/mmux
+- License: MIT
+- Implementation: a single Rust binary (ratatui TUI); requires `tmux` on your `PATH`.
+- Platforms: macOS and Linux.
+
+## Install
+
+Homebrew (recommended — a Homebrew install keeps itself up to date in the background):
+
+```
+brew install marvinvr/mmux/mmux
+```
+
+From source with Rust: `cargo install --path .`. Then run `mmux` in any project directory.
+`mmux init` runs an interactive setup (agents, start commands, linked projects); `mmux attach`
+rejoins a running session from anywhere; `mmux check` prints the effective merged config; and
+`mmux docs` prints a self-contained setup guide.
+
+## Documentation
+
+- [Overview](https://github.com/marvinvr/mmux/blob/main/docs/00-overview.md): what mmux is and the problem it solves
+- [Quick Start](https://github.com/marvinvr/mmux/blob/main/docs/01-quick-start.md): first run, init, attach
+- [Installation](https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md): Homebrew, prebuilt binaries, the macOS code-signing note
+- [Usage](https://github.com/marvinvr/mmux/blob/main/docs/03-usage.md): the interface, every keybinding, the git panel, the mouse
+- [Configuration](https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md): the YAML schema, the global + per-project merge, linked projects, auto-update
+- [Notifications](https://github.com/marvinvr/mmux/blob/main/docs/05-notifications.md): bells, notification escapes, desktop notifications over SSH
+- [Architecture](https://github.com/marvinvr/mmux/blob/main/docs/06-architecture.md): the inner/outer tmux split, the unified Session model, the native git panel
+- [Module Map](https://github.com/marvinvr/mmux/blob/main/docs/07-module-map.md): a file-by-file index of `src/`
+- [Contributing](https://github.com/marvinvr/mmux/blob/main/docs/08-contributing.md): conventions, tests, the release flow
+
+## Key facts
+
+- One mmux per directory, kept alive inside a tmux session; it survives terminal close and SSH drops.
+- Agents, terminals and processes share one unified session model — each is spawned, stopped and restarted from the sidebar.
+- The git panel is native (Changes / Branches / Recent boxes), not an embedded external tool.
+- Linked projects group sibling clones into one sidebar; the git panel follows whichever project is active.
+- Config is two layers merged at launch: a global `~/.mmux/config.yaml` with each project's `mmux.yaml` on top.
+- Common keys: `↑`/`↓` move · `Enter` open or spawn · `s`/`x`/`r` start/close/restart · `Tab` focus the git panel · `Ctrl+P` file picker · `d` detach · `q` quit · `Ctrl-b h` return to the sidebar.
+
+## Optional
+
+- [README](https://github.com/marvinvr/mmux/blob/main/README.md): the short version of everything above
+- [AGENTS.md](https://github.com/marvinvr/mmux/blob/main/AGENTS.md): orientation for agents and humans working on the mmux codebase
