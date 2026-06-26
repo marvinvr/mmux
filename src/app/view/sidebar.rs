@@ -242,11 +242,11 @@ impl App {
         }
     }
 
-    /// The current frame of the working spinner. Time-based (≈12 fps) rather than
-    /// frame-counted, so every agent's spinner rotates in step and at a steady speed
-    /// no matter how often the UI happens to repaint.
+    /// The current frame of the working spinner. Time-based (200 ms/frame, a full
+    /// turn every ~0.8 s) rather than frame-counted, so every agent's spinner rotates
+    /// in step and at a steady speed no matter how often the UI happens to repaint.
     pub(crate) fn spinner(&self) -> &'static str {
-        let i = (self.start.elapsed().as_millis() / 80 % SPINNER.len() as u128) as usize;
+        let i = (self.start.elapsed().as_millis() / 200 % SPINNER.len() as u128) as usize;
         SPINNER[i]
     }
 

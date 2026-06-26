@@ -39,10 +39,13 @@ pub(crate) fn badge(s: Status) -> &'static str {
     }
 }
 
-/// Frames of the "working" spinner shown before a busy agent's name — the classic
-/// rotating braille dots. The caller picks the frame from a time-based index (see
-/// [`crate::app::App::spinner`]) so every agent's spinner turns in step.
-pub(crate) const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/// Frames of the "working" spinner shown before a busy agent's name — a rotating
+/// braille snake confined to the cell's *middle* two rows (dots 2,3,5,6) so it sits
+/// dead-center on the name's baseline instead of floating high (top rows) or sinking
+/// low (bottom rows). That band only has four dot positions, hence four frames; the
+/// caller ([`crate::app::App::spinner`]) holds each one longer to keep the spin rate
+/// steady, and indexes by time so every agent's spinner turns in step.
+pub(crate) const SPINNER: [&str; 4] = ["⠲", "⠴", "⠦", "⠖"];
 
 /// The leading glyph + name style for an agent or terminal row. Unlike a process
 /// (where green = "it's up" is what you want to know), an agent's useful signal is
