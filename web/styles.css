@@ -506,7 +506,9 @@ section {
   flex: 1;
   display: flex;
   gap: 3px;
-  padding: 3px;
+  /* a little extra room up top so the boxes' title chips sit clear of the window
+   * bar — over the terminal bg, never over the lighter chrome (keeps them seamless). */
+  padding: .5rem 3px 3px;
   min-height: 0;
   background: var(--surface);
 }
@@ -523,11 +525,12 @@ section {
 }
 .tw-region--sidebar { flex: none; width: 190px; }
 .tw-region--main { flex: 1; min-width: 0; }
-/* the title chip sits ON the top border line, its bg masking the line behind it —
- * exactly how ratatui paints a Block title over the border characters. */
+/* the title chip masks the top border line and the text hangs just inside it — so
+ * it reads as a ratatui Block title without the glyphs spilling above the box. Its
+ * bg matches the terminal exactly, so the masked strip is seamless. */
 .tw-region-title {
   position: absolute;
-  top: -.62em;
+  top: -.3em;
   left: .55rem;
   z-index: 1;
   max-width: calc(100% - 1.2rem);
@@ -535,6 +538,7 @@ section {
   background: var(--surface);
   color: var(--text-2);
   font-size: .76rem;
+  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -551,7 +555,7 @@ section {
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: .4rem 0 .25rem;
+  padding: .7rem 0 .25rem; /* top clears the box's title chip */
   overflow-y: auto;
 }
 
@@ -720,7 +724,7 @@ section {
 
 .tw-screen {
   flex: 1;
-  padding: .65rem .85rem;
+  padding: .8rem .85rem .65rem; /* top clears the box's title chip */
   overflow: auto;
   line-height: 1.5;
   color: var(--text-2);
@@ -809,25 +813,24 @@ section {
   position: relative;
   flex: 0 0 auto;
   margin: .55rem 0 0;
-  padding: .35rem .3rem .25rem;
+  padding: .6rem .3rem .25rem; /* top clears the box's title chip */
   border: 1px solid var(--tui-border);
   border-radius: 0;
 }
-/* the stack fills the panel's full height: Changes (the file tree, first box) takes
- * the slack, the way the real git panel gives the tree the room. */
 /* the stack spans the panel's full height, flush top and bottom, so the three boxes
  * line up exactly with the sidebar/main region boxes flanking them. */
 .git-box:first-child { flex: 1 1 auto; min-height: 0; margin-top: 0; }
 .git-box:last-child { margin-bottom: 0; }
 .git-box-title {
   position: absolute;
-  top: -.62em;
+  top: -.3em;
   left: .45rem;
   max-width: calc(100% - 1rem);
   padding: 0 .3rem;
   background: var(--surface);
   color: var(--muted);
   font-size: .68rem;
+  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1150,6 +1153,10 @@ section {
   .sb-sub { display: none; }
 
   .nav-links { gap: .8rem; font-size: .85rem; }
+  /* phones: the brand (logo) stays on the left; on the right keep only github —
+   * the in-page section links are too much in a narrow header. */
+  .nav-links a[href^="#"],
+  .nav-links .nav-sep { display: none; }
   .hero-install,
   .install-row { width: 100%; }
 }

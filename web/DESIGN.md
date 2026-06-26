@@ -135,6 +135,7 @@ Breakpoints: `--bp-md: 900px` (terminal panel hides, grid → fewer cols), `--bp
 ### 4.1 `<header class="site-nav">` — sticky, translucent
 - `.brand` wordmark `mmux` (gradient), links to `#top`.
 - `.nav-links`: `the demo · features · how it works · github` (github → https://github.com/marvinvr/mmux).
+  On phones (≤640px) the in-page section links drop out, leaving just the `.brand` logo and `github`.
 - `.btn.btn-brand` "install" → scrolls to `#install` (glowing gradient button).
 
 ### 4.2 `<section id="hero">` — text hero + glow (NO terminal frame art)
