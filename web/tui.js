@@ -117,9 +117,9 @@
       program: "claude",
       title: " Claude — ready ",
       lines: [
-        { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }] },
-        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }] },
-        { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }] },
+        { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
+        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }], cls: "art" },
+        { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
         "",
         { tokens: [{ t: "  Ask Claude to do something — type a prompt and press enter.", c: "dim" }] },
         "",
@@ -549,6 +549,7 @@
    * ===================================================================== */
   var scrollDriver = (function () {
     var scenes = [];
+    var bounds = []; // cumulative scroll edges per scene (weighted), in [0,1]
     var demo, stage, captionHost;
     var active = false; // #demo in viewport?
     var rafQueued = false;
@@ -562,6 +563,7 @@
       captionHost = $(".demo-caption", demo || document);
       if (!demo || !stage) return; // nothing to drive
 
+      buildBounds();
       buildCaptions();
 
       if (reducedMotion() || !scenes.length) {
@@ -586,6 +588,24 @@
       window.addEventListener("scroll", onScroll, { passive: true });
       window.addEventListener("resize", onScroll, { passive: true });
       onScroll();
+    }
+
+    // Each scene gets scroll proportional to its `weight` (default 1) — so the
+    // opening "type mmux" scene can hold the stage a little longer than the rest.
+    // bounds[i] is the cumulative upper edge of scene i in [0,1]; tick() finds the
+    // scene that the scroll-progress p falls into.
+    function sceneWeight(s) {
+      return s && typeof s.weight === "number" && s.weight > 0 ? s.weight : 1;
+    }
+    function buildBounds() {
+      var total = 0, i;
+      for (i = 0; i < scenes.length; i++) total += sceneWeight(scenes[i]);
+      bounds = [];
+      var acc = 0;
+      for (i = 0; i < scenes.length; i++) {
+        acc += sceneWeight(scenes[i]);
+        bounds.push(total > 0 ? acc / total : (i + 1) / Math.max(1, scenes.length));
+      }
     }
 
     // Pre-render every caption as a hidden child; the driver toggles --visible.
@@ -635,7 +655,9 @@
 
       var n = scenes.length;
       if (!n) return;
-      var idx = clamp(Math.floor(p * n), 0, n - 1);
+      // weighted bands: walk to the first scene whose cumulative edge p hasn't passed.
+      var idx = 0;
+      while (idx < n - 1 && p >= bounds[idx]) idx++;
 
       if (idx !== currentScene) {
         showScene(idx);
@@ -664,7 +686,7 @@
         revealTimer = null;
       }
 
-      // Clear any prior boot animation so it only replays when scene 0 re-enters.
+      // Clear any prior boot animation so it only replays when a boot scene re-enters.
       var tw = twRefs("tw");
       if (tw && tw.root) tw.root.classList.remove("tw--boot");
 
@@ -685,16 +707,30 @@
       } else {
         renderTUI(base);
       }
+
+      // A scene flagged `boot` pops the mmux layout in — the sidebar/panel slide,
+      // the screen fades (scene 1, right after `mmux` is typed in scene 0).
+      if (sc.boot && !reducedMotion()) applyBoot();
     }
 
-    /* Reveal hint dispatch. Scene 0 carries a bare `term`: type `mmux` into it,
-     * then boot into the mmux UI (`state`). Otherwise: typing reveal, then a
-     * line-stream fallback. */
+    // The one-shot "mmux takes over the window" animation: replay tw--boot from the
+    // top by toggling the class with a reflow in between.
+    function applyBoot() {
+      var tw = twRefs("tw");
+      if (!tw || !tw.root) return;
+      tw.root.classList.remove("tw--boot");
+      void tw.root.offsetWidth; // reflow so the animation restarts on re-entry
+      tw.root.classList.add("tw--boot");
+    }
+
+    /* Reveal hint dispatch. Scene 0 carries a bare `term`: type `mmux` into it and
+     * rest there (no takeover — the layout boots in on the next scene). Otherwise:
+     * typing reveal, then a line-stream fallback. */
     function runReveal(sc) {
       var base = sc.state || {};
       var reveal = sc.type || {};
       if (sc.term && reveal.target === "main" && reveal.text) {
-        launchReveal(sc.term, base, reveal.text);
+        typeIntoBare(sc.term, reveal.text);
         return;
       }
       if (reveal.target === "main" && reveal.text && reveal.text.length <= 16) {
@@ -704,42 +740,33 @@
       streamLines(base);
     }
 
-    // Scene 0: type `text` into the bare terminal, hold a beat, then let the mmux
-    // UI take over the window (a one-shot `tw--boot` animation sells the "pop up").
-    function launchReveal(term, booted, full) {
+    // Scene 0: type `text` into the bare terminal, char by char, and stay there. The
+    // mmux UI does NOT take over here — scene 1 boots the layout in. Resting on the
+    // plain terminal is what keeps this step visible while scrolling down (not just
+    // when scrolling back up into it).
+    function typeIntoBare(term, full) {
       var chars = full.split("");
-      var step = Math.max(60, Math.floor(440 / chars.length));
+      var step = Math.max(75, Math.floor(560 / chars.length));
       var prompt = "❯ ";
       var l0 = term.main && term.main.lines && term.main.lines[0];
       if (l0 && l0.tokens && l0.tokens[0] && l0.tokens[0].t) prompt = l0.tokens[0].t;
 
-      function paint(n, cursor) {
+      function paint(n) {
         var s = cloneState(term);
         s.main = s.main || {};
         s.main.placeholder = null;
         s.main.lines = [{ tokens: [{ t: prompt, c: "prompt" }, { t: full.slice(0, n) }] }];
-        s.main.cursor = cursor;
+        s.main.cursor = true;
         renderTUI(s);
       }
 
-      function boot() {
-        renderTUI(booted);
-        var tw = twRefs("tw");
-        if (tw && tw.root) {
-          tw.root.classList.remove("tw--boot");
-          void tw.root.offsetWidth; // reflow so the animation restarts on re-entry
-          tw.root.classList.add("tw--boot");
-        }
-      }
-
       var shown = 0;
+      paint(0);
       function frame() {
         shown++;
-        paint(shown, true);
-        revealTimer = setTimeout(shown < chars.length ? frame : boot, shown < chars.length ? step : 520);
+        paint(shown);
+        if (shown < chars.length) revealTimer = setTimeout(frame, step);
       }
-
-      paint(0, true);
       revealTimer = setTimeout(frame, step);
     }
 
@@ -1320,33 +1347,49 @@
       }
     }
 
-    /* ---- the "working forever" loop for Claude / Codex ---- */
+    /* ---- the "working forever" loop for Claude / Codex ----
+     * Each EVENT is a small group of lines (a tool call + its result) that gets
+     * appended as a unit, walked in order, so the scrollback reads like a real
+     * session — Read → Search → Edit → Bash → a line of prose, then around again.
+     * The live tail is the spinner + status line each agent actually prints. */
     var CLAUDE_WORDS = ["Pondering", "Pontificating", "Noodling", "Percolating", "Finagling",
       "Ruminating", "Schlepping", "Conjuring", "Marinating", "Galvanizing", "Spelunking",
-      "Transmuting", "Coalescing", "Wrangling", "Tinkering", "Cogitating"];
-    var CLAUDE_STARS = ["✻", "✶", "✳", "✺"];
+      "Transmuting", "Coalescing", "Wrangling", "Tinkering", "Cogitating", "Simmering",
+      "Vibing", "Brewing", "Hatching", "Mulling", "Puzzling"];
+    var CLAUDE_STARS = ["✻", "✶", "✳", "✺", "✦"];
     var DOTS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     var CLAUDE_EVENTS = [
-      { tokens: [{ t: "●  ", c: "ai" }, { t: "Read", c: "fn" }, { t: "  src/auth.rs", c: "path" }] },
-      { tokens: [{ t: "●  ", c: "ai" }, { t: "Grep", c: "fn" }, { t: '  "TokenService"', c: "path" }] },
-      { tokens: [{ t: "●  ", c: "ai" }, { t: "Edit", c: "fn" }, { t: "  src/token.rs", c: "path" }] },
-      { text: "     +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
-      { tokens: [{ t: "●  ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "  cargo test auth" }] },
-      { tokens: [{ t: "     " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] },
-      { tokens: [{ t: "●  ", c: "ai" }, { t: "weighing the edge cases…", c: "dim" }] },
+      [{ tokens: [{ t: "⏺ ", c: "ai" }, { t: "Read", c: "fn" }, { t: "(", c: "dim" }, { t: "src/auth.rs", c: "path" }, { t: ")", c: "dim" }] },
+       { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "Read 248 lines", c: "dim" }] }],
+      [{ tokens: [{ t: "⏺ ", c: "ai" }, { t: "Search", c: "fn" }, { t: "(", c: "dim" }, { t: 'pattern: "TokenService"', c: "path" }, { t: ")", c: "dim" }] },
+       { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "Found 4 files", c: "dim" }] }],
+      [{ tokens: [{ t: "⏺ ", c: "ai" }, { t: "Update", c: "fn" }, { t: "(", c: "dim" }, { t: "src/token.rs", c: "path" }, { t: ")", c: "dim" }] },
+       { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "Updated with 8 additions and 2 removals", c: "dim" }] },
+       { text: "       +  pub fn issue(&self, uid: UserId) -> Result<Token> {", cls: "ln-add" }],
+      [{ tokens: [{ t: "⏺ ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "(", c: "dim" }, { t: "cargo test auth", c: "dim" }, { t: ")", c: "dim" }] },
+       { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "test result: " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] }],
+      [{ tokens: [{ t: "⏺ ", c: "ai" }, { t: "Wiring the call site to delegate to " }, { t: "TokenService", c: "type" }, { t: " now." }] }],
     ];
     var CODEX_EVENTS = [
-      { tokens: [{ t: "• ", c: "codex" }, { t: "Explored " }, { t: "src/auth.rs", c: "path" }] },
-      { tokens: [{ t: "• ", c: "codex" }, { t: "Edited " }, { t: "src/token.rs", c: "path" }] },
-      { tokens: [{ t: "• ", c: "codex" }, { t: "Ran " }, { t: "cargo test" }, { t: "  →  ", c: "dim" }, { t: "ok", c: "ok" }] },
-      { tokens: [{ t: "• ", c: "codex" }, { t: "reasoning about the token flow…", c: "dim" }] },
+      [{ tokens: [{ t: "• ", c: "codex" }, { t: "Explored " }, { t: "src/auth.rs", c: "path" }] }],
+      [{ tokens: [{ t: "• ", c: "codex" }, { t: "Edited " }, { t: "src/token.rs", c: "path" }] },
+       { tokens: [{ t: "  └ ", c: "dim" }, { t: "+8 −2", c: "dim" }] }],
+      [{ tokens: [{ t: "• ", c: "codex" }, { t: "Ran " }, { t: "cargo test", c: "dim" }] },
+       { tokens: [{ t: "  └ ", c: "dim" }, { t: "ok", c: "ok" }, { t: " — 12 passed", c: "dim" }] }],
+      [{ tokens: [{ t: "• ", c: "codex" }, { t: "Routing token issuance through " }, { t: "TokenService::issue", c: "type" }, { t: "." }] }],
     ];
+
+    // 1234 → "1.2k", 540 → "540" — for the live token counter in the status line.
+    function fmtTokens(n) {
+      return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
+    }
 
     var workTimer = null, workTok = 0, workStart = 0, workTick = 0;
     function startWorking(kind) {
       var m = state.main;
       m.working = true;
       m.cursor = false;
+      m._ev = 0; // walk the event list in order
       workTok++;
       m._tok = workTok;
       workTick = 0;
@@ -1358,7 +1401,10 @@
         workTick++;
         if (workTick % 5 === 0) {
           var pool = kind === "codex" ? CODEX_EVENTS : CLAUDE_EVENTS;
-          state.main.history = (state.main.history || []).concat([pool[Math.floor(Math.random() * pool.length)]]);
+          var idx = (state.main._ev || 0) % pool.length;
+          state.main._ev = idx + 1;
+          var ev = pool[idx];
+          state.main.history = (state.main.history || []).concat(Array.isArray(ev) ? ev : [ev]);
           capHistory(state.main);
         }
         paintWorking(kind);
@@ -1367,17 +1413,28 @@
     }
 
     // Render history + the live spinner/status tail (no input cursor while working).
+    // The tail is what each agent really prints: Claude's colour-cycling ✻ + a
+    // gerund + (Ns · ↓ N tokens · esc to interrupt); Codex's braille spinner + Working.
     function paintWorking(kind) {
       var m = state.main;
       if (!m) return;
       var elapsed = Math.max(0, Math.round((nowMs() - workStart) / 1000));
+      var toks = fmtTokens(Math.max(0, Math.round(elapsed * 215)));
       var tail;
       if (kind === "codex") {
-        tail = { tokens: [{ t: DOTS[workTick % DOTS.length] + " ", c: "codex" }, { t: "Working " }, { t: "(" + elapsed + "s · esc to interrupt)", c: "dim" }] };
+        tail = { tokens: [
+          { t: DOTS[workTick % DOTS.length] + " ", c: "codex" },
+          { t: "Working ", c: "codex" },
+          { t: "(" + elapsed + "s · " + toks + " tokens · esc to interrupt)", c: "dim" },
+        ] };
       } else {
         var star = CLAUDE_STARS[workTick % CLAUDE_STARS.length];
         var word = CLAUDE_WORDS[Math.floor(workTick / 6) % CLAUDE_WORDS.length];
-        tail = { tokens: [{ t: star + " ", c: "ai" }, { t: word + "… ", c: "ai" }, { t: "(esc to interrupt · " + elapsed + "s)", c: "dim" }] };
+        tail = { tokens: [
+          { t: star + " ", c: "ai" },
+          { t: word + "… ", c: "ai" },
+          { t: "(" + elapsed + "s · ↓ " + toks + " tokens · esc to interrupt)", c: "dim" },
+        ] };
       }
       m.lines = (m.history || []).concat([tail]);
       m.cursor = false;
@@ -1544,9 +1601,9 @@
   // The real Claude Code welcome banner (its block-glyph logo), captured from `claude`.
   function claudeBanner() {
     return [
-      { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }] },
-      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }] },
-      { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }] },
+      { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
+      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }], cls: "art" },
+      { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
     ];
   }
 
@@ -1556,15 +1613,16 @@
   function codexBox(rows) {
     var W = 40;
     var dash = "─".repeat(W - 2);
-    var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }] }];
+    var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }], cls: "art" }];
     rows.forEach(function (segs) {
       var len = segs.reduce(function (a, s) { return a + (s.t || "").length; }, 0);
       var pad = Math.max(0, W - 4 - len);
       out.push({
         tokens: [{ t: "│ ", c: "dim" }].concat(segs).concat([{ t: " ".repeat(pad) + " │", c: "dim" }]),
+        cls: "art",
       });
     });
-    out.push({ tokens: [{ t: "╰" + dash + "╯", c: "dim" }] });
+    out.push({ tokens: [{ t: "╰" + dash + "╯", c: "dim" }], cls: "art" });
     return out;
   }
   function cloneState(s) {
@@ -1656,8 +1714,8 @@
    * ===================================================================== */
   function boot() {
     // Render an initial state so the demo window is never blank before scroll fires.
-    // Scene 0 opens on its bare "before mmux" terminal (the launch reveal then types
-    // `mmux` and boots the UI once #demo scrolls into view).
+    // Scene 0 opens on its bare "before mmux" terminal; the reveal types `mmux` there
+    // and rests, and scene 1 boots the mmux layout in once #demo scrolls into view.
     var sc0 = window.MMUX_SCENES && window.MMUX_SCENES[0];
     var first = sc0 ? sc0.term || sc0.state || DEFAULT_STATE : DEFAULT_STATE;
     renderTUI(first);

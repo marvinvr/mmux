@@ -251,24 +251,29 @@ Sidebar inner (JS-produced):
   `mmux` name (bright) + path (muted). Right: `.tw-titlebar-meta` `⌁ tmux` (faint), or branch.
 - **Sidebar `.tw-sidebar`:** ~190px col, `--bg-2`, 1px right border. **Order matches the real tool
   (`src/app/nav.rs build_nav`): the `+ New …` launcher comes FIRST in each section, then the
-  sessions.** Section heads `.sb-head` uppercase, tracked, **`--cyan`** (theme.rs paints them cyan),
-  small. Active row: the tool's desaturated indigo selection (`#2d2d3c`) + a green cursor edge +
-  brighter text. Status dot `.sb-dot` colored by `data-status` (running → `--running`, exited →
-  `--faint`, stopped → `--muted`). Launchers: a green `+` and green name (the tool paints them
-  `Color::Green`), hover → `--green`. Bell `.sb-bell` coral.
+  sessions.** Rows are **compact** (tight vertical padding / line-height) so launchers + sessions for
+  agents, terminals and processes all fit without scrolling. Section heads `.sb-head` uppercase,
+  tracked, **`--cyan`** (theme.rs paints them cyan), small. Active row: the tool's desaturated indigo
+  selection (`#2d2d3c`) + a green cursor edge + brighter text. Status dot `.sb-dot` colored by
+  `data-status` (running → `--running`, exited → `--faint`, stopped → `--muted`). Launchers: a green
+  `+` and green name (the tool paints them `Color::Green`), hover → `--green`. Bell `.sb-bell` coral.
 - **Main `.tw-main`:** the focused program. `.tw-tab` = a small top label (program name, a faint
   status). `.tw-screen` = the content (§5.4), comfortable line-height (~1.6), left-padded.
 - **Panel `.tw-panel`:** ~196px right col, `--bg-2`, 1px left border. The **native git panel**:
   three bordered `.git-box`es — **Changes** (a file tree with `[✓]`/`[~]`/`[ ]` staging checkboxes,
   names colored by change type, the cursor row on a magenta bar), **Branches** (current `●` green),
   **Recent** (short hash + summary) — each with its title sitting on the top border like a ratatui
-  `Block`; the focused box is bordered magenta. Mirrors `src/app/view/git.rs`.
+  `Block`; the focused box is bordered magenta. The stack **fills the panel's full height** — the
+  Changes box (the file tree, first box) takes the slack — so there's no dead space below Recent.
+  Mirrors `src/app/view/git.rs`.
 - **Status bar `.tw-status`:** thin bottom bar. In the scroll demo it shows a per-scene **hint of
   what's happening** (the demo isn't interactive); in the playable sandbox it shows the real,
   working key hints keyed by focus.
 - **Bare mode (`state.bare`):** scene 0's "before mmux" terminal — the sidebar, panel, status, tab
   and the `mmux` titlebar name/meta are hidden (`.tw--bare`), leaving a plain full-width shell. The
-  launch reveal types `mmux` into it, then a one-shot `.tw--boot` animation slides the chrome in.
+  reveal types `mmux` into it and **rests there** (no in-scene takeover, so the step stays visible
+  while scrolling down — not only when scrolling back up into it). The mmux layout "pops up" in
+  **scene 1** (`boot:true` → a one-shot `.tw--boot` animation slides the chrome in).
 - **Workspace pager `.sb-switch`:** linked clones render **one at a time** (stacking N clones is
   unreadable in a ~120–190px column). Only the active clone's rows show; a quiet footer pinned to
   the sidebar bottom — `‹ name •∘ ›` (chevrons + active name + position dots) — switches between
@@ -303,8 +308,10 @@ state = {
   overlay: "disconnected"|"reattached" | null,
 }
 
-// Scene 0 additionally carries `term` (a bare-terminal state) alongside `state`:
-// the launch reveal types `mmux` into `term`, then boots into `state`.
+// Scene 0 additionally carries `term` (a bare-terminal state): the reveal types
+// `mmux` into it and rests there. Scenes may also carry `weight` (how much scroll
+// the scene gets; default 1) and `boot:true` (replay the .tw--boot "pop up" when
+// the scene renders — scene 1, right after `mmux` is typed).
 ```
 
 ### 5.4 Line / token model — how realistic content is rendered
@@ -314,11 +321,14 @@ state = {
 - `{ text: "…", cls?: "ln-add"|"ln-del"|"ln-cmd"|"ln-dim" }` → line-level styled.
 - `{ tokens: [ {t:"text", c:"tone"} , … ], cls?: "…" }` → spans `.tok-<tone>` per token.
 
-Tones (`c`): `kw fn str num comment type path op add del ok warn info ai dim prompt brand`.
+Tones (`c`): `kw fn str num comment type path op add del ok warn info ai dim prompt brand`, plus
+`claude` (the warm-orange Claude logo) and `codex` (the teal Codex `>_`/`›`). Line `cls` adds
+`art` for the agent welcome banners (block-glyph logo / Codex box): it tightens leading to terminal
+line-height so the glyph rows tile into one mark instead of tearing apart at the screen's 1.7 leading.
 Renderer `renderLine(line)`:
 - div `.screen-line` (+ `cls`); string → text node; `{text}` → text node; `{tokens}` → one
   `<span class="tok-<c>">` per token (no class if `c` empty/omitted). Append a `.screen-cursor` `▮`
-  to the last line when `main.cursor`. Whitespace preserved (`white-space: pre-wrap`).
+  to the last line when `main.cursor`. Whitespace preserved (`white-space: pre-wrap`; `art` → `pre`).
 
 Tone → color: `add/ok→--add`, `del→--del`, `warn→--warn`, `info/path→--info/--tok-path`,
 `ai→--ai`, `kw→--tok-kw`, `fn→--tok-fn`, `str→--tok-str`, `num→--tok-num`,
@@ -338,12 +348,16 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 - `#demo` tall; a `position: sticky` `.demo-stage` (~100vh) pins `#tw` while `.demo-caption` blocks
   cross-fade beside it. rAF-throttled scroll→progress→scene index over `window.MMUX_SCENES`;
   IntersectionObserver gates it. Last scene = sandbox hand-off.
+- **Weighted bands:** each scene gets scroll proportional to its `weight` (default 1); progress `p`
+  is mapped to a scene via cumulative edges (`buildBounds`), so the opening "type mmux" scene holds
+  the stage a little longer (`weight ~1.7`) and reads clearly while scrolling **down**, not only up.
 - **Streaming reveal** for the agent scenes (Claude *and* Codex): reveal the agent's `main.lines`
   progressively (line by line, ≤ ~900ms total) so it feels like the agent is working.
-- **Launch reveal** for scene 0: render its bare `term` (a plain terminal), type `mmux` into it
-  char-by-char, hold a beat, then `renderTUI(state)` with a one-shot `.tw--boot` animation so the
-  mmux UI visibly takes over the window. The demo's first paint is `term`, so it opens on the
-  plain terminal.
+- **Bare reveal** for scene 0: render its bare `term` (a plain terminal) and type `mmux` into it
+  char-by-char, then rest. No takeover here — the layout pops up on the next scene. The demo's first
+  paint is `term`, so it opens on the plain terminal.
+- **Boot pop** for any `boot:true` scene (scene 1): after rendering, replay the one-shot `.tw--boot`
+  animation so the mmux chrome visibly slides/fades into the window — the "it pops up" beat.
 - reduced-motion: no scrub; render the last scene statically; captions become a stacked list;
   enable the sandbox immediately.
 
@@ -357,9 +371,12 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 - **Typeable panes** (focus main): a focused **terminal / Claude / Codex** pane takes keystrokes as
   input (`freshPane`). The terminal runs a handful of hardcoded commands (`runCommand`: `ls`, `pwd`,
   `echo`, `date`, `git status`/`branch`/`log`, `cargo run`/`test`, `clear`, else `command not
-  found`). Claude/Codex open **ready for input**; on `Enter` they "work" forever — a rotating gerund
-  (Claude: `✻ Pontificating… (esc to interrupt · Ns)`) or spinner (Codex: `⠋ Working (Ns …)`) with
-  the odd tool line appended — until `Esc` interrupts. A **process** pane is output-only.
+  found`). Claude/Codex open **ready for input**; on `Enter` they "work" forever — a live status tail
+  matching each real agent (Claude: a colour-cycling `✻` + a rotating gerund + `(Ns · ↓ N tokens ·
+  esc to interrupt)`; Codex: a braille spinner + `Working (Ns · N tokens · esc to interrupt)`), with
+  realistic tool-call **events** (`⏺ Read(…)` + its `⎿` result for Claude; `• Edited …` + `└` for
+  Codex) appended in order so the scrollback reads like a real session — until `Esc` interrupts. A
+  **process** pane is output-only.
 - **Cursor rule:** only Claude/Codex/terminal panes show the input block cursor; a process pane
   (and a working agent) does not.
 - `Esc`: interrupts a working agent → main→sidebar → releases the trap. The bottom-bar hint
@@ -370,11 +387,11 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 
 ## 7. scenes.js contract
 
-`window.MMUX_SCENES = [ …9 scenes ]`, pure data. Each: `{ id, caption:{kicker?,title,body}, type?, state }`.
-Captions terse, lowercase, confident. Caption copy (use verbatim):
+`window.MMUX_SCENES = [ …9 scenes ]`, pure data. Each: `{ id, caption:{kicker?,title,body}, type?,
+weight?, boot?, term?, state }`. Captions terse, lowercase, confident. Caption copy (use verbatim):
 
-- 0 — **it starts with one command.** / type mmux in any terminal — one binary, one directory — and it takes over the window. *(bare terminal → launch reveal → mmux boots)*
-- 1 — **everything in one sidebar.** / agents you spawn, terminals you open, processes you watch — each a row; the focused one fills the pane. *(both Claude & Codex configured: `+ New Claude`, `+ New Codex`)*
+- 0 — **it starts with one command.** / open any ordinary terminal, in any directory, and type mmux. one binary — nothing else to set up. *(bare terminal; the reveal types `mmux` and rests — no takeover; `weight ~1.7` so it holds the stage)*
+- 1 — **everything in one window.** / agents you spawn, terminals you open, processes you watch — each a row; the focused one fills the pane. *(`boot:true` → the mmux layout pops up; both Claude & Codex configured: `+ New Claude`, `+ New Codex`)*
 - 2 — **spawn an agent.** / pick "+ New Claude" and the real Claude Code goes to work in its own pane. *(the real Claude welcome banner + session)*
 - 3 — **or codex. or whatever you run.** / claude and codex come configured out of the box — any agent is one line of yaml away. *(the real Codex banner + session)*
 - 4 — **a terminal when you need one.** / drop into a shell in the same window. *(zsh + cargo run)*
@@ -389,20 +406,26 @@ bindings — the scroll demo isn't interactive (the playable sandbox below it is
 Each scene's `state` carries the realistic content below. scenes.js authors the full state; these
 are the canonical content blocks (match the spirit; minor wording fine, keep it authentic & legible).
 
-**Scene 2 — Claude Code session** (`main.program:"claude"`, streamed). Lines (tones in parens):
+**Scene 2 — Claude Code session** (`main.program:"claude"`, streamed). The real shape Claude Code
+prints — a line of prose, then `⏺` tool calls each with their `⎿` result, a `+/-` diff, a closing
+line:
 ```
 > refactor auth to use the new TokenService                 ({tokens}: "> " dim, rest text)
                                                             (blank)
-●  Read  src/auth.rs, src/token.rs                          ("●" ai, "Read" fn, paths path)
-●  Edit  src/auth.rs                                         ("●" ai, "Edit" fn, path path)
-     -  let token = generate_token(user_id);                (cls ln-del)
-     +  let token = self.tokens.issue(user_id)?;            (cls ln-add)
-●  Bash  cargo test auth                                     ("●" ai, "Bash" fn)
-     test result: ok. 12 passed; 0 failed                   ("ok." ok, rest dim)
-●  auth now delegates to TokenService. ✓                     ("●" ai, "✓" ok)
+⏺ I'll route token creation through TokenService and …      ("⏺" ai, "TokenService" type)
+                                                            (blank)
+⏺ Read(src/auth.rs)                                          ("⏺" ai, "Read" fn, "(…)" path)
+  ⎿  Read 248 lines                                          (dim)
+⏺ Update(src/auth.rs)                                        ("⏺" ai, "Update" fn)
+  ⎿  Updated with 1 addition and 1 removal                  (dim)
+       -  let token = generate_token(user_id);              (cls ln-del)
+       +  let token = self.tokens.issue(user_id)?;          (cls ln-add)
+⏺ Bash(cargo test auth)                                      ("⏺" ai, "Bash" fn)
+  ⎿  test result: ok. 12 passed; 0 failed                   ("ok." ok, rest dim)
+⏺ Done — auth now issues tokens through TokenService.        ("⏺" ai, "TokenService" type)
 ```
 The Claude scene is preceded by the **real Claude Code welcome banner** (its block-glyph logo,
-captured verbatim from `claude`; `claude` tone = warm orange):
+captured verbatim from `claude`; `claude` tone = warm orange; each row `cls:"art"` so the glyph tiles):
 ```
  ▐▛███▜▌   Claude Code v2.1.193
 ▝▜█████▛▘  Opus 4.8 · Claude Max
@@ -411,7 +434,8 @@ captured verbatim from `claude`; `claude` tone = warm orange):
 sidebar: AGENTS → `+ New Claude`, `+ New Codex`, then Claude (running, sub "refactoring auth", active).
 
 **Scene 3 — Codex session** (`main.program:"codex"`). The **real OpenAI Codex banner** (captured
-verbatim from `codex`; `codex` tone = teal), then a `›` prompt + `•` action lines + a diff:
+verbatim from `codex`; `codex` tone = teal; box rows `cls:"art"`), then a `›` prompt + `•` action
+lines each with a `└` result + a diff:
 ```
 ╭──────────────────────────────────────╮
 │ >_ OpenAI Codex  v0.142.2            │

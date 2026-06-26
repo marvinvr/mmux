@@ -22,25 +22,35 @@
   // The real Claude Code welcome banner — its block-glyph logo (captured verbatim
   // from `claude`), then the version / model / cwd column. The logo column is
   // padded so the text lines up. `claude` tone = Claude's warm brand orange.
+  // cls:"art" → tight leading so the three glyph rows tile into one mark instead
+  // of tearing apart at the screen's 1.7 line-height.
   var CLAUDE_BANNER = [
-    { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }] },
-    { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }] },
-    { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }] },
+    { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
+    { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }], cls: "art" },
+    { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
   ];
 
-  // A real Claude Code session: the welcome banner, then a prompt, ● tool lines,
-  // a +/- diff, a test result, a closing summary. (DESIGN.md §7 / §8.)
+  // A real Claude Code session: the welcome banner, the prompt, a line of Claude
+  // prose, then ⏺ tool calls each with their ⎿ result, a +/- diff, a closing line —
+  // the exact shape Claude Code prints. (DESIGN.md §7 / §8.)
   var CLAUDE_LINES = CLAUDE_BANNER.concat([
     "",
     { tokens: [{ t: "> ", c: "dim" }, { t: "refactor auth to use the new TokenService" }] },
     "",
-    { tokens: [{ t: "●  ", c: "ai" }, { t: "Read", c: "fn" }, { t: "  src/auth.rs, src/token.rs", c: "path" }] },
-    { tokens: [{ t: "●  ", c: "ai" }, { t: "Edit", c: "fn" }, { t: "  src/auth.rs", c: "path" }] },
-    { text: "     -  let token = generate_token(user_id);", cls: "ln-del" },
-    { text: "     +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
-    { tokens: [{ t: "●  ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "  cargo test auth" }] },
-    { tokens: [{ t: "     test result: " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] },
-    { tokens: [{ t: "●  ", c: "ai" }, { t: "auth now delegates to TokenService. " }, { t: "✓", c: "ok" }] },
+    { tokens: [{ t: "⏺ ", c: "ai" }, { t: "I'll route token creation through " }, { t: "TokenService", c: "type" }, { t: " and update the call site." }] },
+    "",
+    { tokens: [{ t: "⏺ ", c: "ai" }, { t: "Read", c: "fn" }, { t: "(", c: "dim" }, { t: "src/auth.rs", c: "path" }, { t: ")", c: "dim" }] },
+    { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "Read 248 lines", c: "dim" }] },
+    "",
+    { tokens: [{ t: "⏺ ", c: "ai" }, { t: "Update", c: "fn" }, { t: "(", c: "dim" }, { t: "src/auth.rs", c: "path" }, { t: ")", c: "dim" }] },
+    { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "Updated with 1 addition and 1 removal", c: "dim" }] },
+    { text: "       -  let token = generate_token(user_id);", cls: "ln-del" },
+    { text: "       +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
+    "",
+    { tokens: [{ t: "⏺ ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "(", c: "dim" }, { t: "cargo test auth", c: "dim" }, { t: ")", c: "dim" }] },
+    { tokens: [{ t: "  ⎿  ", c: "dim" }, { t: "test result: " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] },
+    "",
+    { tokens: [{ t: "⏺ ", c: "ai" }, { t: "Done — auth now issues tokens through " }, { t: "TokenService", c: "type" }, { t: "." }] },
   ]);
 
   // Build the real Codex rounded banner box from row segments, padding each row so
@@ -48,15 +58,17 @@
   function codexBox(rows) {
     var W = 40;
     var dash = "─".repeat(W - 2);
-    var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }] }];
+    // cls:"art" → tight leading so the box borders (│ ╭ ╰) connect into one frame.
+    var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }], cls: "art" }];
     rows.forEach(function (segs) {
       var len = segs.reduce(function (a, s) { return a + (s.t || "").length; }, 0);
       var pad = Math.max(0, W - 4 - len);
       out.push({
         tokens: [{ t: "│ ", c: "dim" }].concat(segs).concat([{ t: " ".repeat(pad) + " │", c: "dim" }]),
+        cls: "art",
       });
     });
-    out.push({ tokens: [{ t: "╰" + dash + "╯", c: "dim" }] });
+    out.push({ tokens: [{ t: "╰" + dash + "╯", c: "dim" }], cls: "art" });
     return out;
   }
 
@@ -69,18 +81,20 @@
     [{ t: "directory:  ", c: "dim" }, { t: "~/dev/app", c: "path" }],
   ]);
 
-  // A real Codex session: the banner, a prompt (›), • action lines, a small diff,
-  // a test result, a closing summary.
+  // A real Codex session: the banner, a prompt (›), • action lines each with a └
+  // result, a small diff, a closing summary — the shape the Codex CLI prints.
   var CODEX_LINES = CODEX_BANNER.concat([
     "",
     { tokens: [{ t: "› ", c: "codex" }, { t: "add a /health route and a test for it" }] },
     "",
     { tokens: [{ t: "• ", c: "codex" }, { t: "Read " }, { t: "src/routes.rs", c: "path" }] },
-    { tokens: [{ t: "• ", c: "codex" }, { t: "Write " }, { t: "src/routes/health.rs", c: "path" }] },
-    { text: "     +  pub async fn health() -> Json<Status> {", cls: "ln-add" },
-    { text: "     +      Json(Status::ok())", cls: "ln-add" },
-    { tokens: [{ t: "• ", c: "codex" }, { t: "Run " }, { t: "cargo test" }, { t: "  →  " }, { t: "ok", c: "ok" }] },
-    { tokens: [{ t: "• ", c: "ai" }, { t: "added /health + test. " }, { t: "done", c: "ok" }] },
+    { tokens: [{ t: "• ", c: "codex" }, { t: "Added " }, { t: "src/routes/health.rs", c: "path" }] },
+    { text: "    +  pub async fn health() -> Json<Status> {", cls: "ln-add" },
+    { text: "    +      Json(Status::ok())", cls: "ln-add" },
+    { tokens: [{ t: "• ", c: "codex" }, { t: "Ran " }, { t: "cargo test", c: "dim" }] },
+    { tokens: [{ t: "  └ ", c: "dim" }, { t: "ok", c: "ok" }, { t: " — 8 passed", c: "dim" }] },
+    "",
+    { tokens: [{ t: "• ", c: "codex" }, { t: "Added a " }, { t: "/health", c: "path" }, { t: " route returning " }, { t: "Status::ok()", c: "type" }, { t: " plus a test." }] },
   ]);
 
   // A real zsh session: prompt ❯, cargo run, Compiling/Finished/Running, the
@@ -106,19 +120,20 @@
     { tokens: [{ t: " 10:42:01 ", c: "dim" }, { t: "[vite]", c: "brand" }, { t: " hmr update " }, { t: "/src/App.tsx", c: "path" }] },
   ];
 
-  // Claude paused awaiting input (attention scene) — a real approval prompt below
-  // the welcome banner.
+  // Claude paused awaiting input (attention scene) — the real edit-approval prompt
+  // Claude Code shows below the diff it wants to apply.
   var CLAUDE_WAITING_LINES = CLAUDE_BANNER.concat([
     "",
     { tokens: [{ t: "> ", c: "dim" }, { t: "refactor auth to use the new TokenService" }] },
     "",
-    { tokens: [{ t: "●  ", c: "ai" }, { t: "Edit", c: "fn" }, { t: "  src/auth.rs", c: "path" }] },
-    { text: "     -  let token = generate_token(user_id);", cls: "ln-del" },
-    { text: "     +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
+    { tokens: [{ t: "⏺ ", c: "ai" }, { t: "Update", c: "fn" }, { t: "(", c: "dim" }, { t: "src/auth.rs", c: "path" }, { t: ")", c: "dim" }] },
+    { text: "       -  let token = generate_token(user_id);", cls: "ln-del" },
+    { text: "       +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
     "",
     { tokens: [{ t: "  Do you want to make this edit to ", c: "warn" }, { t: "src/auth.rs", c: "path" }, { t: "?", c: "warn" }] },
     { tokens: [{ t: "  ❯ ", c: "ai" }, { t: "1. Yes" }] },
-    { tokens: [{ t: "    2. No, tell Claude what to do differently", c: "dim" }] },
+    { tokens: [{ t: "    2. Yes, and don't ask again this session", c: "dim" }] },
+    { tokens: [{ t: "    3. No, and tell Claude what to do differently", c: "dim" }] },
   ]);
 
   /* ----- the native git panel: three bordered boxes (DESIGN.md §5 / §9) -----
@@ -184,16 +199,20 @@
    * scroll demo isn't interactive (the playable sandbox below it is).
    * ===================================================================== */
   window.MMUX_SCENES = [
-    /* 0 — it's one command. Plain terminal → mmux takes over the window. ---- */
+    /* 0 — it starts with one command. A PLAIN terminal: someone types `mmux`, and
+     * that's it. The mmux layout itself "pops up" in scene 1 (which boots in) — this
+     * scene stays an ordinary shell so the before/after is unmistakable. Given extra
+     * `weight` so it holds the stage long enough to read while scrolling down. ----- */
     {
       id: 0,
+      weight: 1.7,
       caption: {
         kicker: "// one command",
         title: "it starts with one command.",
-        body: "type mmux in any terminal — one binary, one directory — and it takes over the window.",
+        body: "open any ordinary terminal, in any directory, and type mmux. one binary — nothing else to set up.",
       },
-      // The launch reveal (tui.js): type `mmux` into the bare terminal below,
-      // then boot into the mmux UI in `state`.
+      // The reveal (tui.js typeIntoBare): type `mmux` into the bare terminal and
+      // rest there. No takeover here — the layout appears in the next scene.
       type: { target: "main", text: "mmux" },
       term: {
         bare: true,
@@ -213,36 +232,36 @@
         toast: null,
         overlay: null,
       },
+      // reduced-motion / non-reveal resting frame: the same plain terminal, `mmux`
+      // typed and waiting at the prompt.
       state: {
+        bare: true,
         title: "~/dev/app",
-        status: "a fresh workspace — pick + New Claude to begin",
         multiProject: false,
         projects: [{ name: "app", active: true }],
-        sidebar: [
-          { kind: "AGENTS", rows: [L_CLAUDE, L_CODEX] },
-          { kind: "TERMINAL", rows: [L_TERMINAL] },
-          { kind: "PROCESSES", rows: [L_PROCESS] },
-        ],
+        sidebar: [],
         main: {
-          program: null,
-          title: " ",
-          lines: [],
-          placeholder: "Select a session on the left,\nor spawn one with + New Claude.",
-          cursor: false,
+          program: "zsh",
+          title: " zsh ",
+          lines: [{ tokens: [{ t: "❯ ", c: "prompt" }, { t: "mmux" }] }],
+          placeholder: null,
+          cursor: true,
         },
         panel: { visible: false, branch: "main", sections: [] },
-        focus: "sidebar",
+        focus: "main",
         toast: null,
         overlay: null,
       },
     },
 
-    /* 1 — everything in one sidebar. -------------------------------------- */
+    /* 1 — …and the whole thing pops up. (boot:true → the chrome slides in) ---- */
     {
       id: 1,
+      weight: 1.3,
+      boot: true,
       caption: {
         kicker: "// your work",
-        title: "everything in one sidebar.",
+        title: "everything in one window.",
         body: "agents you spawn, terminals you open, processes you watch — each a row; the focused one fills the pane.",
       },
       state: {
