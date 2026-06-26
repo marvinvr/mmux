@@ -429,9 +429,9 @@ section {
 }
 
 /* ============================================================================
- * the terminal window (#tw) — a real TUI: every region is its own box-drawing
- * frame (ratatui Block) on ONE terminal background, not an app with shaded panels.
- * Sharp corners, a barely-there lift off the page — a screen, not a floating card.
+ * the terminal window (#tw) — a macOS Terminal window hosting a real TUI: every
+ * region inside is its own box-drawing frame (ratatui Block) on ONE terminal
+ * background, framed by a rounded mac window with traffic lights + a centered title.
  * ========================================================================== */
 .tw {
   position: relative;
@@ -440,8 +440,10 @@ section {
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 0;                                  /* sharp — terminals aren't rounded */
-  box-shadow: 0 16px 44px -32px rgba(0, 0, 0, .85);  /* faint; just lifts it off the page */
+  border-radius: 10px;                               /* rounded like a mac window */
+  box-shadow:                                        /* a soft, lifted mac-window drop */
+    0 28px 64px -26px rgba(0, 0, 0, .7),
+    0 2px 10px -4px rgba(0, 0, 0, .5);
   overflow: hidden;
   font-size: .9rem;
   line-height: 1.5;
@@ -451,32 +453,51 @@ section {
 /* engaged sandbox: a crisp green edge, not a glow */
 .tw.tw--engaged { border-color: var(--green); }
 
-/* the host terminal-emulator's slim chrome — NOT macOS traffic lights. A green
- * block-cursor brand mark + the cwd, the way a real terminal titles its window. */
+/* the macOS Terminal window bar: traffic lights on the left, a centered title,
+ * nothing on the right. A touch lighter than the screen, like real mac chrome. */
 .tw-bar {
   flex: none;
+  position: relative;                     /* anchors the absolutely-centered title */
   display: flex;
   align-items: center;
   gap: .5rem;
-  padding: .38rem .7rem;
-  background: var(--bg);                  /* darker than the screen — reads as window chrome */
+  padding: .5rem .8rem;
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border);
   font-size: .8rem;
 }
-.tw-bar-cursor {
-  color: var(--green);
-  font-weight: 700;
+/* the three traffic lights — decorative (not clickable), but they reveal their
+ * glyphs on hover, just like the real ones */
+.tw-lights { display: inline-flex; gap: .5rem; align-items: center; }
+.tw-lights i {
+  position: relative;
+  width: .76rem;
+  height: .76rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .56rem;
+  font-style: normal;
   line-height: 1;
+  color: rgba(0, 0, 0, .55);
+  box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .2);
 }
+.tw-lights i:nth-child(1) { background: #ff5f57; }   /* close */
+.tw-lights i:nth-child(2) { background: #febc2e; }   /* minimize */
+.tw-lights i:nth-child(3) { background: #28c840; }   /* zoom */
+.tw-lights i::before { opacity: 0; transition: opacity .12s ease; }
+.tw-lights:hover i:nth-child(1)::before { content: "✕"; opacity: 1; }
+.tw-lights:hover i:nth-child(2)::before { content: "–"; opacity: 1; }
+.tw-lights:hover i:nth-child(3)::before { content: "+"; opacity: 1; }
+/* the centered window title (macOS Terminal puts the name in the middle) */
 .tw-titlebar-name {
-  font-weight: 700;
-  color: var(--text);
-}
-.tw-titlebar-path { color: var(--muted); }
-.tw-titlebar-meta {
-  margin-left: auto;
-  color: var(--green);
-  font-size: .74rem;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: .01em;
 }
 
 /* body: the boxed regions sit edge-to-edge on the terminal bg, separated by a
@@ -773,8 +794,10 @@ section {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 0 1px;
-  overflow: auto;
+  padding: 0;
+  /* visible (not auto) so the first box's title chip — which sits above its top
+   * border — isn't clipped; the boxes are flex-sized to fit, so nothing overflows. */
+  overflow: visible;
   font-size: .76rem;
   line-height: 1.55;
   color: var(--text-2);
@@ -792,8 +815,10 @@ section {
 }
 /* the stack fills the panel's full height: Changes (the file tree, first box) takes
  * the slack, the way the real git panel gives the tree the room. */
-.git-box:first-child { flex: 1 1 auto; min-height: 0; margin-top: .3rem; }
-.git-box:last-child { margin-bottom: .3rem; }
+/* the stack spans the panel's full height, flush top and bottom, so the three boxes
+ * line up exactly with the sidebar/main region boxes flanking them. */
+.git-box:first-child { flex: 1 1 auto; min-height: 0; margin-top: 0; }
+.git-box:last-child { margin-bottom: 0; }
 .git-box-title {
   position: absolute;
   top: -.62em;
@@ -830,9 +855,7 @@ section {
 .tw--bare .tw-panel,
 .tw--bare .tw-status,
 .tw--bare .tw-tab,
-.tw--bare .tw-region-title,
-.tw--bare .tw-titlebar-name,
-.tw--bare .tw-titlebar-meta { display: none; }
+.tw--bare .tw-region-title { display: none; }
 .tw--bare .tw-body { gap: 0; padding: 0; }
 .tw--bare .tw-region--main { border: 0; }
 

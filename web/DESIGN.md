@@ -193,11 +193,9 @@ A single reusable, high-fidelity component. **`index.html` ships the static skel
 
 ```html
 <div id="tw" class="tw" role="img" aria-label="a simulated mmux terminal session">
-  <div class="tw-bar">                       <!-- host terminal-emulator chrome (no mac dots) -->
-    <span class="tw-bar-cursor" aria-hidden="true">▮</span>  <!-- green brand block-cursor -->
-    <span class="tw-titlebar-name">mmux</span>
-    <span class="tw-titlebar-path">~/dev/app</span>
-    <span class="tw-titlebar-meta" aria-hidden="true">⌁ tmux</span>
+  <div class="tw-bar">                       <!-- macOS Terminal window chrome -->
+    <span class="tw-lights" aria-hidden="true"><i></i><i></i><i></i></span>  <!-- traffic lights (decorative) -->
+    <span class="tw-titlebar-name">mmux</span>  <!-- centered window title -->
   </div>
   <div class="tw-body">
     <!-- each region is its own box-drawing frame (ratatui Block); its title is cut
@@ -252,14 +250,17 @@ Sidebar inner (JS-produced):
 ```
 
 ### 5.2 Chrome details
-It must read as a **terminal TUI, not a desktop app**: every region is its own box-drawing frame
-(a ratatui `Block` — a 1px `--tui-border` line with the title cut into the top edge) on **one**
-terminal background; no per-panel shading, no rounded corners, no macOS window controls.
-- **Window:** `--surface` bg, 1px `--border-2`, **sharp corners** (`border-radius: 0` — a terminal
-  screen, not a card), and only a **faint** drop shadow to lift it off the page (no glow/bloom).
-- **Title bar `.tw-bar`:** the host terminal-emulator's slim chrome, **not** macOS traffic lights —
-  `--bg` (darker than the screen), a green brand block-cursor `.tw-bar-cursor ▮`, the `mmux` name
-  (bright) + path (muted). Right: `.tw-titlebar-meta` `⌁ tmux` (faint), or `⎇ branch`.
+The model is **a macOS Terminal window hosting a real TUI**: the *outer* window is mac chrome
+(rounded, traffic lights, a centered title); the *inside* must read as a terminal TUI, not a
+desktop app — every region is its own box-drawing frame (a ratatui `Block` — a 1px `--tui-border`
+line with the title cut into the top edge) on **one** terminal background; no per-panel shading.
+- **Window:** `--surface` bg, 1px `--border-2`, **rounded** (`border-radius: 10px`, a mac window),
+  and a soft, lifted drop shadow (no glow/bloom).
+- **Title bar `.tw-bar`:** macOS Terminal chrome — three **traffic lights** `.tw-lights i` on the
+  left (`#ff5f57 / #febc2e / #28c840`; decorative, not clickable, but they reveal `✕ – +` on
+  hover), a **centered** `mmux` title (`.tw-titlebar-name`, absolutely centered), nothing on the
+  right. Bg `--surface-2` (a touch lighter than the screen). The bar is static — no `renderBar`
+  data drives it.
 - **Region frames `.tw-region`:** the sidebar and main pane are each a `.tw-region` — a bordered box
   whose `.tw-region-title` chip sits on the top border (bg `--surface`, masking the line behind it,
   exactly how ratatui paints a `Block` title). The sidebar's title is the active project name; the
@@ -306,14 +307,14 @@ terminal background; no per-panel shading, no rounded corners, no macOS window c
   unreadable in a ~120–190px column). Only the active clone's rows show; a quiet footer pinned to
   the sidebar bottom — `‹ name •∘ ›` (chevrons + active name + position dots) — switches between
   them, and is built only when there's more than one clone. Switch by tapping the chevrons,
-  swiping the terminal horizontally, or the `[` / `]` keys (sandbox only); the title-bar path and
-  the focused main pane follow the active clone.
+  swiping the terminal horizontally, or the `[` / `]` keys (sandbox only); the sidebar rows and the
+  focused main pane follow the active clone.
 
 ### 5.3 `state` shape (contract between tui.js / scenes.js / renderTUI)
 
 ```js
 state = {
-  title: "~/dev/app",                 // path shown in the title bar (follows the active clone)
+  title: "~/dev/app",                 // active clone's cwd (no longer shown — bar title is a static "mmux")
   bare: false,                        // true → plain terminal: mmux chrome hidden (scene 0)
   status: "…",                        // bottom-bar hint; falls back to STATUS[focus] (sandbox)
   multiProject: false,                // when true: render only the active clone + a pager
@@ -406,14 +407,18 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 - **Typeable panes** (focus main): a focused **terminal / Claude / Codex** pane takes keystrokes as
   input (`freshPane`). The terminal runs a handful of hardcoded commands (`runCommand`: `ls`, `pwd`,
   `echo`, `date`, `git status`/`branch`/`log`, `cargo run`/`test`, `clear`, else `command not
-  found`). Claude/Codex open **ready for input**; on `Enter` they "work" forever — a live status tail
+  found`). Claude/Codex open **ready for input**; on `Enter` the message you typed commits to the
+  scrollback as a **past message** and the agent runs a **finite** turn — a live status tail
   matching each real agent (Claude: a colour-cycling `✻` + a rotating gerund + `(Ns · ↓ N tokens ·
   esc to interrupt)`; Codex: a braille spinner + `Working (Ns · N tokens · esc to interrupt)`), with
   realistic tool-call **events** (`⏺ Read(…)` + its `⎿` result for Claude; `• Edited …` + `└` for
-  Codex) appended in order so the scrollback reads like a real session — until `Esc` interrupts. A
-  **process** pane is output-only.
-- **Cursor rule:** only Claude/Codex/terminal panes show the input block cursor; a process pane
-  (and a working agent) does not.
+  Codex) appended in order; it walks its event list once, prints a closing `Done — …` line, and
+  **hands the prompt back** so you can send another message. The composer stays pinned at the bottom
+  the whole time — **greyed and disabled while it works** (`paintWorking` renders a dimmed,
+  cursor-less prompt), live again once it finishes (`finishWorking` → `paintPane`). A **process**
+  pane is output-only.
+- **Cursor rule:** only an *idle* Claude/Codex/terminal pane shows the input block cursor; a process
+  pane (and a working agent's dimmed composer) does not.
 - `Esc`: interrupts a working agent → main→sidebar → releases the trap. The bottom-bar hint
   (`sandboxStatus`) always reflects the current mode, and every key it names actually works.
 - Authentic: spawning is via the `+ New …` launchers, no invented hotkeys.
@@ -597,9 +602,9 @@ web/
 
 - [ ] Looks like a **premium real website**, not ASCII art. No box-drawing used as site structure
       (only as authentic content inside the terminal screen, if at all). Real borders/cards/diagram.
-- [ ] The terminal window is high-fidelity and reads as a **TUI, not a desktop app**: slim
-      emulator chrome (no mac dots), every region its own box-drawing frame with the title on the
-      top border, one terminal bg, a status bar. The panes show **real, syntax-colored, legible**
+- [ ] The terminal is a **mac window hosting a TUI**: rounded chrome with traffic lights + a
+      centered `mmux`, and inside, every region its own box-drawing frame with the title on the top
+      border, one terminal bg, a status bar. The panes show **real, syntax-colored, legible**
       content per §8 (Claude banner + session, Codex banner + session, shell, vite, native git
       panel) — zero placeholder/abstract content.
 - [ ] Palette is the v2 blue→magenta brand gradient + green/coral terminal semantics, used with life

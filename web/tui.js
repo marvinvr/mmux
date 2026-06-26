@@ -187,9 +187,6 @@
     if (!root) return null;
     var refs = {
       root: root,
-      barName: $(".tw-titlebar-name", root),
-      barPath: $(".tw-titlebar-path", root),
-      barMeta: $(".tw-titlebar-meta", root),
       sidebar: $(".tw-sidebar", root),
       sidebarTitle: $(".tw-sidebar-title", root), // the project name cut into the sidebar box
       mainTitle: $(".tw-main-title", root),        // " Claude — running " cut into the main box
@@ -288,15 +285,10 @@
     );
   }
 
-  function renderBar(t, state) {
-    if (t.barPath && state.title) t.barPath.textContent = state.title;
-    // title bar meta optionally carries the branch; default "⌁ tmux" stays in HTML.
-    if (t.barMeta && state.panel && state.panel.visible && state.panel.branch) {
-      t.barMeta.textContent = "⎇ " + state.panel.branch;
-    } else if (t.barMeta) {
-      t.barMeta.textContent = "⌁ tmux";
-    }
-  }
+  // The window bar is static macOS-Terminal chrome — traffic lights + a centered
+  // "mmux" — so there's nothing data-driven to update here. Kept for renderTUI's
+  // call shape (and any future per-scene title).
+  function renderBar() {}
 
   function renderSidebar(host, state) {
     if (!host) return;
@@ -1284,7 +1276,7 @@
       render();
     }
     function capHistory(m) {
-      var MAX = 16;
+      var MAX = 24;
       if (m.history && m.history.length > MAX) m.history = m.history.slice(m.history.length - MAX);
     }
 
@@ -1418,36 +1410,73 @@
     }
 
     var workTimer = null, workTok = 0, workStart = 0, workTick = 0;
+    // The closing line each agent prints when it's done. Generation is FINITE: the
+    // agent walks its event list once, prints this, then hands the prompt back — so
+    // the message you sent reads as past scrollback and you can send another.
+    function doneLine(kind) {
+      return kind === "codex"
+        ? { tokens: [{ t: "• ", c: "codex" }, { t: "Done — routed token issuance through " }, { t: "TokenService::issue", c: "type" }, { t: "." }] }
+        : { tokens: [{ t: "⏺ ", c: "ai" }, { t: "Done — auth now issues tokens through " }, { t: "TokenService", c: "type" }, { t: "." }] };
+    }
     function startWorking(kind) {
       var m = state.main;
       m.working = true;
       m.cursor = false;
-      m._ev = 0; // walk the event list in order
       workTok++;
       m._tok = workTok;
       workTick = 0;
       workStart = nowMs();
-      if (reducedMotion()) { paintWorking(kind); return; } // static; no infinite loop
+      var pool = kind === "codex" ? CODEX_EVENTS : CLAUDE_EVENTS;
+      if (reducedMotion()) {
+        // static: drop the whole transcript at once, then return the prompt
+        var all = pool.reduce(function (a, e) { return a.concat(e); }, []);
+        m.history = (m.history || []).concat(all, [doneLine(kind), ""]);
+        finishWorking(kind, workTok);
+        return;
+      }
       var tok = workTok;
+      var BEAT = 4; // spinner frames between appended events
+      var beat = 0;
+      paintWorking(kind);
       (function loop() {
         if (!engaged || workTok !== tok || !state.main || state.main._tok !== tok) return;
         workTick++;
-        if (workTick % 5 === 0) {
-          var pool = kind === "codex" ? CODEX_EVENTS : CLAUDE_EVENTS;
-          var idx = (state.main._ev || 0) % pool.length;
-          state.main._ev = idx + 1;
-          var ev = pool[idx];
-          state.main.history = (state.main.history || []).concat(Array.isArray(ev) ? ev : [ev]);
-          capHistory(state.main);
+        if (workTick % BEAT === 0) {
+          if (beat < pool.length) {
+            state.main.history = (state.main.history || []).concat(pool[beat]);
+            capHistory(state.main);
+            beat++;
+          } else {
+            // every event walked → print the closing line and return the prompt
+            state.main.history = (state.main.history || []).concat([doneLine(kind), ""]);
+            finishWorking(kind, tok);
+            return;
+          }
         }
         paintWorking(kind);
         workTimer = setTimeout(loop, kind === "codex" ? 430 : 360);
       })();
     }
 
-    // Render history + the live spinner/status tail (no input cursor while working).
-    // The tail is what each agent really prints: Claude's colour-cycling ✻ + a
-    // gerund + (Ns · ↓ N tokens · esc to interrupt); Codex's braille spinner + Working.
+    // Generation finished (or was applied statically): re-enable the composer and
+    // repaint with a live, typeable prompt sitting at the bottom, ready for the next.
+    function finishWorking(kind, tok) {
+      if (workTok !== tok) return;
+      if (workTimer) { clearTimeout(workTimer); workTimer = null; }
+      var m = state.main;
+      if (!m) return;
+      m.working = false;
+      m._tok = null;
+      m.input = "";
+      paintPane();
+      announce((kind || "agent") + " finished — type another message");
+    }
+
+    // Render history + the live spinner/status tail + a dimmed, disabled composer.
+    // The tail is what each agent really prints: Claude's colour-cycling ✻ + a gerund
+    // + (Ns · ↓ N tokens · esc to interrupt); Codex's braille spinner + Working. The
+    // composer stays pinned at the bottom (greyed, cursor-less) so it's clearly "your
+    // input, just disabled while it works" — not gone.
     function paintWorking(kind) {
       var m = state.main;
       if (!m) return;
@@ -1469,7 +1498,8 @@
           { t: "(" + elapsed + "s · ↓ " + toks + " tokens · esc to interrupt)", c: "dim" },
         ] };
       }
-      m.lines = (m.history || []).concat([tail]);
+      var composer = { tokens: [{ t: m.promptGlyph, c: "dim" }, { t: "", c: "dim" }] };
+      m.lines = (m.history || []).concat([tail, "", composer]);
       m.cursor = false;
       render();
     }
