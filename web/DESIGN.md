@@ -3,8 +3,9 @@
 Single source of truth for the static site in `web/`. v2 is a **ground-up redesign**. v1 looked
 like cramped ASCII art; v2 is a **premium dark dev-tool landing page** (Warp / Zed / Ghostty
 caliber) where the ONE thing that looks like a terminal is a single, gorgeous, high-fidelity
-**terminal window** — and inside it you watch a **real Claude Code session, a real shell, a real
-vite server, and real lazygit**, syntax-colored and legible.
+**terminal window** — and inside it you watch the **real Claude Code welcome + session, the real
+OpenAI Codex banner, a real shell, a real vite server, and the real native mmux git panel**,
+syntax-colored and legible.
 
 If two files must agree on a name (class, id, state field, scene key, token tone), it is defined
 here and nowhere else.
@@ -19,10 +20,12 @@ here and nowhere else.
 - **NO ASCII-ART CHROME.** This is the headline change. Borders, frames, cards, the terminal window,
   the how-it-works diagram are **real CSS** (1px borders, radii, shadows, gradients, SVG) — never
   box-drawing characters used as layout. Box-drawing chars may appear ONLY as authentic *content*
-  inside the terminal screen if a real program would print them (e.g. lazygit panel rules) — never
+  inside the terminal screen if a real program would print them (e.g. the git panel's box rules,
+  the Codex banner box) — never
   as the site's own structure. It must read as a real, modern website.
 - **Panes show REAL, legible content.** No `{name} streams ✓ lines` abstractions. The main pane
-  shows an actual Claude Code session / shell / vite output; the panel shows actual lazygit. See §8.
+  shows an actual Claude Code / Codex session / shell / vite output; the panel shows the actual
+  native mmux git panel (Changes / Branches / Recent boxes, mirroring `src/app/view/git.rs`). See §8.
 - **Install is ONE command:** `brew install marvinvr/mmux/mmux`. No cargo, no from-source. Remove them.
 - **`prefers-reduced-motion`** fully honored (no scrub/typing; land on the finished playable state).
 - **Accessible:** landmarks, heading order, keyboard operable, visible focus, AA contrast, decorative
@@ -202,7 +205,7 @@ A single reusable, high-fidelity component. **`index.html` ships the static skel
       <div class="tw-tab"></div>            <!-- focused program label, e.g. "claude" -->
       <div class="tw-screen"></div>          <!-- realistic lines (§5.4) or placeholder -->
     </div>
-    <div class="tw-panel" hidden>            <!-- lazygit; toggled visible -->
+    <div class="tw-panel" hidden>            <!-- native git panel; toggled visible -->
       <div class="tw-panel-head"> git </div>
       <div class="tw-panel-screen"></div>
     </div>
@@ -246,16 +249,26 @@ Sidebar inner (JS-produced):
 - **Title bar `.tw-bar`:** `--surface-2`, 3 traffic-light dots (`.tw-lights i`) — tasteful; either
   monochrome `--faint` or subtly tinted (`#fb7185 / #fbbf24 / #4ade80` at ~0.8). Center-left the
   `mmux` name (bright) + path (muted). Right: `.tw-titlebar-meta` `⌁ tmux` (faint), or branch.
-- **Sidebar `.tw-sidebar`:** ~190px col, `--bg-2`, 1px right border. Section heads `.sb-head`
-  uppercase, tracked, `--muted`, small. Rows comfortable (not cramped). Active row: `--accent-soft`
-  bg + a 2px brand-gradient left edge + brighter text. Status dot `.sb-dot` colored by
-  `data-status` (running → `--running`, exited → `--faint`, stopped → `--muted`). Launchers: a `+`
-  in `--muted`, name in `--muted`, hover → brand. Bell `.sb-bell` coral.
+- **Sidebar `.tw-sidebar`:** ~190px col, `--bg-2`, 1px right border. **Order matches the real tool
+  (`src/app/nav.rs build_nav`): the `+ New …` launcher comes FIRST in each section, then the
+  sessions.** Section heads `.sb-head` uppercase, tracked, **`--cyan`** (theme.rs paints them cyan),
+  small. Active row: the tool's desaturated indigo selection (`#2d2d3c`) + a green cursor edge +
+  brighter text. Status dot `.sb-dot` colored by `data-status` (running → `--running`, exited →
+  `--faint`, stopped → `--muted`). Launchers: a green `+` and green name (the tool paints them
+  `Color::Green`), hover → `--green`. Bell `.sb-bell` coral.
 - **Main `.tw-main`:** the focused program. `.tw-tab` = a small top label (program name, a faint
   status). `.tw-screen` = the content (§5.4), comfortable line-height (~1.6), left-padded.
-- **Panel `.tw-panel`:** ~210px right col, `--bg-2`, 1px left border; `.tw-panel-head` = ` git `
-  chip. lazygit-style content inside.
-- **Status bar `.tw-status`:** thin bottom bar, `--surface-2`, muted key hints; keys in `--text-2`.
+- **Panel `.tw-panel`:** ~196px right col, `--bg-2`, 1px left border. The **native git panel**:
+  three bordered `.git-box`es — **Changes** (a file tree with `[✓]`/`[~]`/`[ ]` staging checkboxes,
+  names colored by change type, the cursor row on a magenta bar), **Branches** (current `●` green),
+  **Recent** (short hash + summary) — each with its title sitting on the top border like a ratatui
+  `Block`; the focused box is bordered magenta. Mirrors `src/app/view/git.rs`.
+- **Status bar `.tw-status`:** thin bottom bar. In the scroll demo it shows a per-scene **hint of
+  what's happening** (the demo isn't interactive); in the playable sandbox it shows the real,
+  working key hints keyed by focus.
+- **Bare mode (`state.bare`):** scene 0's "before mmux" terminal — the sidebar, panel, status, tab
+  and the `mmux` titlebar name/meta are hidden (`.tw--bare`), leaving a plain full-width shell. The
+  launch reveal types `mmux` into it, then a one-shot `.tw--boot` animation slides the chrome in.
 - **Workspace pager `.sb-switch`:** linked clones render **one at a time** (stacking N clones is
   unreadable in a ~120–190px column). Only the active clone's rows show; a quiet footer pinned to
   the sidebar bottom — `‹ name •∘ ›` (chevrons + active name + position dots) — switches between
@@ -268,26 +281,30 @@ Sidebar inner (JS-produced):
 ```js
 state = {
   title: "~/dev/app",                 // path shown in the title bar (follows the active clone)
+  bare: false,                        // true → plain terminal: mmux chrome hidden (scene 0)
+  status: "…",                        // bottom-bar hint; falls back to STATUS[focus] (sandbox)
   multiProject: false,                // when true: render only the active clone + a pager
   projects: [{ name, active }],       // exactly one active; the pager switches which
-  sidebar: [ { kind:"AGENTS"|"TERMINAL"|"PROCESSES", rows: [
-      // session row:
-      { id, name, sub?, status:"running"|"exited"|"stopped", active?, attention?, project? },
-      // launcher row:
+  sidebar: [ { kind:"AGENTS"|"TERMINAL"|"PROCESSES", rows: [   // launchers FIRST, then sessions
       { id, launcher:true, name:"New Claude" },   // rendered as "+ New Claude"
+      { id, name, sub?, status:"running"|"exited"|"stopped", active?, attention?, project? },
   ]}],
   main: {
-    program: "claude"|"zsh"|"vite"|null,   // small tab label; null hides the tab
-    title: " claude — running ",            // (kept for a11y / optional); tab uses program
+    program: "claude"|"codex"|"zsh"|"vite"|null,  // small tab label; null hides the tab
+    title: " Claude — running ",            // (kept for a11y / optional); tab uses program
     lines: [ Line ],                        // realistic content (§5.4); placeholder beats lines
     placeholder: str|null,
     cursor: bool,                           // block cursor after last line
   },
-  panel: { visible, branch, lines: [ Line ] },   // lazygit content
+  // native git panel: a column of titled bordered boxes (Changes / Branches / Recent)
+  panel: { visible, branch, sections: [ { title, active?, lines: [ Line ] } ] },
   focus: "sidebar"|"main"|"panel"|"sandbox",
   toast: { app, title, body } | null,            // desktop-notification toast
   overlay: "disconnected"|"reattached" | null,
 }
+
+// Scene 0 additionally carries `term` (a bare-terminal state) alongside `state`:
+// the launch reveal types `mmux` into `term`, then boots into `state`.
 ```
 
 ### 5.4 Line / token model — how realistic content is rendered
@@ -321,17 +338,32 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 - `#demo` tall; a `position: sticky` `.demo-stage` (~100vh) pins `#tw` while `.demo-caption` blocks
   cross-fade beside it. rAF-throttled scroll→progress→scene index over `window.MMUX_SCENES`;
   IntersectionObserver gates it. Last scene = sandbox hand-off.
-- **Streaming reveal** for the Claude scene: reveal the agent's `main.lines` progressively (line by
-  line, ≤ ~900ms total) so it feels like Claude is working. Typing reveal for scene 0's `mmux`.
+- **Streaming reveal** for the agent scenes (Claude *and* Codex): reveal the agent's `main.lines`
+  progressively (line by line, ≤ ~900ms total) so it feels like the agent is working.
+- **Launch reveal** for scene 0: render its bare `term` (a plain terminal), type `mmux` into it
+  char-by-char, hold a beat, then `renderTUI(state)` with a one-shot `.tw--boot` animation so the
+  mmux UI visibly takes over the window. The demo's first paint is `term`, so it opens on the
+  plain terminal.
 - reduced-motion: no scrub; render the last scene statically; captions become a stacked list;
   enable the sandbox immediately.
 
-### 6.2 Sandbox driver (retained, adapted)
-- Finale makes `#tw` interactive (`tabindex`/role managed in JS — decorative `role="img"` until
-  playable, then `role="application"`; trap keys only while engaged; Esc/click-out releases).
-- Keys: `↑/k` `↓/j` move the selection over the flat row list (launchers included), `Enter`
-  activates (launcher → append a real session of that kind + focus main + stream its realistic
-  content; running row → focus its pane), `x` stops the selected session, `Esc` main→sidebar / releases.
+### 6.2 Sandbox driver (`#tw-how` — live & typeable)
+- `#tw-how` is interactive whenever on screen (`tabindex`/role managed in JS — decorative
+  `role="img"` until focused, then `role="application"`; keys trapped only while engaged;
+  Esc/click-out releases).
+- **Sidebar nav** (focus sidebar/sandbox): `↑/k` `↓/j` move the selection over the flat row list
+  (launchers included), `Enter` activates (launcher → spawn a session of that kind; running row →
+  focus it), `x` stops the selected session.
+- **Typeable panes** (focus main): a focused **terminal / Claude / Codex** pane takes keystrokes as
+  input (`freshPane`). The terminal runs a handful of hardcoded commands (`runCommand`: `ls`, `pwd`,
+  `echo`, `date`, `git status`/`branch`/`log`, `cargo run`/`test`, `clear`, else `command not
+  found`). Claude/Codex open **ready for input**; on `Enter` they "work" forever — a rotating gerund
+  (Claude: `✻ Pontificating… (esc to interrupt · Ns)`) or spinner (Codex: `⠋ Working (Ns …)`) with
+  the odd tool line appended — until `Esc` interrupts. A **process** pane is output-only.
+- **Cursor rule:** only Claude/Codex/terminal panes show the input block cursor; a process pane
+  (and a working agent) does not.
+- `Esc`: interrupts a working agent → main→sidebar → releases the trap. The bottom-bar hint
+  (`sandboxStatus`) always reflects the current mode, and every key it names actually works.
 - Authentic: spawning is via the `+ New …` launchers, no invented hotkeys.
 
 ---
@@ -341,15 +373,18 @@ One renderer, two drivers (keep the v1 architecture; it worked).
 `window.MMUX_SCENES = [ …9 scenes ]`, pure data. Each: `{ id, caption:{kicker?,title,body}, type?, state }`.
 Captions terse, lowercase, confident. Caption copy (use verbatim):
 
-- 0 — **it's one command.** / mmux runs in any terminal — one binary, one directory.
-- 1 — **your work, in a sidebar.** / agents you spawn, terminals you open, processes you watch — one pane for the focused one.
-- 2 — **spawn an agent.** / pick "+ New Claude" and it goes to work in its own pane, right beside everything else.
-- 3 — **terminals and processes too.** / a shell here, your dev server there — started, watched, never lost in tabs.
-- 4 — **it survives you.** / the whole thing lives in a per-directory tmux session. close the terminal, drop ssh, come back — nothing lost.
-- 5 — **keep a panel pinned.** / lazygit right where you work, following whichever project is active.
-- 6 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification. even over ssh.
-- 7 — **many clones, one sidebar.** / link sibling projects; each gets its own section.
-- 8 — **your turn.** / ↑↓ move · ⏎ open · x close — spawn an agent from a + New row.
+- 0 — **it starts with one command.** / type mmux in any terminal — one binary, one directory — and it takes over the window. *(bare terminal → launch reveal → mmux boots)*
+- 1 — **everything in one sidebar.** / agents you spawn, terminals you open, processes you watch — each a row; the focused one fills the pane. *(both Claude & Codex configured: `+ New Claude`, `+ New Codex`)*
+- 2 — **spawn an agent.** / pick "+ New Claude" and the real Claude Code goes to work in its own pane. *(the real Claude welcome banner + session)*
+- 3 — **or codex. or whatever you run.** / claude and codex come configured out of the box — any agent is one line of yaml away. *(the real Codex banner + session)*
+- 4 — **a terminal when you need one.** / drop into a shell in the same window. *(zsh + cargo run)*
+- 5 — **every process in one place.** / your dev server, your tests, your watcher — start, stop and tail them all here, just like your agents. *(PROCESSES: dev server, tests, typecheck + vite pane)*
+- 6 — **it survives you.** / lives in a per-directory tmux session. close the terminal, drop ssh, come back — nothing lost. *(disconnect overlay)*
+- 7 — **a git panel, pinned.** / a native git panel right where you work, following whichever project is active. *(Changes/Branches/Recent boxes)*
+- 8 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification. even over ssh. *(attention + toast)*
+
+The bottom bar (`.tw-status`) shows a per-scene **hint of what's happening** (`state.status`), not key
+bindings — the scroll demo isn't interactive (the playable sandbox below it is).
 
 Each scene's `state` carries the realistic content below. scenes.js authors the full state; these
 are the canonical content blocks (match the spirit; minor wording fine, keep it authentic & legible).
@@ -366,58 +401,67 @@ are the canonical content blocks (match the spirit; minor wording fine, keep it 
      test result: ok. 12 passed; 0 failed                   ("ok." ok, rest dim)
 ●  auth now delegates to TokenService. ✓                     ("●" ai, "✓" ok)
 ```
-sidebar: AGENTS → claude (running, sub "refactoring auth", active) + launcher.
+The Claude scene is preceded by the **real Claude Code welcome banner** (its block-glyph logo,
+captured verbatim from `claude`; `claude` tone = warm orange):
+```
+ ▐▛███▜▌   Claude Code v2.1.193
+▝▜█████▛▘  Opus 4.8 · Claude Max
+  ▘▘ ▝▝    ~/dev/app
+```
+sidebar: AGENTS → `+ New Claude`, `+ New Codex`, then Claude (running, sub "refactoring auth", active).
 
-**Scene 3 — shell + vite** (main shows zsh; process running). zsh `main.program:"zsh"`:
+**Scene 3 — Codex session** (`main.program:"codex"`). The **real OpenAI Codex banner** (captured
+verbatim from `codex`; `codex` tone = teal), then a `›` prompt + `•` action lines + a diff:
 ```
-~/dev/app  on  main                                         (path muted, "main" branch=ai/magenta)
-❯ cargo run                                                  ("❯" prompt brand, cmd text)
-   Compiling app v0.2.0                                      (dim)
-    Finished `dev` profile in 3.41s                          (dim, "Finished" ok)
-     Running `target/debug/app`                              (dim)
-  ➜  listening on http://localhost:5173                      ("➜" info, url path)
-❯ ▮
+╭──────────────────────────────────────╮
+│ >_ OpenAI Codex  v0.142.2            │
+│                                      │
+│ model:      gpt-5.5 high             │
+│ directory:  ~/dev/app                │
+╰──────────────────────────────────────╯
 ```
-sidebar adds TERMINAL → zsh (running) and PROCESSES → dev server (running, sub "vite · :5173").
+sidebar AGENTS shows Claude (running) and Codex (running, active) under both launchers.
 
-**Scene 5 — lazygit panel** (`panel.visible`, branch "main"). panel.lines (lazygit-ish):
-```
- Files                                                       (head dim)
-  M src/auth.rs                                              ("M" warn)
-  M src/token.rs                                             ("M" warn)
-  A src/lib.rs                                               ("A" add)
- Branches                                                    (head dim)
-  ✓ main                                                     ("✓" ok, name text)
-    feat/tokens                                              (dim)
- Commits                                                     (head dim)
-  e2e6087 add token service                                 (hash info, msg text)
-  fce46df drag-select scrollback                            (hash info, msg text)
-```
-Also vite process pane content (when PROCESSES/dev-server is focused), `main.program:"vite"`:
+**Scene 4 — shell** (`main.program:"zsh"`): `❯ cargo run`, Compiling/Finished/Running, "listening on".
+
+**Scene 5 — processes** (`main.program:"vite"`). PROCESSES lists dev server (running, "vite · :5173",
+active), tests (running, "vitest · watch"), typecheck (stopped, "tsc --watch"). Main = the vite banner:
 ```
   VITE v5.2.0  ready in 412 ms                               ("VITE" brand bold, "ready" ok)
   ➜  Local:    http://localhost:5173/                        ("➜" info, url path)
   ➜  Network:  http://192.168.1.4:5173/                      (info/path)
-  ➜  press h + enter to show help                            (dim)
-                                                            (blank)
  10:42:01 [vite] hmr update /src/App.tsx                     (time dim, "[vite]" brand, path path)
 ```
 
-**Scene 4 — overlay:** `overlay:"disconnected"` (text like `ssh disconnected — session kept alive`),
-then the narrative implies reattach. Keep sidebar/main state intact underneath (dimmed by overlay).
+**Scene 6 — overlay:** `overlay:"disconnected"` (text like `ssh disconnected — session kept alive`).
+Keep sidebar/main state intact underneath (dimmed by overlay).
 
-**Scene 6 — attention:** claude row `attention:true` (coral bell pulses) + `toast:{ app:"claude",
-title:"needs your input", body:"approve the edit to src/auth.rs?" }`. Main may show claude paused
-awaiting input.
+**Scene 7 — native git panel** (`panel.visible`, `panel.sections`, branch "main"). Three boxes,
+mirroring `src/app/view/git.rs`:
+```
+┌ Changes · main ↑1 ┐
+ [~] app/                  (root, "[~]" warn, "app/" info=blue)
+   [~] src/
+▌    [✓] auth.rs           (cursor row: "▌" ai/magenta, "[✓]" ok, name warn=modified, .git-sel bg)
+     [ ] token.rs
+     [✓] lib.rs            (name ok=added)
+┌ Branches ┐
+ ● main   origin/main      ("●"+name ok=green, track dim)
+   feat/tokens
+┌ Recent ┐
+ e2e6087 add token service (hash dim, summary text)
+```
+
+**Scene 8 — attention:** Claude row `attention:true` (coral bell pulses) + `toast:{ app:"Claude",
+title:"needs your input", body:"approve the edit to src/auth.rs?" }`. Main shows Claude paused at an
+approval prompt (below its banner).
 
 **Linked workspaces** (`multiProject:true`, e.g. `app` active + `app-2`): the sidebar shows **one
 clone at a time** — only the active clone's rows render, with a bottom pager (`‹ name •∘ ›`) to
 switch (no stacked per-project headers). Demonstrated live in the always-playable sandbox
-(`#tw-how`, tui.js `DEFAULT_STATE`), where `app-2` carries its own claude (sub "running tests") and
-dev server; switch via the chevrons, a horizontal swipe, or `[` / `]`.
-
-**Scene 8 — finale:** a sensible populated state (matches tui.js DEFAULT_STATE), focus sidebar,
-ready for the sandbox; sandbox hint shown.
+(`#tw-how`, tui.js `DEFAULT_STATE`), where `app-2` carries its own Codex (sub "running tests") and
+dev server; switch via the chevrons, a horizontal swipe, or `[` / `]`. The sandbox keeps the real,
+working key hints in its status bar (those keys do work there).
 
 Footer hints (`.tw-status`, by focus): sidebar `↑↓ move   ⏎ open   x close   r restart   d detach`,
 main/panel `keys → pane   drag = copy   ⌃b   h back   x close`, sandbox `↑↓ move   ⏎ open   x close   ·   click out to scroll`.
@@ -426,10 +470,13 @@ main/panel `keys → pane   drag = copy   ⌃b   h back   x close`, sandbox `↑
 
 ## 8. Realistic content rule (the "make it make sense" mandate)
 
-The whole point of v2: a visitor scrolling the demo sees **recognizable software**. The Claude scene
-must read like a real Claude Code transcript (the `●` tool bullets, `Read`/`Edit`/`Bash`, a `+/-`
-diff, a test result, a closing summary). The shell must read like a real zsh+cargo run. vite like a
-real vite banner. lazygit like real lazygit. Use the token model (§5.4) so it's syntax-colored.
+The whole point: a visitor scrolling the demo sees **recognizable software**. The Claude scene must
+open on Claude Code's real welcome banner (its block-glyph logo) and read like a real transcript
+(the `●` tool bullets, `Read`/`Edit`/`Bash`, a `+/-` diff, a test result, a closing summary). The
+Codex scene must open on Codex's real boxed banner (the `>_` mark) and read like a real Codex
+session. The shell must read like a real zsh+cargo run, vite like a real vite banner, and the git
+panel like the real native panel (`src/app/view/git.rs`). The agent banners are captured verbatim
+by running `claude` / `codex` — don't invent them. Use the token model (§5.4) so it's syntax-colored.
 Reviewers reject abstract/placeholder content ("streams ✓ lines", lorem, nonsense paths).
 
 ---
@@ -487,7 +534,7 @@ web/
       (only as authentic content inside the terminal screen, if at all). Real borders/cards/diagram.
 - [ ] The terminal window is high-fidelity: window chrome (lights, title), CSS-bordered columns,
       a status bar, brand glow. The panes show **real, syntax-colored, legible** content per §8
-      (Claude session, shell, vite, lazygit) — zero placeholder/abstract content.
+      (Claude banner + session, Codex banner + session, shell, vite, native git panel) — zero placeholder/abstract content.
 - [ ] Palette is the v2 blue→magenta brand gradient + green/coral terminal semantics, used with life
       but not garish. Wordmark/CTA/links/glows carry the gradient.
 - [ ] Install shows ONLY `brew install marvinvr/mmux/mmux` (hero + §4.6). No cargo / from-source.

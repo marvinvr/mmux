@@ -350,13 +350,13 @@ section {
 
 /* ============================================================================
  * the demo — THE centerpiece. A TALL track so the sticky stage scrubs scenes.
- * #demo height drives how much scroll each scene gets (~97vh/scene over 7).
+ * #demo height drives how much scroll each scene gets (~95vh/scene over 9).
  * The driver (tui.js) maps demo scroll-progress → scene index.
  * ========================================================================== */
 #demo {
   /* CRITICAL: the track must be much taller than the 100vh sticky stage,
    * otherwise progress is always 0 and the walkthrough never scrubs. */
-  min-height: 680vh;
+  min-height: 860vh;
   padding: 0 1.5rem;
   max-width: 1240px;          /* the demo is the star — a touch wider than the rest */
   margin: 0 auto;
@@ -549,13 +549,14 @@ section {
 .sb-switch-dot--on { background: var(--green); }
 
 .sb-section { flex: none; margin-bottom: .5rem; }
+/* section heads are cyan + bold in the real tool (theme.rs `header`) */
 .sb-head {
   padding: .45rem .85rem .3rem;
   font-size: .67rem;
   font-weight: 600;
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--cyan);
 }
 
 .sb-row {
@@ -568,9 +569,9 @@ section {
   white-space: nowrap;
   overflow: hidden;
 }
-/* active row = green-soft fill + a solid green left edge + brighter ink */
+/* active row = the tool's desaturated indigo selection bar + a green cursor edge */
 .sb-row--active {
-  background: var(--accent-soft);
+  background: #2d2d3c;
   color: var(--text);
 }
 .sb-row--active::before {
@@ -619,19 +620,19 @@ section {
   50%      { opacity: .45; }
 }
 
-/* launcher rows: a muted "+ New …" that greens on hover */
-.sb-row--launcher { color: var(--muted); }
+/* launcher rows: green "+ New …" (the tool paints these Color::Green) */
+.sb-row--launcher { color: var(--green-bright); }
 .sb-row--launcher .sb-name { font-weight: 400; }
 .sb-plus {
   flex: none;
   width: .5rem;
   text-align: center;
-  color: var(--muted);
+  color: var(--green-bright);
   font-weight: 700;
 }
-.sb-row--launcher:hover { color: var(--green-bright); }
-.sb-row--launcher:hover .sb-plus { color: var(--green-bright); }
-.sb-row--launcher.sb-row--active { color: var(--text); }
+.sb-row--launcher:hover,
+.sb-row--launcher:hover .sb-plus { color: var(--green); }
+.sb-row--launcher.sb-row--active { color: var(--green-bright); }
 
 /* main pane */
 .tw-main {
@@ -722,6 +723,54 @@ section {
   color: var(--text-2);
 }
 .tw--panel-focus .tw-panel-head { color: var(--text); border-bottom-color: var(--border-2); }
+
+/* native git panel: three bordered boxes (Changes / Branches / Recent), matching
+ * src/app/view/git.rs. The box title sits on the top border like a ratatui Block. */
+.git-box {
+  position: relative;
+  margin: .35rem .25rem .6rem;
+  padding: .4rem .3rem .3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.git-box:last-child { margin-bottom: .25rem; }
+.git-box-title {
+  position: absolute;
+  top: -.62em;
+  left: .45rem;
+  max-width: calc(100% - 1rem);
+  padding: 0 .3rem;
+  background: var(--bg-2);
+  color: var(--muted);
+  font-size: .68rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the focused section is bordered magenta in the tool */
+.git-box--active { border-color: var(--magenta); }
+.git-box--active .git-box-title { color: var(--magenta); }
+/* tree rows are column-aligned; never wrap them */
+.git-box-body .screen-line { white-space: pre; }
+.git-sel { background: rgba(169, 140, 196, .16); }
+
+/* bare mode (scene 0): a plain terminal — the mmux chrome is hidden, the screen
+ * fills the window. The launch reveal types `mmux` here, then boots the UI. */
+.tw--bare .tw-sidebar,
+.tw--bare .tw-panel,
+.tw--bare .tw-status,
+.tw--bare .tw-tab,
+.tw--bare .tw-titlebar-name,
+.tw--bare .tw-titlebar-meta { display: none; }
+
+/* boot: when mmux takes over the window, the chrome fades/slides into place */
+@keyframes tw-boot-side { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+@keyframes tw-boot-fade { from { opacity: 0; } to { opacity: 1; } }
+.tw--boot .tw-sidebar { animation: tw-boot-side .42s ease both; }
+.tw--boot .tw-panel   { animation: tw-boot-side .42s ease both; }
+.tw--boot .tw-tab,
+.tw--boot .tw-screen,
+.tw--boot .tw-status  { animation: tw-boot-fade .5s ease both; }
 
 /* status bar — the tmux-green signature: green bar, dark text */
 .tw-status {
@@ -826,6 +875,9 @@ section {
 .tok-dim     { color: var(--muted); }
 .tok-prompt,
 .tok-brand   { color: var(--green-bright); font-weight: 700; }
+/* agent brand marks: Claude's warm orange logo, Codex's teal >_ */
+.tok-claude  { color: #cc8a63; }
+.tok-codex   { color: var(--cyan); }
 
 /* ============================================================================
  * features — flat list-cards, green-stroke icons, no glow/lift
@@ -983,7 +1035,7 @@ section {
   .how-points { grid-template-columns: 1fr; gap: 1.1rem; }
 
   /* demo: window over stacked captions; shorter track so it isn't endless */
-  #demo { min-height: 680vh; }
+  #demo { min-height: 860vh; }
   .demo-grid { grid-template-columns: 1fr; gap: 1.75rem; }
   .demo-caption { min-height: 9rem; }
 

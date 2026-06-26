@@ -19,16 +19,18 @@
    * ---------------------------------------------------------------------
    * state = {
    *   title: "~/dev/app",                  // path shown in the title bar
+   *   bare: bool,                          // true → plain terminal (mmux chrome hidden)
+   *   status: str,                         // bottom-bar hint; falls back to STATUS[focus]
    *   multiProject: bool,
    *   projects: [{ name, active }],
-   *   sidebar: [ { kind:"AGENTS"|"TERMINAL"|"PROCESSES", rows: [
+   *   sidebar: [ { kind:"AGENTS"|"TERMINAL"|"PROCESSES", rows: [    // launchers FIRST
+   *       { id, launcher:true, name:"New Claude" }, // launcher → "+ New Claude"
    *       { id, name, sub?, status:"running"|"exited"|"stopped",
-   *         active?, attention?, project? },      // session row
-   *       { id, launcher:true, name:"New Claude" } // launcher → "+ New Claude"
+   *         active?, attention?, project? },        // session row
    *   ]}],
-   *   main: { program:"claude"|"zsh"|"vite"|null, title, lines:[Line],
+   *   main: { program:"claude"|"codex"|"zsh"|"vite"|null, title, lines:[Line],
    *           placeholder:str|null, cursor:bool },
-   *   panel: { visible, branch, lines:[Line] },
+   *   panel: { visible, branch, sections:[{ title, active?, lines:[Line] }] },
    *   focus: "sidebar"|"main"|"panel"|"sandbox",
    *   toast: { app, title, body } | null,
    *   overlay: "disconnected"|"reattached" | null,
@@ -55,13 +57,17 @@
       { name: "app", active: true },
       { name: "app-2", active: false },
     ],
+    // Launchers come FIRST in every section, matching the real sidebar order
+    // (src/app/nav.rs build_nav). Both Claude and Codex are configured agents.
     sidebar: [
       {
         kind: "AGENTS",
         rows: [
+          { id: "new-claude", launcher: true, name: "New Claude" },
+          { id: "new-codex", launcher: true, name: "New Codex" },
           {
             id: "claude",
-            name: "claude",
+            name: "Claude",
             sub: "refactoring auth",
             status: "running",
             active: true,
@@ -69,25 +75,25 @@
             project: "app",
           },
           {
-            id: "claude-2",
-            name: "claude",
+            id: "codex-2",
+            name: "Codex",
             sub: "running tests",
             status: "running",
             project: "app-2",
           },
-          { id: "new-claude", launcher: true, name: "New Claude" },
         ],
       },
       {
         kind: "TERMINAL",
         rows: [
-          { id: "zsh", name: "zsh", status: "running", project: "app" },
           { id: "new-terminal", launcher: true, name: "New Terminal" },
+          { id: "zsh", name: "zsh", status: "running", project: "app" },
         ],
       },
       {
         kind: "PROCESSES",
         rows: [
+          { id: "new-process", launcher: true, name: "New Process" },
           {
             id: "dev-server",
             name: "dev server",
@@ -102,41 +108,57 @@
             status: "running",
             project: "app-2",
           },
-          { id: "new-process", launcher: true, name: "New Process" },
         ],
       },
     ],
+    // A ready-for-input Claude preview. Clicking the row makes it live (you type a
+    // prompt; Claude then "works" — see the sandbox driver's freshPane/startWorking).
     main: {
       program: "claude",
-      title: " claude — running ",
+      title: " Claude — ready ",
       lines: [
-        { tokens: [{ t: "> ", c: "dim" }, { t: "refactor auth to use the new TokenService" }] },
+        { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }] },
+        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }] },
+        { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }] },
         "",
-        { tokens: [{ t: "●  ", c: "ai" }, { t: "Read", c: "fn" }, { t: "  src/auth.rs, src/token.rs", c: "path" }] },
-        { tokens: [{ t: "●  ", c: "ai" }, { t: "Edit", c: "fn" }, { t: "  src/auth.rs", c: "path" }] },
-        { text: "     -  let token = generate_token(user_id);", cls: "ln-del" },
-        { text: "     +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
-        { tokens: [{ t: "●  ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "  cargo test auth" }] },
-        { tokens: [{ t: "     test result: " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] },
-        { tokens: [{ t: "●  ", c: "ai" }, { t: "auth now delegates to TokenService. " }, { t: "✓", c: "ok" }] },
+        { tokens: [{ t: "  Ask Claude to do something — type a prompt and press enter.", c: "dim" }] },
+        "",
+        { tokens: [{ t: "❯ ", c: "prompt" }, { t: "" }] },
       ],
       placeholder: null,
       cursor: true,
     },
+    // The native mmux git panel: three bordered boxes (see src/app/view/git.rs).
     panel: {
       visible: true,
       branch: "main",
-      lines: [
-        { text: " Files", cls: "ln-dim" },
-        { tokens: [{ t: "  M ", c: "warn" }, { t: "src/auth.rs" }] },
-        { tokens: [{ t: "  M ", c: "warn" }, { t: "src/token.rs" }] },
-        { tokens: [{ t: "  A ", c: "add" }, { t: "src/lib.rs" }] },
-        { text: " Branches", cls: "ln-dim" },
-        { tokens: [{ t: "  ✓ ", c: "ok" }, { t: "main" }] },
-        { text: "    feat/tokens", cls: "ln-dim" },
-        { text: " Commits", cls: "ln-dim" },
-        { tokens: [{ t: "  e2e6087 ", c: "info" }, { t: "add token service" }] },
-        { tokens: [{ t: "  fce46df ", c: "info" }, { t: "drag-select scrollback" }] },
+      sections: [
+        {
+          title: "Changes · main ↑1",
+          active: true,
+          lines: [
+            { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " app/", c: "info" }] },
+            { tokens: [{ t: " " }, { t: "  [~]", c: "warn" }, { t: " src/", c: "info" }] },
+            { tokens: [{ t: "▌", c: "ai" }, { t: "    [✓]", c: "ok" }, { t: " auth.rs", c: "warn" }], cls: "git-sel" },
+            { tokens: [{ t: " " }, { t: "    [ ]", c: "dim" }, { t: " token.rs", c: "warn" }] },
+            { tokens: [{ t: " " }, { t: "    [✓]", c: "ok" }, { t: " lib.rs", c: "ok" }] },
+          ],
+        },
+        {
+          title: "Branches",
+          lines: [
+            { tokens: [{ t: " ● ", c: "ok" }, { t: "main", c: "ok" }, { t: "   origin/main", c: "dim" }] },
+            { tokens: [{ t: "   feat/tokens" }] },
+          ],
+        },
+        {
+          title: "Recent",
+          lines: [
+            { tokens: [{ t: "e2e6087 ", c: "dim" }, { t: "add token service" }] },
+            { tokens: [{ t: "fce46df ", c: "dim" }, { t: "drag-select scrollback" }] },
+            { tokens: [{ t: "a1b9c34 ", c: "dim" }, { t: "native git panel" }] },
+          ],
+        },
       ],
     },
     focus: "sidebar",
@@ -255,9 +277,13 @@
     renderSidebar(t.sidebar, state);
     renderMain(t, state.main || {});
     renderPanel(t, state.panel || {});
-    renderStatus(t.status, state.focus);
+    renderStatus(t.status, state.focus, state.status);
     renderToast(t.toast, state.toast);
     renderOverlay(t.overlay, state.overlay);
+
+    // Bare mode: a plain terminal with the mmux chrome (sidebar, panel, status,
+    // tab, titlebar name/meta) hidden — used for scene 0's "before mmux" terminal.
+    t.root.classList.toggle("tw--bare", !!state.bare);
 
     // Reflect engaged-focus on the root so CSS can paint pane accents.
     t.root.classList.toggle("tw--main-focus", state.focus === "main");
@@ -426,28 +452,55 @@
       cur.setAttribute("aria-hidden", "true");
       lastEl.appendChild(cur);
     }
+
+    // keep the newest line in view (a live terminal scrolls to the bottom)
+    if (typeof t.screen.scrollTop === "number") {
+      t.screen.scrollTop = t.screen.scrollHeight;
+    }
   }
 
+  // The native git panel: a column of bordered boxes (Changes / Branches / Recent),
+  // matching src/app/view/git.rs. Legacy `panel.lines` still renders as a flat list.
   function renderPanel(t, panel) {
     if (!t.panel) return;
     var visible = !!panel.visible;
     t.panel.hidden = !visible;
     if (!visible) return;
 
+    var sections = Array.isArray(panel.sections) ? panel.sections : null;
     if (t.panelHead) {
-      t.panelHead.textContent = panel.branch ? " " + panel.branch + " " : " git ";
+      // The boxed panel carries its branch in the Changes box title; the old " git "
+      // chip only shows for the legacy flat-list shape.
+      t.panelHead.hidden = !!sections;
+      if (!sections) t.panelHead.textContent = panel.branch ? " " + panel.branch + " " : " git ";
     }
-    if (t.panelScreen) {
-      t.panelScreen.textContent = "";
-      (panel.lines || []).forEach(function (line) {
-        t.panelScreen.appendChild(renderLine(line));
+    if (!t.panelScreen) return;
+    t.panelScreen.textContent = "";
+
+    if (sections) {
+      sections.forEach(function (sec) {
+        var box = el("div", "git-box" + (sec.active ? " git-box--active" : ""));
+        box.appendChild(el("div", "git-box-title", sec.title || ""));
+        var body = el("div", "git-box-body");
+        (sec.lines || []).forEach(function (line) {
+          body.appendChild(renderLine(line));
+        });
+        box.appendChild(body);
+        t.panelScreen.appendChild(box);
       });
+      return;
     }
+
+    (panel.lines || []).forEach(function (line) {
+      t.panelScreen.appendChild(renderLine(line));
+    });
   }
 
-  function renderStatus(host, focus) {
+  // The bottom bar: an explicit per-state hint (the scroll demo, which isn't
+  // interactive) wins; otherwise the focus-keyed key hints (the playable sandbox).
+  function renderStatus(host, focus, hint) {
     if (!host) return;
-    host.textContent = STATUS[focus] || STATUS.sidebar;
+    host.textContent = hint || STATUS[focus] || STATUS.sidebar;
   }
 
   function renderToast(host, toast) {
@@ -611,33 +664,83 @@
         revealTimer = null;
       }
 
+      // Clear any prior boot animation so it only replays when scene 0 re-enters.
+      var tw = twRefs("tw");
+      if (tw && tw.root) tw.root.classList.remove("tw--boot");
+
       var base = sc.state || {};
       var reveal = sc.type; // optional reveal hint
 
       if (reveal && !reducedMotion()) {
-        runReveal(base, reveal);
+        runReveal(sc);
       } else if (
         !reducedMotion() &&
         base.main &&
-        base.main.program === "claude" &&
+        (base.main.program === "claude" || base.main.program === "codex") &&
         Array.isArray(base.main.lines) &&
         base.main.lines.length > 1
       ) {
-        // §6.1: stream the Claude scene's lines progressively so it reads as working.
+        // §6.1: stream the agent scene's lines progressively so it reads as working.
         streamLines(base);
       } else {
         renderTUI(base);
       }
     }
 
-    /* Reveal hint dispatch: { target:"main", text:"mmux" } → typing; otherwise
-     * fall back to a line-stream of the base state's main.lines. */
-    function runReveal(base, reveal) {
+    /* Reveal hint dispatch. Scene 0 carries a bare `term`: type `mmux` into it,
+     * then boot into the mmux UI (`state`). Otherwise: typing reveal, then a
+     * line-stream fallback. */
+    function runReveal(sc) {
+      var base = sc.state || {};
+      var reveal = sc.type || {};
+      if (sc.term && reveal.target === "main" && reveal.text) {
+        launchReveal(sc.term, base, reveal.text);
+        return;
+      }
       if (reveal.target === "main" && reveal.text && reveal.text.length <= 16) {
         typeInto(base, reveal.text);
         return;
       }
       streamLines(base);
+    }
+
+    // Scene 0: type `text` into the bare terminal, hold a beat, then let the mmux
+    // UI take over the window (a one-shot `tw--boot` animation sells the "pop up").
+    function launchReveal(term, booted, full) {
+      var chars = full.split("");
+      var step = Math.max(60, Math.floor(440 / chars.length));
+      var prompt = "❯ ";
+      var l0 = term.main && term.main.lines && term.main.lines[0];
+      if (l0 && l0.tokens && l0.tokens[0] && l0.tokens[0].t) prompt = l0.tokens[0].t;
+
+      function paint(n, cursor) {
+        var s = cloneState(term);
+        s.main = s.main || {};
+        s.main.placeholder = null;
+        s.main.lines = [{ tokens: [{ t: prompt, c: "prompt" }, { t: full.slice(0, n) }] }];
+        s.main.cursor = cursor;
+        renderTUI(s);
+      }
+
+      function boot() {
+        renderTUI(booted);
+        var tw = twRefs("tw");
+        if (tw && tw.root) {
+          tw.root.classList.remove("tw--boot");
+          void tw.root.offsetWidth; // reflow so the animation restarts on re-entry
+          tw.root.classList.add("tw--boot");
+        }
+      }
+
+      var shown = 0;
+      function frame() {
+        shown++;
+        paint(shown, true);
+        revealTimer = setTimeout(shown < chars.length ? frame : boot, shown < chars.length ? step : 520);
+      }
+
+      paint(0, true);
+      revealTimer = setTimeout(frame, step);
     }
 
     // Typing reveal: type `text` char-by-char into the main pane (scene 0 'mmux').
@@ -722,7 +825,7 @@
     var root = null;
     var hintEl = null;
     var liveEl = null;
-    var seq = { claude: 1, terminal: 1, process: 1 };
+    var seq = { claude: 1, codex: 1, terminal: 1, process: 1 };
 
     function refs() {
       root = document.getElementById(ROOT_ID);
@@ -730,9 +833,22 @@
       liveEl = root ? $(".tw-a11y-live", root) : null;
     }
 
-    // every sandbox render targets its own root (#tw-how), never the demo's #tw
+    // every sandbox render targets its own root (#tw-how), never the demo's #tw.
+    // Keep the bottom-bar hint honest about what the pane is doing (these keys work).
     function render() {
+      state.status = sandboxStatus();
       renderTUI(state, ROOT_ID);
+    }
+    function sandboxStatus() {
+      var m = state.main;
+      if (state.focus === "main" && m) {
+        if (m.working) return (m.kind === "codex" ? "codex" : "claude") + " is working · esc to interrupt";
+        if (m.typeable) return m.kind === "zsh"
+          ? "type a command · ⏎ run · esc back"
+          : "type a prompt · ⏎ send · esc back";
+        return "live output · esc back";
+      }
+      return "click a row · ↑↓ move · ⏎ open · x close · esc to leave";
     }
 
     /* Announce sandbox changes to AT: the navigable rows live in the aria-hidden
@@ -957,6 +1073,13 @@
 
     function onKey(e) {
       if (!engaged) return;
+
+      // A focused typeable pane (terminal / Claude / Codex) takes keystrokes as input;
+      // Escape is the one key that falls through (to exit / interrupt below).
+      if (state.focus === "main" && state.main && state.main.typeable) {
+        if (handleTyping(e)) return;
+      }
+
       var rows = selectableRows();
       var i = selectedIndex(rows);
       var handled = true;
@@ -994,6 +1117,10 @@
           break;
         case "Escape":
           if (state.focus === "main") {
+            if (state.main && state.main.working) {
+              interruptWork(); // Esc interrupts a working agent (stays in the pane)
+              return; // interruptWork already rendered
+            }
             state.focus = "sandbox"; // main → back to the sidebar list
           } else {
             release(); // Esc from sidebar releases the trap
@@ -1027,29 +1154,16 @@
       }
     }
 
-    /* canned realistic content blocks for freshly-spawned sessions (§6.2). */
+    /* ----------------------------------------------------------------------
+     * Live, typeable panes. A focused terminal / Claude / Codex pane takes
+     * keystrokes: the terminal runs a few hardcoded commands; Claude and Codex,
+     * once you submit a prompt, "work" forever (a rotating gerund + spinner with
+     * the odd tool line) so they look and feel real. A process pane is output-
+     * only — no input cursor.
+     * -------------------------------------------------------------------- */
+
+    // Output-only dev server (the one non-typeable spawn).
     var SPAWN = {
-      claude: {
-        program: "claude",
-        lines: [
-          { tokens: [{ t: "> ", c: "dim" }, { t: "scaffold a health-check endpoint" }] },
-          "",
-          { tokens: [{ t: "●  ", c: "ai" }, { t: "Write", c: "fn" }, { t: "  src/routes/health.rs", c: "path" }] },
-          { text: "     +  pub async fn health() -> Json<Status> {", cls: "ln-add" },
-          { text: "     +      Json(Status::ok())", cls: "ln-add" },
-          { tokens: [{ t: "●  ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "  cargo check" }] },
-          { tokens: [{ t: "     Finished", c: "ok" }, { t: " in 1.84s", c: "dim" }] },
-        ],
-      },
-      zsh: {
-        program: "zsh",
-        lines: [
-          { tokens: [{ t: "~/dev/app", c: "path" }, { t: "  on  " }, { t: "main", c: "ai" }] },
-          { tokens: [{ t: "❯ ", c: "prompt" }, { t: "git status -s" }] },
-          { tokens: [{ t: " M ", c: "warn" }, { t: "src/auth.rs" }] },
-          { tokens: [{ t: "?? ", c: "dim" }, { t: "src/routes/health.rs" }] },
-        ],
-      },
       vite: {
         program: "vite",
         lines: [
@@ -1063,32 +1177,244 @@
       },
     };
 
-    // Launcher → append a new running row of the matching kind, focus main, stream.
+    // A fresh, interactive pane of `kind` ("zsh" | "claude" | "codex"), ready for
+    // input. `history` is the committed scrollback; the live prompt line is composed
+    // on top by paintPane(). Only these kinds are typeable / get an input cursor.
+    function freshPane(kind, title) {
+      var glyph = "❯ ", tone = "prompt", program = "zsh", history;
+      if (kind === "claude") {
+        program = "claude";
+        history = claudeBanner().concat([
+          "",
+          { tokens: [{ t: "  Ask Claude to do something — type a prompt and press enter.", c: "dim" }] },
+          "",
+        ]);
+      } else if (kind === "codex") {
+        program = "codex"; glyph = "› "; tone = "codex";
+        history = codexBox([
+          [{ t: ">_ ", c: "codex" }, { t: "OpenAI Codex" }, { t: "  v0.142.2", c: "dim" }],
+          [{ t: "model:      ", c: "dim" }, { t: "gpt-5.5 high" }],
+        ]).concat([
+          "",
+          { tokens: [{ t: "  Ask Codex to do something — type a prompt and press enter.", c: "dim" }] },
+          "",
+        ]);
+      } else {
+        history = [{ tokens: [{ t: "~/dev/app", c: "path" }, { t: "  on  " }, { t: "main", c: "ai" }] }];
+      }
+      var m = {
+        program: program, kind: kind, typeable: true,
+        promptGlyph: glyph, promptTone: tone,
+        input: "", working: false, title: title, cursor: true, history: history,
+      };
+      m.lines = history.concat([{ tokens: [{ t: glyph, c: tone }, { t: "" }] }]);
+      return m;
+    }
+
+    // Compose the visible pane = committed history + the live prompt line, then render.
+    function paintPane() {
+      var m = state.main;
+      if (!m) return;
+      capHistory(m);
+      if (m.working) return; // the work loop paints its own status tail
+      m.lines = (m.history || []).concat([
+        { tokens: [{ t: m.promptGlyph, c: m.promptTone }, { t: m.input || "" }] },
+      ]);
+      m.cursor = true;
+      render();
+    }
+    function capHistory(m) {
+      var MAX = 16;
+      if (m.history && m.history.length > MAX) m.history = m.history.slice(m.history.length - MAX);
+    }
+
+    // Key handling for a focused typeable pane. Returns true if the key was consumed
+    // (the nav handler is then skipped); Escape falls through so it still exits/interrupts.
+    function handleTyping(e) {
+      var m = state.main;
+      if (m.working) {
+        if (e.key === "Escape") return false; // Esc interrupts (handled by nav switch)
+        e.preventDefault();
+        return true; // swallow everything else while working
+      }
+      if (e.key === "Enter") { e.preventDefault(); submitInput(); return true; }
+      if (e.key === "Backspace") {
+        m.input = (m.input || "").slice(0, -1);
+        paintPane();
+        e.preventDefault();
+        return true;
+      }
+      if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        m.input = (m.input || "") + e.key;
+        paintPane();
+        e.preventDefault();
+        return true;
+      }
+      if (/^Arrow|^Home$|^End$/.test(e.key || "")) { e.preventDefault(); return true; }
+      return false; // Escape & friends fall through to nav
+    }
+
+    // Enter: commit the typed line, then act on it.
+    function submitInput() {
+      var m = state.main;
+      var cmd = (m.input || "").trim();
+      m.history = (m.history || []).concat([
+        { tokens: [{ t: m.promptGlyph, c: m.promptTone }, { t: m.input || "" }] },
+      ]);
+      m.input = "";
+      if (m.kind === "zsh") {
+        var out = runCommand(cmd);
+        if (out === null) m.history = [{ tokens: [{ t: "~/dev/app", c: "path" }, { t: "  on  " }, { t: "main", c: "ai" }] }];
+        else m.history = m.history.concat(out);
+        paintPane();
+        announce(cmd ? "ran " + cmd : "");
+      } else if (!cmd) {
+        paintPane(); // empty prompt to an agent → just a new prompt
+      } else {
+        startWorking(m.kind);
+        announce(m.kind + " is working");
+      }
+    }
+
+    // A few hardcoded shell commands so the terminal feels alive. Returns output lines
+    // (no trailing prompt), or null for `clear`.
+    function runCommand(c) {
+      if (!c) return [];
+      var argv = c.split(/\s+/);
+      switch (argv[0]) {
+        case "clear": return null;
+        case "ls":
+          return [{ tokens: [{ t: "Cargo.toml  README.md  mmux.yaml  " }, { t: "src  docs  dist", c: "info" }] }];
+        case "pwd": return ["/Users/you/dev/app"];
+        case "whoami": return ["you"];
+        case "echo": return [c.replace(/^echo\s*/, "")];
+        case "date": return ["Fri Jun 26 12:00:00 CEST 2026"];
+        case "git":
+          if (argv[1] === "status")
+            return [
+              { tokens: [{ t: "On branch ", c: "dim" }, { t: "main", c: "ai" }] },
+              { text: "Changes not staged for commit:" },
+              { tokens: [{ t: "  modified:   ", c: "warn" }, { t: "src/auth.rs" }] },
+              { tokens: [{ t: "  modified:   ", c: "warn" }, { t: "src/token.rs" }] },
+            ];
+          if (argv[1] === "branch")
+            return [{ tokens: [{ t: "* ", c: "ok" }, { t: "main", c: "ok" }] }, { tokens: [{ t: "  feat/tokens", c: "dim" }] }];
+          if (argv[1] === "log")
+            return [{ tokens: [{ t: "e2e6087 ", c: "dim" }, { t: "add token service" }] }, { tokens: [{ t: "fce46df ", c: "dim" }, { t: "drag-select scrollback" }] }];
+          return [{ tokens: [{ t: "git: '" + (argv[1] || "") + "' is not a git command", c: "dim" }] }];
+        case "cargo":
+          if (argv[1] === "run" || argv[1] === "build")
+            return [
+              { tokens: [{ t: "   Compiling", c: "ok" }, { t: " app v0.2.0", c: "dim" }] },
+              { tokens: [{ t: "    Finished", c: "ok" }, { t: " `dev` profile in 2.91s", c: "dim" }] },
+            ];
+          if (argv[1] === "test")
+            return [{ tokens: [{ t: "test result: " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] }];
+          return [{ tokens: [{ t: "error: no such subcommand `" + (argv[1] || "") + "`", c: "del" }] }];
+        case "mmux": return [{ tokens: [{ t: "you're already in mmux — this is it.", c: "dim" }] }];
+        case "help":
+        case "?":
+          return [{ tokens: [{ t: "try: ", c: "dim" }, { t: "ls · pwd · echo · date · git status · cargo run · clear" }] }];
+        default:
+          return [{ tokens: [{ t: "zsh: command not found: " + argv[0], c: "del" }] }];
+      }
+    }
+
+    /* ---- the "working forever" loop for Claude / Codex ---- */
+    var CLAUDE_WORDS = ["Pondering", "Pontificating", "Noodling", "Percolating", "Finagling",
+      "Ruminating", "Schlepping", "Conjuring", "Marinating", "Galvanizing", "Spelunking",
+      "Transmuting", "Coalescing", "Wrangling", "Tinkering", "Cogitating"];
+    var CLAUDE_STARS = ["✻", "✶", "✳", "✺"];
+    var DOTS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    var CLAUDE_EVENTS = [
+      { tokens: [{ t: "●  ", c: "ai" }, { t: "Read", c: "fn" }, { t: "  src/auth.rs", c: "path" }] },
+      { tokens: [{ t: "●  ", c: "ai" }, { t: "Grep", c: "fn" }, { t: '  "TokenService"', c: "path" }] },
+      { tokens: [{ t: "●  ", c: "ai" }, { t: "Edit", c: "fn" }, { t: "  src/token.rs", c: "path" }] },
+      { text: "     +  let token = self.tokens.issue(user_id)?;", cls: "ln-add" },
+      { tokens: [{ t: "●  ", c: "ai" }, { t: "Bash", c: "fn" }, { t: "  cargo test auth" }] },
+      { tokens: [{ t: "     " }, { t: "ok.", c: "ok" }, { t: " 12 passed; 0 failed", c: "dim" }] },
+      { tokens: [{ t: "●  ", c: "ai" }, { t: "weighing the edge cases…", c: "dim" }] },
+    ];
+    var CODEX_EVENTS = [
+      { tokens: [{ t: "• ", c: "codex" }, { t: "Explored " }, { t: "src/auth.rs", c: "path" }] },
+      { tokens: [{ t: "• ", c: "codex" }, { t: "Edited " }, { t: "src/token.rs", c: "path" }] },
+      { tokens: [{ t: "• ", c: "codex" }, { t: "Ran " }, { t: "cargo test" }, { t: "  →  ", c: "dim" }, { t: "ok", c: "ok" }] },
+      { tokens: [{ t: "• ", c: "codex" }, { t: "reasoning about the token flow…", c: "dim" }] },
+    ];
+
+    var workTimer = null, workTok = 0, workStart = 0, workTick = 0;
+    function startWorking(kind) {
+      var m = state.main;
+      m.working = true;
+      m.cursor = false;
+      workTok++;
+      m._tok = workTok;
+      workTick = 0;
+      workStart = nowMs();
+      if (reducedMotion()) { paintWorking(kind); return; } // static; no infinite loop
+      var tok = workTok;
+      (function loop() {
+        if (!engaged || workTok !== tok || !state.main || state.main._tok !== tok) return;
+        workTick++;
+        if (workTick % 5 === 0) {
+          var pool = kind === "codex" ? CODEX_EVENTS : CLAUDE_EVENTS;
+          state.main.history = (state.main.history || []).concat([pool[Math.floor(Math.random() * pool.length)]]);
+          capHistory(state.main);
+        }
+        paintWorking(kind);
+        workTimer = setTimeout(loop, kind === "codex" ? 430 : 360);
+      })();
+    }
+
+    // Render history + the live spinner/status tail (no input cursor while working).
+    function paintWorking(kind) {
+      var m = state.main;
+      if (!m) return;
+      var elapsed = Math.max(0, Math.round((nowMs() - workStart) / 1000));
+      var tail;
+      if (kind === "codex") {
+        tail = { tokens: [{ t: DOTS[workTick % DOTS.length] + " ", c: "codex" }, { t: "Working " }, { t: "(" + elapsed + "s · esc to interrupt)", c: "dim" }] };
+      } else {
+        var star = CLAUDE_STARS[workTick % CLAUDE_STARS.length];
+        var word = CLAUDE_WORDS[Math.floor(workTick / 6) % CLAUDE_WORDS.length];
+        tail = { tokens: [{ t: star + " ", c: "ai" }, { t: word + "… ", c: "ai" }, { t: "(esc to interrupt · " + elapsed + "s)", c: "dim" }] };
+      }
+      m.lines = (m.history || []).concat([tail]);
+      m.cursor = false;
+      render();
+    }
+
+    // Esc while working → interrupt: stop the loop, drop a note, restore the prompt.
+    function interruptWork() {
+      if (workTimer) { clearTimeout(workTimer); workTimer = null; }
+      workTok++; // invalidate any pending loop frame
+      var m = state.main;
+      if (!m) return;
+      m.working = false;
+      m._tok = null;
+      m.input = "";
+      m.history = (m.history || []).concat([
+        { tokens: [{ t: "  ⎿ ", c: "dim" }, { t: "interrupted by user", c: "dim" }] },
+        "",
+      ]);
+      paintPane();
+    }
+
+    function nowMs() { return Date.now(); }
+
+    // Launcher → append a new running row of the matching kind, focus and open it.
     function spawnFrom(launcher) {
-      var kind, name, sub = null, block;
+      var kind, name, sub = null, paneKind = null;
 
       var lname = launcher.name || "";
-      if (/claude/i.test(lname)) {
-        kind = "AGENTS";
-        var n = seq.claude++;
-        name = "claude";
-        sub = "scaffolding health-check";
-        block = SPAWN.claude;
-        if (n > 1 || hasRowNamed("claude")) {
-          // keep the name "claude"; the sidebar can hold several (the app does too)
-          sub = "new session";
-        }
+      if (/codex/i.test(lname)) {
+        kind = "AGENTS"; seq.codex++; name = "Codex"; sub = "ready"; paneKind = "codex";
+      } else if (/claude/i.test(lname)) {
+        kind = "AGENTS"; seq.claude++; name = "Claude"; sub = "ready"; paneKind = "claude";
       } else if (/terminal/i.test(lname)) {
-        kind = "TERMINAL";
-        name = seq.terminal === 1 ? "zsh" : "zsh " + seq.terminal;
-        seq.terminal++;
-        block = SPAWN.zsh;
+        kind = "TERMINAL"; name = seq.terminal === 1 ? "zsh" : "zsh " + seq.terminal; seq.terminal++; paneKind = "zsh";
       } else {
-        kind = "PROCESSES";
-        name = "dev server";
-        sub = "vite · :5173";
-        seq.process++;
-        block = SPAWN.vite;
+        kind = "PROCESSES"; name = "dev server"; sub = "vite · :5173"; seq.process++;
       }
 
       var section = sectionByKind(kind);
@@ -1096,32 +1422,29 @@
 
       var id = name.replace(/\s+/g, "-").toLowerCase() + "-" + Date.now();
       var newRow = {
-        id: id,
-        name: name,
-        sub: sub,
-        status: "running",
-        active: false,
-        attention: false,
+        id: id, name: name, sub: sub, status: "running",
+        active: false, attention: false,
         project: state.multiProject ? activeProjectName() : undefined,
       };
 
-      // insert above the launcher within the section
-      var li = section.rows.indexOf(launcher);
-      if (li < 0) li = section.rows.length;
-      section.rows.splice(li, 0, newRow);
+      // Launchers sit at the top of a section; a new session goes right below them.
+      var insertAt = 0;
+      for (var ri = 0; ri < section.rows.length; ri++) {
+        if (section.rows[ri].launcher) insertAt = ri + 1;
+      }
+      section.rows.splice(insertAt, 0, newRow);
 
-      // select it, focus main, stream its realistic content
       selectRow(selectableRows(), selectableRows().indexOf(newRow));
       state.focus = "main";
-      state.main = {
-        program: block.program,
-        title: titleFor(newRow),
-        lines: block.lines,
-        placeholder: null,
-        cursor: true,
-      };
-      streamMain(block.lines);
-      announce("new " + name + " spawned, running");
+      if (paneKind) {
+        state.main = freshPane(paneKind, titleFor(newRow)); // interactive, ready for input
+        render();
+        announce("new " + name + " spawned — ready for input");
+      } else {
+        state.main = { program: "vite", title: titleFor(newRow), lines: SPAWN.vite.lines, placeholder: null, cursor: false };
+        streamMain(SPAWN.vite.lines);
+        announce("new " + name + " spawned, running");
+      }
     }
 
     // x → stop the selected session row (keep the row; dot goes "stopped").
@@ -1130,7 +1453,7 @@
       row.status = "stopped";
       row.attention = false;
       if (state.focus === "main") {
-        state.main = mainFor(row); // shows the stopped placeholder
+        state.main = mainFor(row); // shows the stopped placeholder (stops any work loop)
         state.focus = "sandbox";
       }
       announce(row.name + " stopped");
@@ -1150,20 +1473,16 @@
           cursor: false,
         };
       }
-      // re-focusing a running row: show a small live snippet for its kind
       var prog = programFor(row);
-      var block = (prog && SPAWN[prog === "dev server" ? "vite" : prog]) || null;
-      return {
-        program: block ? block.program : prog,
-        title: titleFor(row),
-        lines: block ? block.lines : [{ tokens: [{ t: "❯ ", c: "prompt" }, { t: "" }] }],
-        placeholder: null,
-        cursor: true,
-      };
+      if (prog === "vite") {
+        return { program: "vite", title: titleFor(row), lines: SPAWN.vite.lines, placeholder: null, cursor: false };
+      }
+      return freshPane(prog, titleFor(row)); // claude / codex / zsh → interactive, ready
     }
     function programFor(row) {
       if (/dev server/i.test(row.name)) return "vite";
-      if (/claude|codex/i.test(row.name)) return "claude";
+      if (/codex/i.test(row.name)) return "codex";
+      if (/claude/i.test(row.name)) return "claude";
       return "zsh";
     }
 
@@ -1220,6 +1539,33 @@
    * ===================================================================== */
   function clamp(v, lo, hi) {
     return v < lo ? lo : v > hi ? hi : v;
+  }
+
+  // The real Claude Code welcome banner (its block-glyph logo), captured from `claude`.
+  function claudeBanner() {
+    return [
+      { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }] },
+      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 · Claude Max", c: "dim" }] },
+      { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }] },
+    ];
+  }
+
+  // Build the real Codex rounded banner from row segments, padding each row so the
+  // right border lines up. `rows` is an array of token-segment arrays. (Mirrors the
+  // builder in scenes.js; the sandbox spawns its own canned content.)
+  function codexBox(rows) {
+    var W = 40;
+    var dash = "─".repeat(W - 2);
+    var out = [{ tokens: [{ t: "╭" + dash + "╮", c: "dim" }] }];
+    rows.forEach(function (segs) {
+      var len = segs.reduce(function (a, s) { return a + (s.t || "").length; }, 0);
+      var pad = Math.max(0, W - 4 - len);
+      out.push({
+        tokens: [{ t: "│ ", c: "dim" }].concat(segs).concat([{ t: " ".repeat(pad) + " │", c: "dim" }]),
+      });
+    });
+    out.push({ tokens: [{ t: "╰" + dash + "╯", c: "dim" }] });
+    return out;
   }
   function cloneState(s) {
     if (typeof structuredClone === "function") {
@@ -1310,10 +1656,10 @@
    * ===================================================================== */
   function boot() {
     // Render an initial state so the demo window is never blank before scroll fires.
-    var first =
-      window.MMUX_SCENES && window.MMUX_SCENES.length
-        ? window.MMUX_SCENES[0].state || DEFAULT_STATE
-        : DEFAULT_STATE;
+    // Scene 0 opens on its bare "before mmux" terminal (the launch reveal then types
+    // `mmux` and boots the UI once #demo scrolls into view).
+    var sc0 = window.MMUX_SCENES && window.MMUX_SCENES[0];
+    var first = sc0 ? sc0.term || sc0.state || DEFAULT_STATE : DEFAULT_STATE;
     renderTUI(first);
 
     scrollDriver.init();    // scrubs the scenes across #tw
