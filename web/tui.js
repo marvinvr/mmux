@@ -191,6 +191,8 @@
       barPath: $(".tw-titlebar-path", root),
       barMeta: $(".tw-titlebar-meta", root),
       sidebar: $(".tw-sidebar", root),
+      sidebarTitle: $(".tw-sidebar-title", root), // the project name cut into the sidebar box
+      mainTitle: $(".tw-main-title", root),        // " Claude — running " cut into the main box
       tab: $(".tw-tab", root),
       screen: $(".tw-screen", root),
       panel: $(".tw-panel", root),
@@ -260,6 +262,13 @@
 
     renderBar(t, state);
     renderSidebar(t.sidebar, state);
+    // The sidebar box title is the active project's name (the real single-project
+    // sidebar titles its border with the directory name — src/app/view/sidebar.rs).
+    if (t.sidebarTitle) {
+      var projs = state.projects || [];
+      var act = projs.filter(function (p) { return p.active; })[0] || projs[0];
+      t.sidebarTitle.textContent = (act && act.name) || "app";
+    }
     renderMain(t, state.main || {});
     renderPanel(t, state.panel || {});
     renderStatus(t.status, state.focus, state.status);
@@ -399,11 +408,18 @@
   }
 
   function renderMain(t, main) {
-    // No program tab — the real mmux doesn't label the pane with "claude"/"zsh",
-    // so keep it hidden (the skeleton element stays for layout stability).
+    // The pane is labelled the way the real mmux labels it — the session name +
+    // status cut into the box's top border (main_title in src/app/view/pane.rs),
+    // NOT a separate tab strip. So the title goes on the border chip and the old
+    // tab element stays empty/hidden (kept only for layout stability).
     if (t.tab) {
       t.tab.textContent = "";
       t.tab.hidden = true;
+    }
+    if (t.mainTitle) {
+      var title = (main.title || "").trim();
+      t.mainTitle.textContent = title;
+      t.mainTitle.hidden = !title; // an empty pane shows an unbroken top border
     }
     if (!t.screen) return;
 

@@ -75,11 +75,19 @@
               <span class="tw-titlebar-meta" aria-hidden="true">⌁ tmux</span>
             </div>
             <div class="tw-body">
-              <!-- decorative chrome, not page landmarks (the page already has one <main>) -->
-              <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
-              <div class="tw-main">
-                <div class="tw-tab"></div>            <!-- focused program label, e.g. "claude" -->
-                <div class="tw-screen"></div>          <!-- realistic lines (§5.4) or placeholder -->
+              <!-- decorative chrome, not page landmarks (the page already has one <main>).
+                   Each region is its own box-drawing frame with its title cut into the top
+                   border — a ratatui Block, not a shaded app panel. -->
+              <div class="tw-region tw-region--sidebar">
+                <span class="tw-region-title tw-sidebar-title" aria-hidden="true">app</span>
+                <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
+              </div>
+              <div class="tw-region tw-region--main">
+                <span class="tw-region-title tw-main-title" aria-hidden="true"></span> <!-- JS: " Claude — running " -->
+                <div class="tw-main">
+                  <div class="tw-tab"></div>            <!-- focused program label (hidden; title lives on the border) -->
+                  <div class="tw-screen"></div>          <!-- realistic lines (§5.4) or placeholder -->
+                </div>
               </div>
               <div class="tw-panel" hidden>            <!-- native git panel; JS fills with Changes/Branches/Recent boxes -->
                 <div class="tw-panel-head"> git </div>
@@ -192,16 +200,22 @@
       <div class="how-demo">
         <div id="tw-how" class="tw" role="img" aria-label="an interactive mmux terminal — click a row to open a session or spawn a new one">
           <div class="tw-bar">
-            <span class="tw-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="tw-bar-cursor" aria-hidden="true">▮</span>
             <span class="tw-titlebar-name">mmux</span>
             <span class="tw-titlebar-path">~/dev/app</span>
             <span class="tw-titlebar-meta" aria-hidden="true">⌁ tmux</span>
           </div>
           <div class="tw-body">
-            <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
-            <div class="tw-main">
-              <div class="tw-tab"></div>
-              <div class="tw-screen"></div>
+            <div class="tw-region tw-region--sidebar">
+              <span class="tw-region-title tw-sidebar-title" aria-hidden="true">app</span>
+              <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
+            </div>
+            <div class="tw-region tw-region--main">
+              <span class="tw-region-title tw-main-title" aria-hidden="true"></span>
+              <div class="tw-main">
+                <div class="tw-tab"></div>
+                <div class="tw-screen"></div>
+              </div>
             </div>
             <div class="tw-panel" hidden>
               <div class="tw-panel-head"> git </div>

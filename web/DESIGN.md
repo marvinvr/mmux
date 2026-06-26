@@ -193,19 +193,27 @@ A single reusable, high-fidelity component. **`index.html` ships the static skel
 
 ```html
 <div id="tw" class="tw" role="img" aria-label="a simulated mmux terminal session">
-  <div class="tw-bar">
-    <span class="tw-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+  <div class="tw-bar">                       <!-- host terminal-emulator chrome (no mac dots) -->
+    <span class="tw-bar-cursor" aria-hidden="true">▮</span>  <!-- green brand block-cursor -->
     <span class="tw-titlebar-name">mmux</span>
     <span class="tw-titlebar-path">~/dev/app</span>
     <span class="tw-titlebar-meta" aria-hidden="true">⌁ tmux</span>
   </div>
   <div class="tw-body">
-    <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
-    <div class="tw-main">
-      <div class="tw-tab"></div>            <!-- focused program label, e.g. "claude" -->
-      <div class="tw-screen"></div>          <!-- realistic lines (§5.4) or placeholder -->
+    <!-- each region is its own box-drawing frame (ratatui Block); its title is cut
+         into the top border by an absolutely-positioned .tw-region-title chip. -->
+    <div class="tw-region tw-region--sidebar">
+      <span class="tw-region-title tw-sidebar-title" aria-hidden="true">app</span>  <!-- JS: project name -->
+      <div class="tw-sidebar" aria-hidden="true"><!-- JS: projects + sections + rows --></div>
     </div>
-    <div class="tw-panel" hidden>            <!-- native git panel; toggled visible -->
+    <div class="tw-region tw-region--main">
+      <span class="tw-region-title tw-main-title" aria-hidden="true"></span>  <!-- JS: " Claude — running " -->
+      <div class="tw-main">
+        <div class="tw-tab"></div>            <!-- hidden; the pane label lives on the box border -->
+        <div class="tw-screen"></div>          <!-- realistic lines (§5.4) or placeholder -->
+      </div>
+    </div>
+    <div class="tw-panel" hidden>            <!-- native git panel; the .git-box stack IS the column -->
       <div class="tw-panel-head"> git </div>
       <div class="tw-panel-screen"></div>
     </div>
@@ -244,12 +252,21 @@ Sidebar inner (JS-produced):
 ```
 
 ### 5.2 Chrome details
-- **Window:** `--surface` bg, 1px `--border`, `--radius`, `--shadow`, and a soft brand glow bloom
-  behind it (a `::before`/sibling, low opacity, `--glow-brand`). Slight inner top highlight optional.
-- **Title bar `.tw-bar`:** `--surface-2`, 3 traffic-light dots (`.tw-lights i`) — tasteful; either
-  monochrome `--faint` or subtly tinted (`#fb7185 / #fbbf24 / #4ade80` at ~0.8). Center-left the
-  `mmux` name (bright) + path (muted). Right: `.tw-titlebar-meta` `⌁ tmux` (faint), or branch.
-- **Sidebar `.tw-sidebar`:** ~190px col, `--bg-2`, 1px right border. **Order matches the real tool
+It must read as a **terminal TUI, not a desktop app**: every region is its own box-drawing frame
+(a ratatui `Block` — a 1px `--tui-border` line with the title cut into the top edge) on **one**
+terminal background; no per-panel shading, no rounded corners, no macOS window controls.
+- **Window:** `--surface` bg, 1px `--border-2`, **sharp corners** (`border-radius: 0` — a terminal
+  screen, not a card), and only a **faint** drop shadow to lift it off the page (no glow/bloom).
+- **Title bar `.tw-bar`:** the host terminal-emulator's slim chrome, **not** macOS traffic lights —
+  `--bg` (darker than the screen), a green brand block-cursor `.tw-bar-cursor ▮`, the `mmux` name
+  (bright) + path (muted). Right: `.tw-titlebar-meta` `⌁ tmux` (faint), or `⎇ branch`.
+- **Region frames `.tw-region`:** the sidebar and main pane are each a `.tw-region` — a bordered box
+  whose `.tw-region-title` chip sits on the top border (bg `--surface`, masking the line behind it,
+  exactly how ratatui paints a `Block` title). The sidebar's title is the active project name; the
+  main pane's is the session label (` Claude — running `, set from `main.title`). The **focused main
+  pane is bordered magenta** (`.tw--main-focus` → `--magenta`), matching `Focus::Terminal`.
+- **Sidebar `.tw-sidebar`:** ~190px region, transparent (the unified terminal bg), framed by its
+  `.tw-region` box. **Order matches the real tool
   (`src/app/nav.rs build_nav`): the `+ New …` launcher comes FIRST in each section, then the
   sessions.** Rows are **compact** (tight vertical padding / line-height) so launchers + sessions for
   agents, terminals and processes all fit without scrolling. Section heads `.sb-head` uppercase,
@@ -257,11 +274,14 @@ Sidebar inner (JS-produced):
   selection (`#2d2d3c`) + a green cursor edge + brighter text. Status dot `.sb-dot` colored by
   `data-status` (running → `--running`, exited → `--faint`, stopped → `--muted`). Launchers: a green
   `+` and green name (the tool paints them `Color::Green`), hover → `--green`. Bell `.sb-bell` coral.
-- **Main `.tw-main`:** the focused program. **No program tab** — the real mmux doesn't label the
-  pane with `claude`/`zsh`, so `.tw-tab` stays hidden (the skeleton element is kept for layout
-  stability). `.tw-screen` = the content (§5.4), comfortable line-height (~1.6), left-padded. The
-  block cursor is a real CSS block sized to the text height (the `▮` glyph renders short).
-- **Panel `.tw-panel`:** ~196px right col, `--bg-2`, 1px left border. The **native git panel**:
+- **Main `.tw-main`:** the focused program, filling its `.tw-region` box. The pane is labelled the
+  way the real mmux labels it — the session name + status cut into the **box's top border**
+  (`main_title`, src/app/view/pane.rs), via the `.tw-main-title` chip — **not** a separate tab
+  strip, so `.tw-tab` stays hidden (kept only for layout stability). `.tw-screen` = the content
+  (§5.4), a tight terminal line-height (~1.5), left-padded. The block cursor is a real CSS block
+  sized to the text height (the `▮` glyph renders short).
+- **Panel `.tw-panel`:** ~200px right col, transparent, **no outer frame** — the three `.git-box`es
+  ARE the column (each its own bordered box). The **native git panel**:
   three bordered `.git-box`es — **Changes** (a file tree with `[✓]`/`[~]`/`[ ]` staging checkboxes,
   names colored by change type, the cursor row on a magenta bar), **Branches** (current `●` green),
   **Recent** (short hash + summary) — each with its title sitting on the top border like a ratatui
@@ -276,8 +296,9 @@ Sidebar inner (JS-produced):
 - **Status bar `.tw-status`:** thin bottom bar. In the scroll demo it shows a per-scene **hint of
   what's happening** (the demo isn't interactive); in the playable sandbox it shows the real,
   working key hints keyed by focus.
-- **Bare mode (`state.bare`):** scene 0's "before mmux" terminal — the sidebar, panel, status, tab
-  and the `mmux` titlebar name/meta are hidden (`.tw--bare`), leaving a plain full-width shell. The
+- **Bare mode (`state.bare`):** scene 0's "before mmux" terminal — the sidebar region, panel,
+  status, tab, the region title chips and the `mmux` titlebar name/meta are hidden (`.tw--bare`),
+  and the main region drops its box border so the screen fills a plain full-width shell. The
   reveal types `mmux` into it and **rests there** (no in-scene takeover, so the step stays visible
   while scrolling down — not only when scrolling back up into it). The mmux layout "pops up" in
   **scene 1** (`boot:true` → a one-shot `.tw--boot` animation slides the chrome in).
@@ -302,8 +323,8 @@ state = {
       { id, name, sub?, status:"running"|"exited"|"stopped", active?, attention?, project? },
   ]}],
   main: {
-    program: "claude"|"codex"|"zsh"|"vite"|null,  // small tab label; null hides the tab
-    title: " Claude — running ",            // (kept for a11y / optional); tab uses program
+    program: "claude"|"codex"|"zsh"|"vite"|null,  // content flavour only (the tab is hidden)
+    title: " Claude — running ",            // the pane label, cut into the box's top border
     lines: [ Line ],                        // realistic content (§5.4); placeholder beats lines
     placeholder: str|null,
     cursor: bool,                           // block cursor after last line
@@ -576,9 +597,11 @@ web/
 
 - [ ] Looks like a **premium real website**, not ASCII art. No box-drawing used as site structure
       (only as authentic content inside the terminal screen, if at all). Real borders/cards/diagram.
-- [ ] The terminal window is high-fidelity: window chrome (lights, title), CSS-bordered columns,
-      a status bar, brand glow. The panes show **real, syntax-colored, legible** content per §8
-      (Claude banner + session, Codex banner + session, shell, vite, native git panel) — zero placeholder/abstract content.
+- [ ] The terminal window is high-fidelity and reads as a **TUI, not a desktop app**: slim
+      emulator chrome (no mac dots), every region its own box-drawing frame with the title on the
+      top border, one terminal bg, a status bar. The panes show **real, syntax-colored, legible**
+      content per §8 (Claude banner + session, Codex banner + session, shell, vite, native git
+      panel) — zero placeholder/abstract content.
 - [ ] Palette is the v2 blue→magenta brand gradient + green/coral terminal semantics, used with life
       but not garish. Wordmark/CTA/links/glows carry the gradient.
 - [ ] Install shows ONLY `brew install marvinvr/mmux/mmux` (hero + §4.6). No cargo / from-source.

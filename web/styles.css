@@ -23,6 +23,9 @@
   --surface-3: #26282c;
   --border:    #2a2d31;
   --border-2:  #3a3e44;
+  /* the box-drawing line color: ratatui's DarkGray, the unfocused pane border. A
+   * touch brighter than --border-2 so the "lines around the sections" actually read. */
+  --tui-border: #4a4f56;
 
   /* ink */
   --text:   #d7d9dc;
@@ -426,7 +429,9 @@ section {
 }
 
 /* ============================================================================
- * the terminal window (#tw) — flat, crisp, with a tmux-green status bar
+ * the terminal window (#tw) — a real TUI: every region is its own box-drawing
+ * frame (ratatui Block) on ONE terminal background, not an app with shaded panels.
+ * Sharp corners, a barely-there lift off the page — a screen, not a floating card.
  * ========================================================================== */
 .tw {
   position: relative;
@@ -435,62 +440,97 @@ section {
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border-radius: 0;                                  /* sharp — terminals aren't rounded */
+  box-shadow: 0 16px 44px -32px rgba(0, 0, 0, .85);  /* faint; just lifts it off the page */
   overflow: hidden;
   font-size: .9rem;
-  line-height: 1.6;
+  line-height: 1.5;
   transition: border-color .2s ease;
   height: 34rem;
 }
 /* engaged sandbox: a crisp green edge, not a glow */
 .tw.tw--engaged { border-color: var(--green); }
 
-/* titlebar — minimal, de-mac'd (monochrome dots) ------------------------- */
+/* the host terminal-emulator's slim chrome — NOT macOS traffic lights. A green
+ * block-cursor brand mark + the cwd, the way a real terminal titles its window. */
 .tw-bar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: .65rem;
-  padding: .5rem .85rem;
-  background: var(--surface-2);
+  gap: .5rem;
+  padding: .38rem .7rem;
+  background: var(--bg);                  /* darker than the screen — reads as window chrome */
   border-bottom: 1px solid var(--border);
+  font-size: .8rem;
 }
-.tw-lights { display: inline-flex; gap: .4rem; }
-.tw-lights i {
-  width: .62rem;
-  height: .62rem;
-  border-radius: 50%;
-  background: var(--faint);
+.tw-bar-cursor {
+  color: var(--green);
+  font-weight: 700;
+  line-height: 1;
 }
 .tw-titlebar-name {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  margin-left: .3rem;
 }
 .tw-titlebar-path { color: var(--muted); }
 .tw-titlebar-meta {
   margin-left: auto;
   color: var(--green);
-  font-size: .76rem;
+  font-size: .74rem;
 }
 
-/* body: sidebar | main | panel ------------------------------------------ */
+/* body: the boxed regions sit edge-to-edge on the terminal bg, separated by a
+ * hair of gutter so each frame reads as its own box (sidebar | main | git). */
 .tw-body {
   flex: 1;
   display: flex;
+  gap: 3px;
+  padding: 3px;
   min-height: 0;
+  background: var(--surface);
 }
 
-/* sidebar — a flex column so the workspace pager can pin to the bottom */
-.tw-sidebar {
-  flex: none;
-  width: 188px;
+/* a boxed region = a ratatui Block: a full line-border with its title cut into the
+ * top edge. The sidebar and main pane are regions; the git panel's boxes are too. */
+.tw-region {
+  position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--bg-2);
-  border-right: 1px solid var(--border);
-  padding: .3rem 0;
+  min-height: 0;
+  border: 1px solid var(--tui-border);
+  background: transparent;
+}
+.tw-region--sidebar { flex: none; width: 190px; }
+.tw-region--main { flex: 1; min-width: 0; }
+/* the title chip sits ON the top border line, its bg masking the line behind it —
+ * exactly how ratatui paints a Block title over the border characters. */
+.tw-region-title {
+  position: absolute;
+  top: -.62em;
+  left: .55rem;
+  z-index: 1;
+  max-width: calc(100% - 1.2rem);
+  padding: 0 .35rem;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: .76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tw-region-title[hidden] { display: none; }
+/* the focused main pane is bordered magenta in the tool (Focus::Terminal) */
+.tw--main-focus .tw-region--main { border-color: var(--magenta); }
+.tw--main-focus .tw-region--main > .tw-region-title { color: var(--text); }
+
+/* sidebar — a flex column so the workspace pager can pin to the bottom. No border
+ * of its own now: the .tw-region wrapper carries the box. */
+.tw-sidebar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  padding: .4rem 0 .25rem;
   overflow-y: auto;
 }
 
@@ -506,8 +546,8 @@ section {
   align-items: center;
   gap: .3rem;
   padding: .45rem .55rem;
-  background: var(--bg-2);
-  border-top: 1px solid var(--border);
+  background: var(--surface);
+  border-top: 1px solid var(--tui-border);
 }
 .sb-switch-arrow {
   flex: none;
@@ -636,13 +676,14 @@ section {
 .sb-row--launcher:hover .sb-plus { color: var(--green); }
 .sb-row--launcher.sb-row--active { color: var(--green-bright); }
 
-/* main pane */
+/* main pane — fills its boxed region; the session title lives on the box border */
 .tw-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--surface);
+  min-height: 0;
+  background: transparent;
 }
 .tw-tab {
   flex: none;
@@ -658,9 +699,9 @@ section {
 
 .tw-screen {
   flex: 1;
-  padding: 1rem 1.15rem;
+  padding: .65rem .85rem;
   overflow: auto;
-  line-height: 1.7;
+  line-height: 1.5;
   color: var(--text-2);
 }
 .screen-line {
@@ -707,17 +748,16 @@ section {
 .ln-dim { color: var(--muted); }
 
 /* the active pane gets brighter ink */
-.tw--main-focus .tw-tab { color: var(--text); border-bottom-color: var(--border-2); }
 .tw--main-focus .tw-screen { color: var(--text); }
 
-/* panel (native git) */
+/* panel (native git): its own column of boxes, no outer frame or shaded bg — the
+ * three git boxes carry their own borders, just like src/app/view/git.rs. */
 .tw-panel {
   flex: none;
-  width: 196px;
+  width: 200px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-2);
-  border-left: 1px solid var(--border);
+  background: transparent;
 }
 .tw-panel[hidden] { display: none; }
 .tw-panel-head {
@@ -733,35 +773,34 @@ section {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: .55rem .5rem;
+  padding: 0 1px;
   overflow: auto;
   font-size: .76rem;
-  line-height: 1.7;
+  line-height: 1.55;
   color: var(--text-2);
 }
-.tw--panel-focus .tw-panel-head { color: var(--text); border-bottom-color: var(--border-2); }
 
 /* native git panel: three bordered boxes (Changes / Branches / Recent), matching
  * src/app/view/git.rs. The box title sits on the top border like a ratatui Block. */
 .git-box {
   position: relative;
   flex: 0 0 auto;
-  margin: .35rem .25rem .6rem;
-  padding: .4rem .3rem .3rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  margin: .55rem 0 0;
+  padding: .35rem .3rem .25rem;
+  border: 1px solid var(--tui-border);
+  border-radius: 0;
 }
 /* the stack fills the panel's full height: Changes (the file tree, first box) takes
  * the slack, the way the real git panel gives the tree the room. */
-.git-box:first-child { flex: 1 1 auto; min-height: 0; }
-.git-box:last-child { margin-bottom: .25rem; }
+.git-box:first-child { flex: 1 1 auto; min-height: 0; margin-top: .3rem; }
+.git-box:last-child { margin-bottom: .3rem; }
 .git-box-title {
   position: absolute;
   top: -.62em;
   left: .45rem;
   max-width: calc(100% - 1rem);
   padding: 0 .3rem;
-  background: var(--bg-2);
+  background: var(--surface);
   color: var(--muted);
   font-size: .68rem;
   white-space: nowrap;
@@ -784,23 +823,26 @@ section {
 .tw--ready .git-row { cursor: pointer; border-radius: 2px; }
 .tw--ready .git-row:hover { background: rgba(110, 158, 114, .16); }
 
-/* bare mode (scene 0): a plain terminal — the mmux chrome is hidden, the screen
- * fills the window. The launch reveal types `mmux` here, then boots the UI. */
-.tw--bare .tw-sidebar,
+/* bare mode (scene 0): a plain terminal — the mmux chrome is hidden and the main
+ * region drops its box so the screen fills the window. The reveal types `mmux`
+ * here, then boots the UI in. */
+.tw--bare .tw-region--sidebar,
 .tw--bare .tw-panel,
 .tw--bare .tw-status,
 .tw--bare .tw-tab,
+.tw--bare .tw-region-title,
 .tw--bare .tw-titlebar-name,
 .tw--bare .tw-titlebar-meta { display: none; }
+.tw--bare .tw-body { gap: 0; padding: 0; }
+.tw--bare .tw-region--main { border: 0; }
 
 /* boot: when mmux takes over the window, the chrome fades/slides into place */
 @keyframes tw-boot-side { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
 @keyframes tw-boot-fade { from { opacity: 0; } to { opacity: 1; } }
-.tw--boot .tw-sidebar { animation: tw-boot-side .42s ease both; }
-.tw--boot .tw-panel   { animation: tw-boot-side .42s ease both; }
-.tw--boot .tw-tab,
-.tw--boot .tw-screen,
-.tw--boot .tw-status  { animation: tw-boot-fade .5s ease both; }
+.tw--boot .tw-region--sidebar { animation: tw-boot-side .42s ease both; }
+.tw--boot .tw-panel           { animation: tw-boot-side .42s ease both; }
+.tw--boot .tw-region--main,
+.tw--boot .tw-status          { animation: tw-boot-fade .5s ease both; }
 
 /* status bar — the tmux-green signature: green bar, dark text */
 .tw-status {
@@ -876,7 +918,7 @@ section {
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--green);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   animation: hint-bob 2s ease-in-out infinite;
 }
 .tw-sandbox-hint[hidden] { display: none; }
@@ -1081,7 +1123,7 @@ section {
   .feature-grid { grid-template-columns: 1fr; }
 
   .tw { height: 28rem; font-size: .82rem; }
-  .tw-sidebar { width: 142px; }
+  .tw-region--sidebar { width: 146px; }
   .sb-sub { display: none; }
 
   .nav-links { gap: .8rem; font-size: .85rem; }
@@ -1090,7 +1132,7 @@ section {
 }
 
 @media (max-width: 460px) {
-  .tw-sidebar { width: 118px; }
+  .tw-region--sidebar { width: 120px; }
   .demo-caption--static .caption { margin-bottom: 1.6rem; }
 }
 
