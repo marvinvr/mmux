@@ -779,9 +779,10 @@ section {
   text-overflow: ellipsis;
 }
 .git-sel { background: rgba(169, 140, 196, .16); }
-/* the Changes box is clickable in the sandbox: files stage / unstage on click */
-.tw--ready .git-file { cursor: pointer; border-radius: 2px; }
-.tw--ready .git-file:hover { background: rgba(110, 158, 114, .16); }
+/* the Changes box is clickable in the sandbox: files and folders stage / unstage
+ * on click (folders toggle all their children; the checkbox shows [✓]/[~]/[ ]) */
+.tw--ready .git-row { cursor: pointer; border-radius: 2px; }
+.tw--ready .git-row:hover { background: rgba(110, 158, 114, .16); }
 
 /* bare mode (scene 0): a plain terminal — the mmux chrome is hidden, the screen
  * fills the window. The launch reveal types `mmux` here, then boots the UI. */

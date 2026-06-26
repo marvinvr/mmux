@@ -268,9 +268,11 @@ Sidebar inner (JS-produced):
   `Block`; the focused box is bordered magenta. The stack **fills the panel's full height** — the
   Changes box (the file tree, first box) takes the slack — so there's no dead space below Recent. A
   long line (e.g. a Recent commit summary) is clipped with an ellipsis, never spilling outside the
-  box. In the **sandbox**, the Changes files are **clickable** (`.git-file`): a click stages /
-  unstages the file (`[ ]`↔`[✓]`, the `▌` cursor moves to it) with a hover affordance.
-  Mirrors `src/app/view/git.rs`.
+  box. In the **sandbox** the Changes box is a live **tree**: every node (`.git-row`, file *or*
+  folder) is clickable — a file stages / unstages itself, a folder stages / unstages all of its
+  descendants, and each folder's checkbox is **tri-state**, computed from its leaves (`[✓]` all
+  staged · `[~]` some · `[ ]` none) so the selection ripples up the tree. The `▌` cursor moves to
+  the clicked node; hover gives an affordance. Mirrors `src/app/view/git.rs`.
 - **Status bar `.tw-status`:** thin bottom bar. In the scroll demo it shows a per-scene **hint of
   what's happening** (the demo isn't interactive); in the playable sandbox it shows the real,
   working key hints keyed by focus.
@@ -375,7 +377,8 @@ One renderer, two drivers (keep the v1 architecture; it worked).
   away, without first switching to another row and back. (If the open pane isn't typeable, engaging
   lands on the sidebar list instead.) `Esc` steps main → sidebar → out.
 - **Single project:** the sandbox is one project (`app`) — no linked-workspace pager / switcher.
-- **Git panel is live:** clicking a file in the Changes box stages / unstages it (§5.2).
+- **Git panel is live:** the Changes box is a tree — click a file to stage/unstage it, or a folder
+  to stage/unstage all its children; folder checkboxes are tri-state (`[✓]`/`[~]`/`[ ]`) (§5.2).
 - **Sidebar nav** (focus sidebar/sandbox): `↑/k` `↓/j` move the selection over the flat row list
   (launchers included), `Enter` activates (launcher → spawn a session of that kind; running row →
   focus it), `x` stops the selected session.

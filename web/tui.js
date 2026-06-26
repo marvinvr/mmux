@@ -465,10 +465,10 @@
         var body = el("div", "git-box-body");
         (sec.lines || []).forEach(function (line) {
           var ld = renderLine(line);
-          // a stageable file row → clickable hook (the sandbox toggles staging)
-          if (line && line.gitFile) {
-            ld.classList.add("git-file");
-            ld.setAttribute("data-git-file", line.gitFile);
+          // a stageable tree node (file or folder) → clickable hook (sandbox)
+          if (line && line.gitNode) {
+            ld.classList.add("git-row");
+            ld.setAttribute("data-git-node", line.gitNode);
           }
           body.appendChild(ld);
         });
@@ -986,9 +986,10 @@
       var swEl = closest(".sb-switch-arrow[data-switch]");
       if (swEl) { switchWorkspace(swEl.getAttribute("data-switch")); return; }
 
-      // clicking a file in the git Changes box stages / unstages it (feels real)
-      var gfEl = closest(".git-file[data-git-file]");
-      if (gfEl) { toggleGitFile(gfEl.getAttribute("data-git-file")); return; }
+      // clicking a node in the git Changes box stages / unstages it (file → itself;
+      // folder → all its children, with the checkbox going [✓]/[~]/[ ])
+      var gnEl = closest(".git-row[data-git-node]");
+      if (gnEl) { toggleGitNode(gnEl.getAttribute("data-git-node")); return; }
 
       // clicking a sidebar row plays it: launchers spawn, sessions focus (§6.2)
       var rowEl = closest(".sb-row[data-id]");
@@ -1603,16 +1604,24 @@
     }
 
     /* --- the native git panel, made interactive ---------------------------
-     * The Changes box's files are clickable: a click stages / unstages a file
-     * (the `[ ]`↔`[✓]` checkbox flips and the cursor `▌` moves to it), so the
-     * panel feels like the real one. The other two boxes stay informational. */
+     * The Changes box is a real tree: files AND folders are clickable. Clicking a
+     * file stages / unstages it; clicking a folder stages / unstages all of its
+     * descendants at once. Every folder's checkbox is computed from its leaves —
+     * a green `[✓]` when all are staged, `[ ]` when none are, and a partial `[~]`
+     * in between — so the selection ripples up the tree like the real panel. */
     function initGit() {
       state._git = {
-        files: [
-          { name: "auth.rs", change: "modified", staged: true, cursor: true },
-          { name: "token.rs", change: "modified", staged: false, cursor: false },
-          { name: "lib.rs", change: "added", staged: true, cursor: false },
+        roots: [
+          { id: "app", name: "app/", kind: "dir", children: [
+            { id: "app/src", name: "src/", kind: "dir", children: [
+              { id: "app/src/auth.rs", name: "auth.rs", kind: "file", change: "modified", staged: true },
+              { id: "app/src/token.rs", name: "token.rs", kind: "file", change: "modified", staged: false },
+              { id: "app/src/lib.rs", name: "lib.rs", kind: "file", change: "added", staged: true },
+            ] },
+            { id: "app/Cargo.toml", name: "Cargo.toml", kind: "file", change: "modified", staged: false },
+          ] },
         ],
+        cursor: "app/src/auth.rs",
       };
       rebuildGit();
     }
@@ -1621,36 +1630,70 @@
         state.panel.sections[0] = buildGitSection();
       }
     }
+    // descendant leaf files of a node (a file is its own only leaf)
+    function gitLeaves(node) {
+      if (node.kind === "file") return [node];
+      var out = [];
+      (node.children || []).forEach(function (c) { out = out.concat(gitLeaves(c)); });
+      return out;
+    }
+    // tri-state: "checked" (all staged) | "none" (none staged) | "partial" (some)
+    function gitState(node) {
+      if (node.kind === "file") return node.staged ? "checked" : "none";
+      var leaves = gitLeaves(node);
+      if (!leaves.length) return "none";
+      var n = leaves.filter(function (l) { return l.staged; }).length;
+      return n === 0 ? "none" : n === leaves.length ? "checked" : "partial";
+    }
+    function findGitNode(id) {
+      var found = null;
+      (function walk(n) {
+        if (!n || found) return;
+        if (n.id === id) { found = n; return; }
+        (n.children || []).forEach(walk);
+      })({ children: state._git.roots });
+      return found;
+    }
     function buildGitSection() {
-      var rows = [
-        { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " app/", c: "info" }] },
-        { tokens: [{ t: " " }, { t: "  [~]", c: "warn" }, { t: " src/", c: "info" }] },
-      ];
-      (state._git.files || []).forEach(function (f) {
-        var box = f.staged ? "[✓]" : "[ ]";
-        var nameTone = f.change === "added" ? "ok" : "warn";
+      var rows = [];
+      function walk(node, depth) {
+        var st = gitState(node);
+        var box = st === "checked" ? "[✓]" : st === "partial" ? "[~]" : "[ ]";
+        var boxTone = st === "checked" ? "ok" : st === "partial" ? "warn" : "dim";
+        var nameTone = node.kind === "dir" ? "info" : node.change === "added" ? "ok" : "warn";
+        var isCursor = state._git.cursor === node.id;
         var line = {
           tokens: [
-            { t: f.cursor ? "▌" : " ", c: "ai" },
-            { t: "    " + box, c: f.staged ? "ok" : "dim" },
-            { t: " " + f.name, c: nameTone },
+            { t: isCursor ? "▌" : " ", c: "ai" },
+            { t: "  ".repeat(depth) + box, c: boxTone },
+            { t: " " + node.name, c: nameTone },
           ],
-          gitFile: f.name,
+          gitNode: node.id,
         };
-        if (f.cursor) line.cls = "git-sel";
+        if (isCursor) line.cls = "git-sel";
         rows.push(line);
-      });
+        if (node.kind === "dir") (node.children || []).forEach(function (c) { walk(c, depth + 1); });
+      }
+      (state._git.roots || []).forEach(function (r) { walk(r, 0); });
       return { title: "Changes · main ↑1", active: true, lines: rows };
     }
-    function toggleGitFile(name) {
-      var files = (state._git && state._git.files) || [];
-      var hit = null;
-      files.forEach(function (f) { f.cursor = false; if (f.name === name) hit = f; });
-      if (!hit) return;
-      hit.staged = !hit.staged;
-      hit.cursor = true;
+    // Click → toggle. A file flips itself; a folder stages all its leaves (or, if
+    // they're already all staged, unstages them). The cursor moves to the clicked
+    // node, and every ancestor's checkbox recomputes via gitState().
+    function toggleGitNode(id) {
+      var node = findGitNode(id);
+      if (!node) return;
+      state._git.cursor = id;
+      if (node.kind === "file") {
+        node.staged = !node.staged;
+        announce(node.name + (node.staged ? " staged" : " unstaged"));
+      } else {
+        var leaves = gitLeaves(node);
+        var allStaged = leaves.length && leaves.every(function (l) { return l.staged; });
+        leaves.forEach(function (l) { l.staged = !allStaged; });
+        announce(node.name + (allStaged ? " all unstaged" : " all staged"));
+      }
       rebuildGit();
-      announce(name + (hit.staged ? " staged" : " unstaged"));
       render();
     }
 
