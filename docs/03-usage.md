@@ -39,9 +39,12 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - **Agent and terminal rows** hold color back for the one thing that matters there — "does it
   need *me*". A leading glyph + name color carry the whole state: a busy agent shows a small gray
   **spinner** (rotating braille dots) before its name (a running terminal keeps a static `·`), a
-  stopped/exited session is a dim hollow `○` (red `○` if it failed to start), and a session
-  waiting on you lights up **green** (`●`). So when you scan the sidebar, the only colored agent is
-  the one to go look at — and the spinning ones are still grinding.
+  session that **crashed** (exited non-zero on its own) or **failed to launch** shows a red hollow
+  `○`, and a session waiting on you lights up **green** (`●`). So when you scan the sidebar, the
+  only colored agent is the one to go look at — and the spinning ones are still grinding. Unlike
+  processes, agents and terminals **don't linger once they exit cleanly** — quitting an agent
+  (`/quit`, Ctrl-D) or `exit`ing a terminal removes its row outright rather than leaving a dim
+  "exited" husk. A crash is the exception: it stays put, painted red, so you don't miss it.
 - Every session row shows a dim **subtitle** — the terminal title the program sets (e.g. what
   Claude is currently doing, including its own working/idle animation), falling back to its last
   error.

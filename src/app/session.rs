@@ -92,10 +92,6 @@ pub struct Session {
     /// Index of the workspace project (see [`crate::app`]) this session belongs to.
     /// Drives which sidebar group it lands in; the lifecycle is identical regardless.
     pub project: usize,
-    /// A throwaway session opened from a special command (e.g. the Ctrl+P editor):
-    /// once its program exits, the row is pruned rather than kept as an "exited"
-    /// husk. Plain terminals stay `false` and linger until explicitly closed.
-    pub ephemeral: bool,
 }
 
 impl Session {
@@ -107,7 +103,6 @@ impl Session {
             error: None,
             recipe,
             project,
-            ephemeral: false,
         }
     }
 

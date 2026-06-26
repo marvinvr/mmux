@@ -53,7 +53,8 @@ pub(crate) const SPINNER: [&str; 4] = ["⠲", "⠴", "⠦", "⠖"];
 /// (or a bell) lights the row green (`●`); while it's running-and-busy it recedes to
 /// gray, showing the `working` glyph the caller passes (an animated [`SPINNER`] frame
 /// for agents, a plain `·` for terminals); when it's not running it's a dim hollow
-/// `○`, turning red only if it failed to start.
+/// `○`, turning red if it **crashed** (exited non-zero on its own) or failed to start.
+/// A clean exit never reaches here — the row is pruned (see `prune_exited`).
 pub(crate) fn agent_glyph_style(
     s: Status,
     attention: bool,
@@ -65,6 +66,9 @@ pub(crate) fn agent_glyph_style(
     }
     match s {
         Status::Running => (working, Style::default().fg(Color::Gray)),
+        // A crash (Failed) or a launch error is the one thing that turns the row red:
+        // the agent/terminal died and is worth a look. A clean exit doesn't linger.
+        Status::Failed => ("○", Style::default().fg(Color::Red)),
         _ if error => ("○", Style::default().fg(Color::Red)),
         _ => ("○", Style::default().fg(Color::DarkGray)),
     }

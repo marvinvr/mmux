@@ -118,8 +118,7 @@ impl App {
         let name = format!("✎ {base}");
         let (rows, cols) = self.last_inner;
         let mut s = Session::new(name, Kind::Terminal, recipe, pi);
-        s.ephemeral = true; // vanish once the editor quits (see prune_ephemeral)
-        s.spawn(rows, cols);
+        s.spawn(rows, cols); // a terminal — it vanishes when the editor quits (see prune_exited)
         self.sessions.push(s);
         self.select_session(self.sessions.len() - 1);
         self.focus = Focus::Terminal;
@@ -198,15 +197,19 @@ impl App {
         self.focus = Focus::Sidebar;
     }
 
-    /// Drop any ephemeral session (the Ctrl+P editor) whose program has exited, so
-    /// quitting the editor makes its row vanish instead of leaving an "exited" husk.
-    /// Called once per loop from [`tick`](super::App::tick).
-    pub(crate) fn prune_ephemeral(&mut self) {
+    /// Drop any agent or terminal that exited *cleanly*, so quitting an agent from
+    /// inside it (`/quit`, Ctrl-D) or `exit`ing a terminal makes its row vanish instead
+    /// of leaving an "exited" husk behind — the same way the Ctrl+P editor terminal
+    /// already disappears. A **crash** (`Status::Failed`, non-zero exit on its own) is
+    /// kept on purpose, painted red, so you notice it died badly. Processes are
+    /// config-defined entries, so they keep their (stopped) row to be restarted in
+    /// place. Called once per loop from [`tick`](super::App::tick).
+    pub(crate) fn prune_exited(&mut self) {
         let dead: Vec<usize> = self
             .sessions
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.ephemeral && matches!(s.status(), Status::Exited | Status::Failed))
+            .filter(|(_, s)| s.kind != Kind::Process && matches!(s.status(), Status::Exited))
             .map(|(i, _)| i)
             .collect();
         if dead.is_empty() {

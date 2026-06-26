@@ -27,10 +27,10 @@ One inherent `impl App`, split across files. `mod.rs` defines the struct; the ot
 
 | File | Responsibility |
 | --- | --- |
-| `mod.rs` | The `App` struct (all state) and the `Project` struct (per-project cfg / counters / git panel) + `new()` + the `run()`/`run_loop()` event loop + `tick()` (follow-active, git job drain, panel refresh, ephemeral pruning) + notification drain/emit + focus/resize helpers. |
+| `mod.rs` | The `App` struct (all state) and the `Project` struct (per-project cfg / counters / git panel) + `new()` + the `run()`/`run_loop()` event loop + `tick()` (follow-active, git job drain, panel refresh, exited-agent/terminal pruning) + notification drain/emit + focus/resize helpers. |
 | `session.rs` | The unified pane-backed model: `Session` / `Recipe` / `Kind` / `Status`. One `spawn()`/`stop()`/`kill()` lifecycle for agents, terminals, and processes. `Recipe` builders: `agent`/`process`/`shell`/`editor`. |
 | `nav.rs` | The sidebar nav list (`build_nav`) + the positional selection cursor (`sel`) + resolvers: `project_of`/`current_nav`/`pane_at`/`move_sel`/`jump_project`/`focus_project`/`select_session`/`focused_pane`. |
-| `lifecycle.rs` | Sidebar-driven actions: `spawn_agent`/`spawn_terminal`, `open_new_process`/`finish_new_process`, `open_picker`/`open_in_editor`, `activate`, `do_start`/`do_stop`/`do_restart`, `close_session`/`prune_ephemeral`, and `reload` (live config re-read & reconcile). |
+| `lifecycle.rs` | Sidebar-driven actions: `spawn_agent`/`spawn_terminal`, `open_new_process`/`finish_new_process`, `open_picker`/`open_in_editor`, `activate`, `do_start`/`do_stop`/`do_restart`, `close_session`/`prune_exited`, and `reload` (live config re-read & reconcile). |
 | `input.rs` | `on_key` (overlay routing → global `Ctrl+P` → focus dispatch), `key_sidebar`/`key_pane` (with the `Ctrl-b` leader)/`key_git`, `overlay_key`/`procform_key`, `on_mouse` (click/drag/wheel routing), `on_paste`, the drag-select-to-clipboard machinery, footer-button actions, and the `hit` helper. `Selection`/`SelTarget` live here. |
 | `keymap.rs` | `encode_key`: pure crossterm-key → PTY-byte translation. Unit-tested. |
 | `git.rs` | The native git panel: `GitPanel` (refresh, cursor/section nav, stage/commit/discard/stash, backgrounded pull/push), the `Overlay`/`PromptKind`/`Confirmed` modal enums, the `DiffView` main-pane diff preview (build/follow/scroll/`diff_upkeep`), and the `impl App` git-action methods. **Not** a pane. |

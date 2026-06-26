@@ -68,7 +68,7 @@ then `run_loop` cycles:
    input), dispatching `Key`/`Mouse`/`Paste`;
 5. **tick** — housekeeping (below).
 
-`tick()` runs every loop: it steps drag auto-scroll, prunes exited ephemeral panes, makes the
+`tick()` runs every loop: it steps drag auto-scroll, prunes exited agent/terminal rows, makes the
 selected row's project the **active** one (see [follow-active](#workspaces-and-projects)), drains
 finished background git jobs from every project's panel, and gives the *visible* git panel a
 throttled refresh.
@@ -87,7 +87,6 @@ struct Session {
     recipe,                     // everything needed to (re)spawn identically
     pane: Option<Pane>,         // the live PTY-backed terminal, if running
     error: Option<String>,
-    ephemeral: bool,            // throwaway rows (the Ctrl+P editor) get pruned on exit
 }
 ```
 
@@ -100,8 +99,15 @@ struct Session {
   - `kill()` kills and drops the pane entirely (back to `Status::Stopped`).
 - `Status` (`Stopped`/`Running`/`Exited`/`Failed`) is derived from the `Option<Pane>` and whether
   the process is alive — it is not stored. `Failed` means it exited non-zero *on its own* (a
-  deliberate `stop()`/`kill()` is flagged on the pane so it stays `Exited`, not `Failed`); the
-  process sidebar paints it red, while agents/terminals treat it like `Exited`.
+  deliberate `stop()`/`kill()` is flagged on the pane so it stays `Exited`, not `Failed`); it
+  paints the row red for every kind — a process keeps its red badge, and a crashed agent/terminal
+  stays put as a red `○` rather than being pruned.
+- **Agents and terminals don't linger once they exit cleanly.** `tick()` calls `prune_exited` (in
+  `lifecycle.rs`), which drops any agent/terminal that reached `Status::Exited` — so quitting an
+  agent from inside it (`/quit`, Ctrl-D) or `exit`ing a terminal makes its sidebar row vanish
+  rather than leaving an "exited" husk. A **crash** (`Status::Failed`) is deliberately kept and
+  painted red so you notice it. Only **processes** keep their row on a clean stop too, because
+  they're config-defined and meant to be restarted in place.
 
 > Do **not** re-introduce per-kind collections or per-kind spawn/stop methods. That triplication
 > was deliberately removed; the unified model is the point.

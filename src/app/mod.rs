@@ -198,9 +198,9 @@ impl App {
         // Keep a held-at-edge drag selection auto-scrolling even when the mouse
         // isn't moving (crossterm only emits drag events on movement).
         self.step_drag_scroll();
-        // Reap finished throwaway panes (the Ctrl+P editor) before anything reads the
-        // selection, so a just-quit editor row is gone this frame.
-        self.prune_ephemeral();
+        // Reap agents/terminals whose program has exited before anything reads the
+        // selection, so a just-quit agent or editor row is gone this frame.
+        self.prune_exited();
         if let Some(n) = self.current_nav() {
             if let Some(p) = self.project_of(n) {
                 self.active = p;
