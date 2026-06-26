@@ -103,7 +103,14 @@ fn list_files(dir: &Path) -> Vec<String> {
     cmd.current_dir(dir);
     if let Ok(out) = cmd.output() {
         if out.status.success() {
-            return lines(&out.stdout);
+            let mut files = lines(&out.stdout);
+            // `--hidden` surfaces dotfiles, but ripgrep still honours .gitignore, so
+            // commonly-edited yet typically-ignored config (.env, .env.local, .envrc, …)
+            // never shows up. A positive `--glob` overrides ignore logic, so a second
+            // whitelist pass adds those back; the dir excludes keep nested
+            // node_modules/.env and the like out.
+            merge_unique(&mut files, list_env_files(dir, &globs));
+            return files;
         }
     }
     // ripgrep missing/failed → fall back to tracked files.
@@ -126,6 +133,33 @@ fn lines(bytes: &[u8]) -> Vec<String> {
         .lines()
         .map(str::to_string)
         .collect()
+}
+
+/// A whitelist pass for env-style config files (`.env`, `.env.local`, `.envrc`, …)
+/// the main listing skips because they're gitignored. The positive `.env*` glob
+/// overrides ripgrep's ignore logic; `excludes` are the same dir-noise globs the
+/// main pass uses, so nested `node_modules/.env` and friends stay out.
+fn list_env_files(dir: &Path, excludes: &[&str]) -> Vec<String> {
+    let mut cmd = Command::new("rg");
+    cmd.arg("--files").arg("--hidden").arg("--glob").arg(".env*");
+    for g in excludes {
+        cmd.arg("--glob").arg(g);
+    }
+    cmd.current_dir(dir);
+    match cmd.output() {
+        Ok(out) if out.status.success() => lines(&out.stdout),
+        _ => Vec::new(),
+    }
+}
+
+/// Append items from `extra` not already present in `into`, preserving order. The
+/// env pass returns a handful of paths, so the linear membership check is cheap.
+fn merge_unique(into: &mut Vec<String>, extra: Vec<String>) {
+    for item in extra {
+        if !into.contains(&item) {
+            into.push(item);
+        }
+    }
 }
 
 const EXCLUDED_DIRS: &[&str] = &[

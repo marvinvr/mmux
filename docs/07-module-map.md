@@ -34,7 +34,7 @@ One inherent `impl App`, split across files. `mod.rs` defines the struct; the ot
 | `input.rs` | `on_key` (overlay routing → global `Ctrl+P` → focus dispatch), `key_sidebar`/`key_pane` (with the `Ctrl-b` leader)/`key_git`, `overlay_key`/`procform_key`, `on_mouse` (click/drag/wheel routing), `on_paste`, the drag-select-to-clipboard machinery, footer-button actions, and the `hit` helper. `Selection`/`SelTarget` live here. |
 | `keymap.rs` | `encode_key`: pure crossterm-key → PTY-byte translation. Unit-tested. |
 | `git.rs` | The native git panel: `GitPanel` (refresh, cursor/section nav, stage/commit/discard/stash, backgrounded pull/push), the `Overlay`/`PromptKind`/`Confirmed` modal enums, the `DiffView` main-pane diff preview (build/follow/scroll/`diff_upkeep`), and the `impl App` git-action methods. **Not** a pane. |
-| `picker.rs` | The `Ctrl+P` fuzzy file picker: list files (`rg --files` → `git ls-files` → manual walk) and rank them. Fuzzy score is unit-tested. |
+| `picker.rs` | The `Ctrl+P` fuzzy file picker: list files (`rg --files` → `git ls-files` → manual walk, plus a whitelist pass that re-adds gitignored env files) and rank them. Fuzzy score is unit-tested. |
 | `procform.rs` | State for the `+ New Process` guided form (Name → Command → Cwd → Review) with an autostart toggle and per-field validation. |
 
 ### View (`src/app/view/`)

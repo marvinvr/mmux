@@ -168,8 +168,10 @@ for the active project. (This deliberately shadows a pane's own `Ctrl+P`.)
 | `Enter` | Open the highlighted file in your editor |
 | `Esc` | Cancel |
 
-The chosen file opens in `$VISUAL`/`$EDITOR` (else `micro`, else `nano`) as a temporary terminal
-row marked `✎ <file>`. That row disappears on its own when you quit the editor.
+The list includes hidden files, and — even though it otherwise honours `.gitignore` — it also
+surfaces gitignored env files (`.env`, `.env.local`, `.envrc`, …) so you can edit them. The chosen
+file opens in `$VISUAL`/`$EDITOR` (else `micro`, else `nano`) as a temporary terminal row marked
+`✎ <file>`. That row disappears on its own when you quit the editor.
 
 ## Adding a Process
 
