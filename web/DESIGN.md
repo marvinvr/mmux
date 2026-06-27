@@ -218,7 +218,7 @@ A single reusable, high-fidelity component. **`index.html` ships the static skel
     </div>
   </div>
   <div class="tw-status"></div>             <!-- key hints, per focus -->
-  <div class="tw-toast" hidden></div>        <!-- notification toast (scene 6) -->
+  <div class="tw-toast" hidden></div>        <!-- macOS notification banner (scene 7) -->
   <div class="tw-overlay" hidden></div>      <!-- ssh disconnect / reattach (scene 4) -->
   <div class="tw-sandbox-hint" hidden></div> <!-- "click in to play" (finale) -->
 </div>
@@ -334,7 +334,7 @@ state = {
   // native git panel: a column of titled bordered boxes (Changes / Branches / Recent)
   panel: { visible, branch, sections: [ { title, active?, lines: [ Line ] } ] },
   focus: "sidebar"|"main"|"panel"|"sandbox",
-  toast: { app, title, body } | null,            // desktop-notification toast
+  toast: { app, title, body, time? } | null,     // macOS-style notification (time defaults to "now")
   overlay: "disconnected"|"reattached" | null,
 }
 
@@ -517,9 +517,10 @@ mirroring `src/app/view/git.rs`:
  e2e6087 add token service (hash dim, summary text)
 ```
 
-**Scene 7 — attention:** Claude row `attention:true` (coral bell pulses) + `toast:{ app:"Claude",
-title:"needs your input", body:"approve the edit to src/auth.rs?" }`. Main shows Claude paused at an
-approval prompt (below its banner).
+**Scene 7 — attention:** Claude row `attention:true` (coral bell pulses) + `toast:{ app:"mmux",
+title:"Claude needs your input", body:"approve the edit to src/auth.rs?" }`, rendered as a macOS
+notification banner (mmux app icon, system font, translucent material) floating top-right over the
+terminal. Main shows Claude paused at an approval prompt (below its banner).
 
 **Scene 8 — overlay (the closer):** `overlay:"disconnected"` (text like `ssh disconnected — session
 kept alive`). Keep sidebar/main state intact underneath (dimmed by overlay). Persistence is the

@@ -274,7 +274,7 @@ section {
 #hero {
   text-align: center;
   padding-top: 5rem;
-  padding-bottom: 2.5rem;
+  padding-bottom: 1rem;
 }
 .hero-wordmark {
   font-size: clamp(2.6rem, 7vw, 4.4rem);
@@ -341,7 +341,7 @@ section {
 }
 
 .scroll-cue {
-  margin: 2.5rem 0 0;
+  margin: 1.25rem 0 0;
   font-size: .82rem;
   color: var(--muted);
   animation: cue-bob 2s ease-in-out infinite;
@@ -883,36 +883,82 @@ section {
   text-overflow: ellipsis;
 }
 
-/* toast (scene 6) — flat notification card */
+/* notification (scene 7, "it taps you on the shoulder") — a faithful macOS
+   notification banner floating top-right over the terminal. Deliberately set in
+   the system UI font (real macOS notifications are SF Pro, not monospace) on a
+   dark translucent material that blurs the terminal behind it. */
 .tw-toast {
   position: absolute;
-  top: 3rem;
-  right: 1rem;
+  top: 2.7rem;
+  right: .85rem;
   z-index: 6;
-  max-width: 16rem;
-  padding: .65rem .8rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border-2);
-  border-left: 2px solid var(--red);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
-  animation: toast-in .3s ease;
+  width: 19rem;
+  max-width: calc(100% - 1.6rem);
+  display: flex;
+  gap: .6rem;
+  padding: .65rem .7rem;
+  background: rgba(38, 40, 47, .8);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border: .5px solid rgba(255, 255, 255, .14);
+  border-radius: 13px;
+  box-shadow: 0 14px 36px -10px rgba(0, 0, 0, .6), 0 2px 6px -2px rgba(0, 0, 0, .45);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
+  animation: toast-in .34s cubic-bezier(.2, .8, .2, 1);
 }
 .tw-toast[hidden] { display: none; }
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(-6px); }
+  from { opacity: 0; transform: translate(8px, -6px) scale(.96); }
   to   { opacity: 1; transform: none; }
 }
+/* app icon — the mmux mark (dark squircle + green block cursor), drawn in CSS */
+.toast-icon {
+  flex: 0 0 auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 8px;
+  background: #0d0e10;
+  border: .5px solid rgba(255, 255, 255, .1);
+  display: grid;
+  place-items: center;
+}
+.toast-icon::before {
+  content: "";
+  width: .66rem;
+  height: 1.12rem;
+  border-radius: 2px;
+  background: var(--green);
+}
+.toast-main { min-width: 0; flex: 1 1 auto; }
 .toast-head {
   display: flex;
-  align-items: center;
-  gap: .4rem;
-  margin-bottom: .2rem;
+  align-items: baseline;
+  gap: .5rem;
+  margin-bottom: .05rem;
 }
-.toast-dot { color: var(--red); font-size: .6rem; }
-.toast-app { font-weight: 600; color: var(--text); }
-.toast-title { color: var(--text-2); font-size: .78rem; }
-.toast-body { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+.toast-app {
+  font-size: .72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .58);
+}
+.toast-time {
+  margin-left: auto;
+  font-size: .7rem;
+  color: rgba(255, 255, 255, .42);
+  white-space: nowrap;
+}
+.toast-title {
+  font-size: .85rem;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.3;
+}
+.toast-body {
+  font-size: .82rem;
+  color: rgba(255, 255, 255, .76);
+  line-height: 1.35;
+  margin-top: .04rem;
+}
 
 /* overlay (scene 4) — ssh disconnect / reattach scrim */
 .tw-overlay {

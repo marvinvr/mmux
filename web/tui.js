@@ -32,7 +32,7 @@
    *           placeholder:str|null, cursor:bool },
    *   panel: { visible, branch, sections:[{ title, active?, lines:[Line] }] },
    *   focus: "sidebar"|"main"|"panel"|"sandbox",
-   *   toast: { app, title, body } | null,
+   *   toast: { app, title, body, time? } | null,   // macOS notification; time defaults to "now"
    *   overlay: "disconnected"|"reattached" | null,
    * }
    *
@@ -507,14 +507,20 @@
     }
     host.hidden = false;
     host.textContent = "";
+
+    // macOS notification layout: app icon, then app name + time, bold title, body.
+    var icon = el("div", "toast-icon");
+    icon.setAttribute("aria-hidden", "true");
+    host.appendChild(icon);
+
+    var main = el("div", "toast-main");
     var head = el("div", "toast-head");
-    var dot = el("span", "toast-dot", "●");
-    dot.setAttribute("aria-hidden", "true");
-    head.appendChild(dot);
     head.appendChild(el("span", "toast-app", toast.app || ""));
-    head.appendChild(el("span", "toast-title", toast.title || ""));
-    host.appendChild(head);
-    if (toast.body) host.appendChild(el("div", "toast-body", toast.body));
+    head.appendChild(el("span", "toast-time", toast.time || "now"));
+    main.appendChild(head);
+    if (toast.title) main.appendChild(el("div", "toast-title", toast.title));
+    if (toast.body) main.appendChild(el("div", "toast-body", toast.body));
+    host.appendChild(main);
   }
 
   function renderOverlay(host, overlay) {

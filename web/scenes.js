@@ -540,8 +540,8 @@
         panel: { visible: true, branch: "main", sections: gitSections(false) },
         focus: "main",
         toast: {
-          app: "Claude",
-          title: "needs your input",
+          app: "mmux",
+          title: "Claude needs your input",
           body: "approve the edit to src/auth.rs?",
         },
         overlay: null,
