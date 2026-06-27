@@ -1,5 +1,7 @@
 # mmux
 
+![mmux](assets/mmux.png)
+
 **Persistent terminals for your AI coding agents.**
 
 A per-directory terminal multiplexer in a single Rust binary. Type `mmux` in a project and you
