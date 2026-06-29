@@ -282,9 +282,10 @@ as a `GIT` entry in the sidebar.
   fresh; processes come back via autostart or a click. To start clean instead, **close the sessions
   (`x`) before quitting** — only what's still open is remembered.
 - Run **`mmux attach`** (alias `mmux a`) to open a picker of every running mmux session on the
-  machine, plus recently opened directories that aren't currently running. Each row leads with the
-  project's name (its `mmux.yaml` `name:`, else the folder) and shows its directory beside it in
-  dim text. The picker has an always-on search bar at the top: just start typing to fuzzy-filter the
+  machine, plus recently opened directories that aren't currently running. Running sessions come
+  first, then the not-running recents; within each group rows are ordered most-recently-used first.
+  Each row leads with the project's name (its `mmux.yaml` `name:`, else the folder) and shows its
+  directory beside it in dim text. The picker has an always-on search bar at the top: just start typing to fuzzy-filter the
   list by name or directory — no need to focus it first, and the best match stays selected. `↑`/`↓`
   move, `Enter`/`→` or left-click opens, `Backspace` trims the query, `Esc` clears it (then cancels
   on a second press), `Ctrl+C` cancels. Choosing a recent directory opens (or creates) its session.

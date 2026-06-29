@@ -20,7 +20,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Terminal;
-use std::collections::{hash_map::DefaultHasher, HashSet};
+use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::stdout;
 use std::path::{Path, PathBuf};
@@ -223,19 +223,31 @@ pub fn attach_picker() -> Result<()> {
 }
 
 /// The picker's rows: every running `mmux-*` session first, then recent directories
-/// (from `~/.mmux/history`) that have no live session, most-recent-first.
+/// (from `~/.mmux/history`) that have no live session. Both groups are ordered
+/// most-recently-used first, keyed off the same recents log (`launch_in` records every
+/// directory it opens, so a live session's directory is in the log too).
 fn build_entries() -> Vec<Entry> {
+    let recents = read_recents();
+    // MRU rank by canonical directory: lower index = more recently used. Recents and
+    // each session's `MMUX_DIR` are both stored canonical, so they key the same map.
+    let rank: HashMap<&str, usize> =
+        recents.iter().enumerate().map(|(i, d)| (d.as_str(), i)).collect();
+
+    // Active sessions, sorted most-recently-used first. A session whose directory isn't
+    // in the log (e.g. `MMUX_DIR` couldn't be read) sorts last, stably.
     let mut entries = list_sessions();
+    entries.sort_by_key(|e| rank.get(e.dir.as_str()).copied().unwrap_or(usize::MAX));
+
     let running: HashSet<String> = entries.iter().map(|e| e.name.clone()).collect();
-    for dir in read_recents() {
+    for dir in &recents {
         // Recents are stored canonical, so this hash matches the session `launch_in`
         // would attach-or-create for that directory.
-        let name = session_name(Path::new(&dir));
+        let name = session_name(Path::new(dir));
         if running.contains(&name) {
             continue;
         }
-        let display = crate::config::project_name(Path::new(&dir));
-        entries.push(Entry { name, display, dir, running: false, attached: false });
+        let display = crate::config::project_name(Path::new(dir));
+        entries.push(Entry { name, display, dir: dir.clone(), running: false, attached: false });
     }
     entries
 }
