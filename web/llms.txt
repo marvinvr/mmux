@@ -16,7 +16,7 @@ attention dot on the sidebar row and raises a native desktop notification, even 
 
 - Homepage: https://mmux.org
 - Source, issues, releases: https://github.com/marvinvr/mmux
-- License: MIT
+- License: GPL-3.0-or-later
 - Implementation: a single Rust binary (ratatui TUI); requires `tmux` on your `PATH`.
 - Platforms: macOS and Linux.
 

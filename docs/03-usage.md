@@ -75,6 +75,7 @@ region they apply to.
 | `x` | Close: **removes** an agent/terminal row entirely; **stops** a process (row stays) |
 | `r` | Restart the selected session (or spawn a launcher) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
+| `L` | [Link another project](04-configuration.md#linked-projects) into the workspace (also the button at the bottom of the sidebar) |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
 | `[` · `]` | Switch to the previous / next project ([linked projects](04-configuration.md#linked-projects); no-op with one project) |
 | `Tab` | Jump to the git panel (or into the selected pane if there is no panel) |
@@ -195,6 +196,26 @@ autostart — it is started immediately.
 > The form cannot set environment variables. For a process that needs `env`, edit `mmux.yaml`
 > directly and press `R` to reload.
 
+## Linking Another Project
+
+The **`+ Link another project`** button pinned inside the bottom of the sidebar box (or the `L` key)
+opens a small directory browser to add a [linked project](04-configuration.md#linked-projects)
+without leaving mmux:
+
+- It opens one level **above** your launch directory, so sibling clones (the common `../proj2`) are
+  right there.
+- **Type** to filter the current folder; `↑`/`↓` move; `→` (or `Tab`) descends into a directory and
+  `←` goes back up.
+- A short **preview** of the highlighted directory shows the path it would be linked as, its git
+  branch, and whether it has its own `mmux.yaml`. Folders already in the workspace are tagged
+  `linked` and can't be added twice.
+- **`Enter`** links the highlighted directory; `Esc` cancels.
+
+The chosen path is appended to the launch directory's `linked-projects:` (**preserving your existing
+comments and layout**) and the project appears as a **new sidebar box immediately** — running panes
+are untouched. Its processes start stopped, like any linked project. Removing a link still needs a
+reopen.
+
 ## Mouse
 
 mmux drives its own focus, scrollback, and copy from the mouse. Mouse events are otherwise **not**
@@ -208,7 +229,8 @@ forwarded into the focused program — the one exception is the wheel over a ful
   selects it (its output shows in the main pane) but keeps focus on the sidebar, and
   double-click **restarts** it in place — start if stopped, respawn if running — without jumping
   in (the `r` key does the same). In a [multi-project](04-configuration.md#linked-projects)
-  workspace, clicking another project's box switches to it.
+  workspace, clicking another project's box switches to it. The **`+ Link another project`** button
+  inside the bottom of the sidebar box opens the [project browser](#linking-another-project).
 - **Git panel.** Single-click focuses a box and selects a row; on a changed file it also
   [previews the file's diff](#the-diff-preview) in the main pane. Double-click a file to
   stage/unstage it or a branch to switch to it. The scroll wheel moves the cursor (and the open

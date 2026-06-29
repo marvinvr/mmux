@@ -145,7 +145,7 @@ Breakpoints: `--bp-md: 900px` (terminal panel hides, grid → fewer cols), `--bp
 - `p.hero-sub`: **spawn agents, run your dev processes, and keep every session alive in one place — even after you close the terminal or drop ssh.**
 - `.hero-install`: a single prominent install row — `$ brew install marvinvr/mmux/mmux` + a `[copy]`
   button (the ONLY install command on the page besides §4.6).
-- `.hero-meta`: three small chips — `one rust binary` · `works over ssh` · `MIT licensed`.
+- `.hero-meta`: three small chips — `one rust binary` · `works over ssh` · `GPLv3 licensed`.
 - `.scroll-cue`: `scroll to watch it work ↓` (hidden under reduced-motion).
 
 ### 4.3 `<section id="demo">` — THE CENTERPIECE (§5, §6, §7, §8)
@@ -181,7 +181,7 @@ kicker `// get it`, h2 **install in one line.** One big code row:
 Buttons row: `.btn.btn-brand` → github, a ghost button → the README. NO cargo / from-source.
 
 ### 4.7 `<footer class="site-footer">`
-`mmux` (small gradient) · `MIT` · `github`. Muted, roomy, a final `▮`.
+`mmux` (small gradient) · `GPLv3` · `github`. Muted, roomy, a final `▮`.
 
 ---
 

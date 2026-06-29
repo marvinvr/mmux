@@ -136,7 +136,9 @@ always did — no project header.
 
 `load_workspace` (in `config.rs`) builds the workspace: load the root, then each linked project
 one level deep, de-duplicated by canonical path, capped at 8, with each linked project's *own*
-`linked-projects` cleared so links never chain. Failures become warnings, not errors.
+`linked-projects` cleared so links never chain. Failures become warnings, not errors. The same cap
+and de-dup gate `link_project`, which appends a `Project` (and its process rows) to grow the
+workspace live — every other path leaves the project set fixed for the session.
 
 ## The Git Panel and Overlays
 
@@ -161,11 +163,15 @@ three boxes (Changes / Branches / Recent) and is driven by its own keymap.
 | `Confirm` | `d` in the panel | Yes/no guard before a destructive discard |
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
 | `NewProcess` | `+ New Process` | [Guided form](03-usage.md#adding-a-process) → appends to `mmux.yaml` |
+| `LinkProject` | `+ Link another project` / `L` | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
 
 The picker (`picker.rs`) lists files via `rg --files` → `git ls-files` → a shallow walk, and
 fuzzy-ranks them. The new-process form (`procform.rs`) collects fields step-by-step, then
 `finish_new_process` splices the entry into `mmux.yaml` via `config::append_process` (raw-text
-editing, to preserve comments) and reloads.
+editing, to preserve comments) and reloads. The link browser (`linkbrowse.rs`) walks the filesystem
+with fork-free previews (repo-ness is a `.git` check, the branch is read from `.git/HEAD`), then
+`link_project` appends the path via `config::append_linked_project` (the same raw-text splicer) and
+**adds a new `Project` in place** — the one action that grows the project set after launch.
 
 ### The Diff Preview
 
@@ -251,6 +257,7 @@ by `auto-update` config + the `MMUX_NO_UPDATE` env var. See
 ## Planned
 
 The v1 architecture has known limits — persistence covers detach/disconnect but not a TUI crash;
-selection is positional; mouse events other than the wheel aren't forwarded into panes; the
-linked-project set is fixed at launch. These, and the planned daemon/client split, are tracked in
+selection is positional; mouse events other than the wheel aren't forwarded into panes; a linked
+project can be added live but only *removed* by a reopen. These, and the planned daemon/client
+split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

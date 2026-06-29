@@ -376,6 +376,8 @@ pub(crate) enum Overlay {
     Picker(super::picker::Picker),
     /// The "+ New Process" guided form (state in [`super::procform`]).
     NewProcess(super::procform::ProcForm),
+    /// The "Link another project" directory browser (state in [`super::linkbrowse`]).
+    LinkProject(super::linkbrowse::LinkBrowser),
 }
 
 #[derive(Clone, Copy)]

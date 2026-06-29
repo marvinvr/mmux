@@ -10,6 +10,7 @@
 //! [`super::pane`] and stores the row maps [`render_git`] returns.
 
 use crate::app::git::{GitPanel, Overlay, PromptKind, Section};
+use crate::app::linkbrowse::{DirEntry, LinkBrowser, Preview};
 use crate::app::picker::Picker;
 use crate::app::procform::{ProcForm, Step, STEPS};
 use crate::git::{Branch, Commit, FileEntry, Stage, TreeRow};
@@ -334,7 +335,177 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
         Overlay::Confirm { title, body, hint, .. } => render_confirm(f, area, title, body, hint),
         Overlay::Picker(p) => render_picker(f, area, p),
         Overlay::NewProcess(form) => render_procform(f, area, form),
+        Overlay::LinkProject(b) => render_linkbrowse(f, area, b),
     }
+}
+
+/// The "Link another project" browser: a path header, a live filter, the current
+/// directory's sub-folders (each tagged git / mmux.yaml / linked), a short preview of
+/// the highlighted directory, and a key hint pinned to the bottom row.
+fn render_linkbrowse(f: &mut Frame, area: Rect, b: &LinkBrowser) {
+    let w = area.width.saturating_sub(6).clamp(30, 86);
+    let h = area.height.saturating_sub(4).clamp(12, 24);
+    let rect = centered(area, w, h);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Link a project ")
+        .border_style(Style::default().fg(Color::Magenta));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    if inner.width == 0 || inner.height < 8 {
+        return;
+    }
+    let width = inner.width as usize;
+
+    // Rows: path header, filter, the list, a 3-line preview, and the hint.
+    let path_y = inner.y;
+    let query_y = inner.y + 1;
+    let hint_y = inner.y + inner.height - 1;
+    let prev_h = 3u16;
+    let prev_y = hint_y - prev_h;
+    let list_y = query_y + 1;
+    let list_h = prev_y.saturating_sub(list_y) as usize;
+
+    // Header: the directory being browsed.
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("in ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                b.cwd_label(),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+        ])),
+        Rect { x: inner.x, y: path_y, width: inner.width, height: 1 },
+    );
+    // Filter line.
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("> ", Style::default().fg(Color::Magenta)),
+            Span::styled(b.query.clone(), Style::default().fg(Color::White)),
+        ])),
+        Rect { x: inner.x, y: query_y, width: inner.width, height: 1 },
+    );
+
+    // The directory list, scrolled to keep the selection on screen.
+    let sel = b.sel();
+    let scroll = if list_h > 0 && sel >= list_h { sel + 1 - list_h } else { 0 };
+    let mut lines: Vec<Line> = Vec::new();
+    if b.count() == 0 {
+        lines.push(Line::from(Span::styled(
+            "  (no sub-directories here — ← to go up)",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    for row in scroll..(scroll + list_h) {
+        let Some(e) = b.entry_at(row) else { break };
+        lines.push(linkrow(e, row == sel, inner.width));
+    }
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect { x: inner.x, y: list_y, width: inner.width, height: list_h as u16 },
+    );
+
+    // A short preview of the highlighted directory (or an error in its place).
+    let prev = match &b.error {
+        Some(e) => vec![Line::from(Span::styled(format!("⚠ {e}"), Style::default().fg(Color::Red)))],
+        None => preview_lines(b.preview.as_ref()),
+    };
+    f.render_widget(
+        Paragraph::new(prev),
+        Rect { x: inner.x, y: prev_y, width: inner.width, height: prev_h },
+    );
+
+    // Hint footer.
+    let hint = format!("{} dirs · ↑↓ move · → enter · ← up · ⏎ link · esc cancel", b.count());
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            truncate_middle(&hint, width),
+            Style::default().fg(Color::DarkGray),
+        ))),
+        Rect { x: inner.x, y: hint_y, width: inner.width, height: 1 },
+    );
+
+    // Park the cursor at the end of the filter text.
+    let cx = inner.x + 2 + (b.query.chars().count() as u16).min(inner.width.saturating_sub(3));
+    f.set_cursor_position((cx, query_y));
+}
+
+/// One directory row in the link browser: a selection bar, the `name/`, and
+/// right-aligned tags (linked / git / mmux.yaml).
+fn linkrow(e: &DirEntry, selected: bool, width: u16) -> Line<'static> {
+    let bar = if selected { "▌ " } else { "  " };
+    let mut tags: Vec<&str> = Vec::new();
+    if e.already {
+        tags.push("linked");
+    } else {
+        if e.is_repo {
+            tags.push("git");
+        }
+        if e.has_config {
+            tags.push("mmux.yaml");
+        }
+    }
+    let tag = if tags.is_empty() { String::new() } else { format!("[{}]", tags.join(" · ")) };
+    let name_color = if e.already {
+        Color::DarkGray
+    } else if e.has_config {
+        Color::Green
+    } else {
+        Color::Blue
+    };
+
+    let w = width as usize;
+    let tagw = tag.chars().count();
+    let label = truncate_middle(&format!("{bar}{}/", e.name), w.saturating_sub(tagw + 1));
+    let pad = w.saturating_sub(label.chars().count() + tagw);
+    let mut line = Line::from(vec![
+        Span::styled(label, Style::default().fg(name_color)),
+        Span::raw(" ".repeat(pad)),
+        Span::styled(tag, Style::default().fg(Color::DarkGray)),
+    ]);
+    if selected {
+        let p = width.saturating_sub(line.width() as u16);
+        if p > 0 {
+            line.spans.push(Span::raw(" ".repeat(p as usize)));
+        }
+        line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+    }
+    line
+}
+
+/// The 3-line preview block for the highlighted directory: the path it would be linked
+/// as, its git branch, and its config presence.
+fn preview_lines(p: Option<&Preview>) -> Vec<Line<'static>> {
+    let Some(p) = p else {
+        return vec![Line::from(Span::styled(
+            "—",
+            Style::default().fg(Color::DarkGray),
+        ))];
+    };
+    let dim = Style::default().fg(Color::DarkGray);
+    let mut link_spans = vec![
+        Span::styled("link as  ", dim),
+        Span::styled(p.rel.clone(), Style::default().fg(Color::White)),
+    ];
+    if p.already {
+        link_spans.push(Span::styled("  (already in workspace)", Style::default().fg(Color::Yellow)));
+    }
+    let git = match &p.branch {
+        Some(branch) => Span::styled(branch.clone(), Style::default().fg(Color::Magenta)),
+        None => Span::styled("not a git repo", dim),
+    };
+    let config = match (p.has_config, &p.name) {
+        (true, Some(name)) => {
+            Span::styled(format!("mmux.yaml · {name}"), Style::default().fg(Color::Green))
+        }
+        _ => Span::styled("no mmux.yaml (the global config applies)", dim),
+    };
+    vec![
+        Line::from(link_spans),
+        Line::from(vec![Span::styled("git      ", dim), git]),
+        Line::from(vec![Span::styled("config   ", dim), config]),
+    ]
 }
 
 /// The "+ New Process" guided form: a "Step N of 4" header, the fields already

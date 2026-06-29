@@ -28,6 +28,7 @@ pub(crate) struct Regions {
     pub right: Option<Rect>,
     pub menu: Option<Rect>,      // tap → open the left sidebar drawer
     pub panel_btn: Option<Rect>, // tap → open the right panel
+    pub link_btn: Option<Rect>,  // tap → open the "Link another project" browser
     pub rows: Vec<(u16, usize)>,
     // Footer shortcut buttons: each `[key label]` chip and the action it fires.
     pub footer_btns: Vec<(Rect, FooterAction)>,
@@ -55,6 +56,8 @@ pub(crate) enum FooterAction {
     Stop,
     Restart,
     Reload,
+    /// Open the "Link another project" directory browser.
+    LinkProject,
     Detach,
     Quit,
     FocusPanel,
@@ -288,6 +291,7 @@ impl App {
                     Seg::btn("x", "close", Stop),
                     Seg::btn("r", "restart", Restart),
                     Seg::btn("R", "reload", Reload),
+                    Seg::btn("L", "link", LinkProject),
                 ];
                 if self.projects.len() > 1 {
                     v.push(Seg::hint("[ ] project"));

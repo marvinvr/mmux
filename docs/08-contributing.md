@@ -82,9 +82,10 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
 - **Copy is drag-select only.** A keyboard copy-mode is still future.
 - **Attention detection is bell/OSC-based.** It keys off the terminal bell and program-emitted
   notification OSCs (9/777/99). An idle "agent went quiet" heuristic is still future.
-- **Linked projects are a flat list, fixed at launch.** The set is decided when mmux opens;
-  changing it needs a reopen (`R` reload only refreshes loaded projects in place). Named, nestable
-  workspaces are still future.
+- **Linked projects are a flat list.** A project can be *added* live — the `+ Link another project`
+  button (or `L`) appends to `linked-projects` and loads it in place — but *removing* one, or any
+  other hand-edit to the list, needs a reopen (`R` reload only refreshes loaded projects in place).
+  Named, nestable workspaces are still future.
 
 ## Maintaining This Documentation
 

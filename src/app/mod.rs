@@ -12,6 +12,7 @@ mod git;
 mod input;
 mod keymap;
 mod lifecycle;
+mod linkbrowse;
 mod nav;
 pub(crate) mod picker;
 mod procform;

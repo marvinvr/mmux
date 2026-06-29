@@ -24,12 +24,25 @@ impl App {
         // A multi-project workspace becomes one bordered box per project, stacked
         // vertically: the active project's box expands to fill the column, the others
         // shrink to just their rows. This holds in both wide and compact (phone) mode.
-        // A single project keeps the original single-box drawer.
+        // A single project keeps the original single-box drawer. Either way the
+        // "Link another project" button is drawn on the bottom *inner* row of a box, so
+        // it sits inside the sidebar chrome (see the box renderers below).
         if self.projects.len() > 1 {
             self.render_sidebar_projects(f, area);
         } else {
             self.render_sidebar_single(f, area);
         }
+    }
+
+    /// Draw the "Link another project" button on `row`, returning its rect for click
+    /// routing. Styled exactly like the `+ New …` launchers (left-aligned green text, no
+    /// background); dimmed once the workspace hits the project cap.
+    fn draw_link_button(&self, f: &mut Frame, row: Rect) -> Rect {
+        let capped = self.projects.len() >= crate::config::MAX_PROJECTS;
+        let fg = if capped { Color::DarkGray } else { Color::Green };
+        let line = entry_line("+ Link another project", false, Style::default().fg(fg), None, false, row.width);
+        f.render_widget(Paragraph::new(line), row);
+        row
     }
 
     /// One bordered box per project, stacked top-to-bottom. The active box expands to
@@ -59,7 +72,12 @@ impl App {
         }
 
         // The active project's box absorbs the slack; everything else is content-sized.
-        let content_h: Vec<u16> = blocks.iter().map(|(_, _, l, _)| l.len() as u16 + 2).collect();
+        // The bottom-most *project* box reserves one extra row for the "Link another
+        // project" button pinned inside its bottom edge (the active box already has the
+        // slack to spare a row).
+        let host = n - 1;
+        let mut content_h: Vec<u16> = blocks.iter().map(|(_, _, l, _)| l.len() as u16 + 2).collect();
+        content_h[host] += 1;
         let heights = box_heights(&content_h, self.active, area.height);
         let chunks = Layout::vertical(heights.iter().map(|h| Constraint::Length(*h))).split(area);
 
@@ -85,15 +103,20 @@ impl App {
             if i < n {
                 self.regions.project_boxes.push((rect, i));
             }
+            // The host box gives up its bottom inner row to the link button.
+            let (content, link_row) = if i == host { reserve_link_row(inner) } else { (inner, None) };
             // Map each row's local line index to an absolute screen `y` for click
             // routing, skipping any the box is too short to actually show.
             for (ly, pos) in rows {
                 let y = inner.y + ly;
-                if y < inner.y + inner.height {
+                if y < content.y + content.height {
                     self.regions.rows.push((y, pos));
                 }
             }
-            f.render_widget(Paragraph::new(lines), inner);
+            f.render_widget(Paragraph::new(lines), content);
+            if let Some(row) = link_row {
+                self.regions.link_btn = Some(self.draw_link_button(f, row));
+            }
         }
     }
 
@@ -154,6 +177,8 @@ impl App {
         let inner = block.inner(area);
         f.render_widget(block, area);
         self.regions.sidebar = Some(area);
+        // The link button takes the drawer's bottom inner row; sections fill the rest.
+        let (content, link_row) = reserve_link_row(inner);
         // In compact mode, the drawer gets a button on the top-right to open the panel.
         if self.compact && self.active_git().is_some() {
             let half = area.width / 2;
@@ -206,7 +231,10 @@ impl App {
             });
         }
 
-        f.render_widget(Paragraph::new(lines), inner);
+        f.render_widget(Paragraph::new(lines), content);
+        if let Some(row) = link_row {
+            self.regions.link_btn = Some(self.draw_link_button(f, row));
+        }
     }
 
     /// The sidebar block title: the root (launch) project's display name.
@@ -340,6 +368,19 @@ impl App {
             }
         }
     }
+}
+
+/// Reserve the bottom *inner* row of a box for the "Link another project" button:
+/// returns the content rect above it and the button row, so the button sits inside the
+/// box's borders. The row is `None` when the box is too short to spare one (the `L` key
+/// and footer chip still work).
+fn reserve_link_row(inner: Rect) -> (Rect, Option<Rect>) {
+    if inner.height < 2 {
+        return (inner, None);
+    }
+    let content = Rect { height: inner.height - 1, ..inner };
+    let row = Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 };
+    (content, Some(row))
 }
 
 /// Vertical heights for the stacked per-project boxes: inactive boxes keep their

@@ -4,8 +4,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Upper bound on projects in one workspace (root + linked). A backstop so a
-/// runaway `linked-projects` list can't explode the sidebar.
-const MAX_PROJECTS: usize = 8;
+/// runaway `linked-projects` list can't explode the sidebar. Also the cap the
+/// in-TUI "Link another project" browser enforces before growing the workspace.
+pub(crate) const MAX_PROJECTS: usize = 8;
 
 /// A workspace config, loaded from `mmux.yaml` (or `mmux.yml`) in a directory.
 #[derive(Debug, Clone, Deserialize)]
@@ -306,8 +307,32 @@ fn merge(base: Option<Config>, project: Config) -> Config {
 
 /// Canonicalize `p`, falling back to the path as-given if it can't be resolved
 /// (e.g. it doesn't exist), so de-dup still keys on something stable.
-fn canonical(p: &Path) -> PathBuf {
+pub(crate) fn canonical(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// A path from directory `from` to directory `to`, in the form written into
+/// `linked-projects` (e.g. `../sibling`). Both should be absolute (ideally
+/// canonical). Walks up to the common ancestor with `..`, then down into `to`;
+/// returns `.` when they're the same directory and `to` verbatim when they share no
+/// prefix (different roots). Pure — unit-tested.
+pub(crate) fn relative_path(from: &Path, to: &Path) -> String {
+    use std::path::Component;
+    let f: Vec<Component> = from.components().collect();
+    let t: Vec<Component> = to.components().collect();
+    let common = f.iter().zip(&t).take_while(|(a, b)| a == b).count();
+    if common == 0 {
+        return to.to_string_lossy().into_owned();
+    }
+    let mut parts: Vec<String> = std::iter::repeat("..".to_string()).take(f.len() - common).collect();
+    for c in &t[common..] {
+        parts.push(c.as_os_str().to_string_lossy().into_owned());
+    }
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
 }
 
 fn merge_named<T>(base: Vec<T>, over: Vec<T>, key: impl Fn(&T) -> String) -> Vec<T> {
@@ -366,33 +391,61 @@ pub fn append_process(path: &Path, p: &ProcessDraft) -> Result<()> {
     Ok(())
 }
 
-/// Splice a rendered process item into `text`'s top-level `processes:` block (kept
-/// pure for testing). The item lands among any existing entries — after the last
-/// one, before trailing blank lines/comments — at their indentation. With no block
-/// it's created at EOF; an `[]`/`null` placeholder is replaced by the real list.
+/// Append `rel` (a path, relative to `path`'s directory) to the `linked-projects:`
+/// list in `path`, preserving the file's comments and layout. Creates the file/block
+/// if absent. Mirrors [`append_process`]; used by the in-TUI "Link another project"
+/// browser so a linked sibling survives the next reopen.
+pub fn append_linked_project(path: &Path, rel: &str) -> Result<()> {
+    let original = std::fs::read_to_string(path).unwrap_or_default();
+    let updated = insert_linked_project(&original, rel)?;
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Splice a rendered process item into `text`'s top-level `processes:` block.
 fn insert_process(text: &str, p: &ProcessDraft) -> Result<String> {
+    splice_block_item(text, "processes", |indent| render_item(p, indent))
+}
+
+/// Splice a `- <path>` entry into `text`'s top-level `linked-projects:` block. Like
+/// [`insert_process`] it edits the raw text (not a serde round-trip) so the file's
+/// comments and layout survive.
+fn insert_linked_project(text: &str, rel: &str) -> Result<String> {
+    splice_block_item(text, "linked-projects", |indent| {
+        format!("{}- {}\n", " ".repeat(indent), yaml_scalar(rel))
+    })
+}
+
+/// Splice a rendered list item into `text`'s top-level `block:` sequence, preserving
+/// the file's existing comments and layout (kept pure for testing). `render(indent)`
+/// produces the item at the block's indentation. The item lands among any existing
+/// entries — after the last one, before trailing blank lines/comments. With no block
+/// it's created at EOF; an `[]`/`null` placeholder is replaced by the real list; an
+/// inline value (`block: foo`) is refused, since appending lines can't extend it.
+fn splice_block_item(text: &str, block: &str, render: impl Fn(usize) -> String) -> Result<String> {
     let lines: Vec<&str> = text.lines().collect();
-    let Some(k) = lines.iter().position(|l| top_level_key(l) == Some("processes")) else {
+    let Some(k) = lines.iter().position(|l| top_level_key(l) == Some(block)) else {
         // No block yet: append a fresh one (with a blank separator) at EOF.
         let mut out = text.trim_end_matches('\n').to_string();
         if !out.is_empty() {
             out.push_str("\n\n");
         }
-        out.push_str("processes:\n");
-        out.push_str(&render_item(p, 2));
+        out.push_str(block);
+        out.push_str(":\n");
+        out.push_str(&render(2));
         return Ok(out);
     };
 
-    // An inline value other than an empty placeholder (`processes: foo`) is a shape
-    // we can't safely extend by appending lines — leave it to the user.
+    // An inline value other than an empty placeholder (`block: foo`) is a shape we
+    // can't safely extend by appending lines — leave it to the user.
     let after = lines[k].splitn(2, ':').nth(1).map(str::trim).unwrap_or("");
     let empty_marker = matches!(after, "" | "[]" | "{}" | "~" | "null");
     if !empty_marker {
-        anyhow::bail!("`processes:` is written inline — add the entry by hand");
+        anyhow::bail!("`{block}:` is written inline — add the entry by hand");
     }
 
     let indent = block_item_indent(&lines, k).unwrap_or(2);
-    let item = render_item(p, indent);
+    let item = render(indent);
     let at = block_end(&lines, k);
     let mut out = String::new();
     for (i, l) in lines.iter().enumerate() {
@@ -401,7 +454,8 @@ fn insert_process(text: &str, p: &ProcessDraft) -> Result<String> {
         }
         // Drop an `[]`/`null` placeholder so the new block items parse as its value.
         if i == k && !after.is_empty() {
-            out.push_str("processes:");
+            out.push_str(block);
+            out.push(':');
         } else {
             out.push_str(l);
         }
@@ -679,6 +733,42 @@ mod tests {
         assert!(!out.contains("args:"));
         assert!(out.contains("cwd: backend"));
         assert!(out.contains("autostart: true"));
+    }
+
+    #[test]
+    fn inserts_among_existing_linked_projects_at_their_indent() {
+        let text = "name: demo\n\nlinked-projects:\n  - ../a\n";
+        let out = insert_linked_project(text, "../b").unwrap();
+        assert!(out.contains("  - ../a"));
+        assert!(out.contains("  - ../b"));
+        assert!(out.find("../a").unwrap() < out.find("../b").unwrap());
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.linked_projects, vec!["../a".to_string(), "../b".to_string()]);
+    }
+
+    #[test]
+    fn appends_a_fresh_linked_projects_block_when_absent() {
+        // A commented `# linked-projects:` example must NOT be treated as the block.
+        let out = insert_linked_project("name: demo\n# linked-projects:\n", "../b").unwrap();
+        assert!(out.contains("\nlinked-projects:\n  - ../b"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.linked_projects, vec!["../b".to_string()]);
+    }
+
+    #[test]
+    fn replaces_an_empty_linked_projects_placeholder() {
+        let out = insert_linked_project("linked-projects: []\n", "../b").unwrap();
+        assert!(!out.contains("[]"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.linked_projects, vec!["../b".to_string()]);
+    }
+
+    #[test]
+    fn relative_path_walks_to_the_common_ancestor() {
+        assert_eq!(relative_path(Path::new("/u/m/proj"), Path::new("/u/m/other")), "../other");
+        assert_eq!(relative_path(Path::new("/u/m/proj"), Path::new("/u/m/proj")), ".");
+        assert_eq!(relative_path(Path::new("/u/m/proj"), Path::new("/u/m/proj/sub")), "sub");
+        assert_eq!(relative_path(Path::new("/u/m/a/b"), Path::new("/u/m/x")), "../../x");
     }
 
     #[test]

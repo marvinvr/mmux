@@ -51,6 +51,9 @@ impl App {
             KeyCode::Char('x') => self.do_stop(),
             KeyCode::Char('r') => self.do_restart(),
             KeyCode::Char('R') => self.reload(),
+            // Link another project directory into the workspace (also the button at the
+            // bottom of the sidebar).
+            KeyCode::Char('L') => self.open_link_browser(),
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
             // is showing); otherwise a no-op.
             KeyCode::Char('U') => self.apply_update(),
@@ -184,6 +187,12 @@ impl App {
             self.procform_key(k);
             return;
         }
+        // The link browser likewise needs `&mut self` on ⏎ (to grow the workspace),
+        // so it's taken out and driven by its own handler.
+        if matches!(self.overlay, Some(Overlay::LinkProject(_))) {
+            self.linkbrowse_key(k);
+            return;
+        }
         enum Act {
             None,
             Close,
@@ -252,8 +261,9 @@ impl App {
                 KeyCode::Char('d') if matches!(action, Confirmed::Quit) => Act::Detach,
                 _ => Act::Close,
             },
-            // Handled above by `procform_key`; arm kept for match exhaustiveness.
-            Some(Overlay::NewProcess(_)) => Act::None,
+            // Handled above by `procform_key` / `linkbrowse_key`; arms kept for match
+            // exhaustiveness.
+            Some(Overlay::NewProcess(_)) | Some(Overlay::LinkProject(_)) => Act::None,
             None => Act::None,
         };
         match act {
@@ -356,6 +366,47 @@ impl App {
         form.error = None;
     }
 
+    /// Keys for the "Link another project" browser. Like the process form it's taken
+    /// out of `self.overlay` for the duration: ⏎ links the highlighted directory (which
+    /// needs `&mut self` to grow the workspace, so it's done after the take), ←/→ walk
+    /// the tree, and typing filters the current level.
+    fn linkbrowse_key(&mut self, k: KeyEvent) {
+        let Some(Overlay::LinkProject(mut b)) = self.overlay.take() else {
+            return;
+        };
+        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        match k.code {
+            KeyCode::Esc => return, // cancelled — leave the overlay cleared
+            KeyCode::Enter => {
+                if let Some(dir) = b.pick() {
+                    self.link_project(dir); // grows the workspace, flashes, stays closed
+                    return;
+                }
+            }
+            KeyCode::Right | KeyCode::Tab => b.descend(),
+            KeyCode::Left => b.ascend(),
+            KeyCode::Up => b.move_sel(-1),
+            KeyCode::Down => b.move_sel(1),
+            KeyCode::Char('p') | KeyCode::Char('k') if ctrl => b.move_sel(-1),
+            KeyCode::Char('n') | KeyCode::Char('j') if ctrl => b.move_sel(1),
+            // Backspace edits the filter, or — once it's empty — steps up a level.
+            KeyCode::Backspace => {
+                if b.query.is_empty() {
+                    b.ascend();
+                } else {
+                    b.query.pop();
+                    b.refilter();
+                }
+            }
+            KeyCode::Char(c) if !ctrl => {
+                b.query.push(c);
+                b.refilter();
+            }
+            _ => {}
+        }
+        self.overlay = Some(Overlay::LinkProject(b));
+    }
+
     pub(crate) fn on_mouse(&mut self, m: MouseEvent) {
         match m.kind {
             MouseEventKind::ScrollUp => self.scroll_at(m.column, m.row, 3),
@@ -381,6 +432,11 @@ impl App {
             if self.active_git().is_some() {
                 self.focus = Focus::Right;
             }
+            return;
+        }
+        // The "Link another project" button pinned to the sidebar's bottom row.
+        if hit(self.regions.link_btn, c, r) {
+            self.open_link_browser();
             return;
         }
         if hit(self.regions.menu, c, r) {
@@ -434,6 +490,7 @@ impl App {
                 self.reload();
                 self.focus = Focus::Sidebar; // surface any newly added items
             }
+            FooterAction::LinkProject => self.open_link_browser(),
             FooterAction::Detach => crate::tmux::detach(),
             FooterAction::Quit => self.request_quit(),
             FooterAction::FocusPanel => {
@@ -750,6 +807,10 @@ impl App {
             Some(Overlay::Prompt { buf, .. }) => buf.push_str(&s),
             Some(Overlay::NewProcess(form)) if form.step != Step::Review => {
                 form.buf.push_str(&s);
+            }
+            Some(Overlay::LinkProject(b)) => {
+                b.query.push_str(&s);
+                b.refilter();
             }
             _ if self.focus == Focus::Terminal => self.send_focused(s.into_bytes()),
             _ => {}

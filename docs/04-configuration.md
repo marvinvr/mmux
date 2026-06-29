@@ -168,7 +168,10 @@ linked-projects:
   failing to load aborts startup.
 - The launch directory is always the first group, so opening mmux from any clone keeps "where you
   are" on top.
-- The set of projects is **fixed when mmux opens.** Adding or removing a link takes effect on the
+- You can **add** a link without restarting: the `+ Link another project` button at the bottom of
+  the sidebar (or `L`) opens a [browser](03-usage.md#linking-another-project) that writes the chosen
+  path into the launch directory's `linked-projects:` and loads it in place as a new sidebar box.
+  **Removing** a link, or any other hand-edit to `linked-projects`, still takes effect only on the
   next `mmux` (a reopen), not on a [reload](#live-reload).
 
 ## Live Reload
@@ -183,7 +186,8 @@ Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the 
 - a one-line footer flash summarizes what changed.
 
 Reload refreshes each *already-loaded* project in place. It does **not** re-read the
-`linked-projects` list — changing which projects are in the workspace needs a reopen.
+`linked-projects` list to *drop* a project — only [linking another project](#linked-projects) grows
+the workspace live; removing one needs a reopen.
 
 ## Adding a Process From the TUI
 
@@ -191,3 +195,7 @@ You don't have to hand-edit YAML to add a process. The `+ New Process` launcher 
 [guided form](03-usage.md#adding-a-process) that appends the entry to your `mmux.yaml`,
 preserving the file's existing comments and layout, then reloads. (It can't set `env`, though —
 that still needs a hand edit.)
+
+Likewise, the `+ Link another project` button (or `L`) writes a new entry into the launch
+directory's `linked-projects:` — same comment-preserving append — and adds the project to the live
+workspace; see [Linking Another Project](03-usage.md#linking-another-project).

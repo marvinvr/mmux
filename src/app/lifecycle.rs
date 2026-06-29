@@ -1,13 +1,14 @@
 //! Session lifecycle driven from the sidebar: spawning new agents/terminals,
 //! the start/stop/restart key actions, and the live config reload.
 
-use super::git::{GitPanel, Overlay};
+use super::git::{first_line, GitPanel, Overlay};
+use super::linkbrowse::LinkBrowser;
 use super::nav::Nav;
 use super::picker::Picker;
 use super::procform::ProcForm;
 use super::session::{Kind, Recipe, Session, Status};
-use super::{App, Focus};
-use crate::config::Config;
+use super::{App, Focus, Project};
+use crate::config::{self, Config};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -99,6 +100,84 @@ impl App {
     pub(crate) fn open_picker(&mut self) {
         let dir = self.projects[self.active].cfg.dir.clone();
         self.overlay = Some(Overlay::Picker(Picker::new(self.active, dir)));
+    }
+
+    /// Raise the "Link another project" directory browser. A no-op (with a flash) once
+    /// the project cap is reached. Driven by [`linkbrowse_key`](super::input).
+    pub(crate) fn open_link_browser(&mut self) {
+        if self.projects.len() >= config::MAX_PROJECTS {
+            self.flash = Some((
+                format!("workspace is capped at {} projects", config::MAX_PROJECTS),
+                Instant::now(),
+            ));
+            return;
+        }
+        let root = self.projects[0].cfg.dir.clone();
+        let loaded: Vec<PathBuf> =
+            self.projects.iter().map(|p| config::canonical(&p.cfg.dir)).collect();
+        self.overlay = Some(Overlay::LinkProject(LinkBrowser::new(root, loaded)));
+    }
+
+    /// Link `dir` into the **live** workspace: append it to the root project's
+    /// `linked-projects:` (so it survives a reopen) and load it in place as a new
+    /// project box — its processes appear stopped, since linked projects never
+    /// autostart. Validates the cap and de-dups by canonical path; any problem is
+    /// flashed and nothing else changes.
+    ///
+    /// Unlike [`reload`](Self::reload) this *grows* the project set, which is why it
+    /// lives here: it appends a [`Project`] (and its process rows) and extends the
+    /// per-project bookkeeping, leaving every running pane untouched.
+    pub(crate) fn link_project(&mut self, dir: PathBuf) {
+        self.overlay = None;
+        if self.projects.len() >= config::MAX_PROJECTS {
+            self.flash = Some((
+                format!("workspace is capped at {} projects", config::MAX_PROJECTS),
+                Instant::now(),
+            ));
+            return;
+        }
+        let canon = config::canonical(&dir);
+        if self.projects.iter().any(|p| config::canonical(&p.cfg.dir) == canon) {
+            self.flash = Some(("already in this workspace".into(), Instant::now()));
+            return;
+        }
+        // Its effective config = the global config + its own mmux.yaml. A directory
+        // with neither can't be loaded, which surfaces here as a flash rather than a
+        // half-added project. Linking is one level only, so drop its own links.
+        let mut cfg = match Config::load(&canon) {
+            Ok(c) => c,
+            Err(e) => {
+                self.flash = Some((
+                    format!("couldn't link — {}", first_line(&format!("{e:#}"))),
+                    Instant::now(),
+                ));
+                return;
+            }
+        };
+        cfg.linked_projects.clear();
+
+        // Persist the link to the root config so it's there on the next open too.
+        let root_dir = self.projects[0].cfg.dir.clone();
+        let rel = config::relative_path(&config::canonical(&root_dir), &canon);
+        let path = config::project_config_path(&root_dir);
+        if let Err(e) = config::append_linked_project(&path, &rel) {
+            self.flash = Some((format!("couldn't write the link — {e}"), Instant::now()));
+            return;
+        }
+
+        // Grow the live workspace: a new project box plus its (stopped) process rows.
+        let pi = self.projects.len();
+        let proj = Project::new(cfg);
+        for p in &proj.cfg.processes {
+            let recipe = Recipe::process(p, &proj.cfg.dir);
+            self.sessions.push(Session::new(p.name.clone(), Kind::Process, recipe, pi));
+        }
+        self.projects.push(proj);
+        self.last_proj_sel.push(None);
+        // Jump the cursor into the freshly-linked project so the user sees it land.
+        self.focus_project(pi);
+        self.focus = Focus::Sidebar;
+        self.flash = Some((format!("linked {rel}"), Instant::now()));
     }
 
     /// Open `rel` (relative to project `pi`'s dir) in the user's editor as a new
@@ -254,9 +333,10 @@ impl App {
     /// and a removed process that's still running is kept as an orphan rather than
     /// killed. Bound to `R` / `Ctrl-b R`.
     ///
-    /// The *set* of projects is fixed for the session — changing `linked-projects`
-    /// needs a reopen — so this only refreshes each project's own agents/processes/
-    /// panel, keyed by its directory.
+    /// Reload only ever refreshes the *existing* projects, keyed by directory — it
+    /// never adds or drops one. Growing the workspace is [`link_project`](Self::link_project)'s
+    /// job (the sidebar's "Link another project" button); *removing* a linked project,
+    /// or any other `linked-projects` edit made by hand, still needs a reopen.
     pub(crate) fn reload(&mut self) {
         // Reload each project's config by dir. A project whose config fails to load
         // keeps its current one (recorded as `None`) instead of aborting the reload.

@@ -1,6 +1,4 @@
-<!-- Source for /assets/og-image.png. Regenerate the raster on macOS with:
-       sips -s format png og-image.svg --out og-image.png
-     ImageIO honours the first installed family (Menlo), so the PNG renders monospace. -->
+<!-- Source for /assets/og-image.png. To regenerate the PNG, see web/README.md. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="mmux — persistent terminals for your coding agents">
   <defs>
     <radialGradient id="glow" cx="26%" cy="32%" r="64%">
@@ -38,5 +36,5 @@
   <text x="170" y="500" font-family="Menlo, ui-monospace, 'SF Mono', monospace" font-size="32" fill="#d9dbdf">brew install marvinvr/mmux/mmux</text>
 
   <!-- footer line -->
-  <text x="96" y="588" font-family="Menlo, ui-monospace, 'SF Mono', monospace" font-size="26" fill="#6b6f77">one rust binary &#160;&#160;&#183;&#160;&#160; works over ssh &#160;&#160;&#183;&#160;&#160; MIT licensed</text>
+  <text x="96" y="588" font-family="Menlo, ui-monospace, 'SF Mono', monospace" font-size="26" fill="#6b6f77">one rust binary &#160;&#160;&#183;&#160;&#160; works over ssh &#160;&#160;&#183;&#160;&#160; GPLv3 licensed</text>
 </svg>
