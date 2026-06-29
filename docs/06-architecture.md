@@ -187,28 +187,63 @@ is `HEAD` vs the working tree (staged + unstaged together); an untracked file is
 
 ## Self-Update
 
-`update.rs` keeps a Homebrew-installed mmux current without interrupting your work. It splits
+`update.rs` keeps a Homebrew-installed mmux current without interrupting your work, and
+`restore.rs` + `app/persist.rs` make *applying* an update feel like nothing happened. It splits
 cleanly along the inner/outer grain:
 
-- **Check + install are automatic and invisible.** A check (`brew` can't see a new release without
-  a global `brew update`, so we instead `curl` the tap formula and compare its `version` to ours)
-  runs at startup and once a day. It's cheap, so it gates the heavier install (`brew update` +
-  `brew upgrade mmux`). Both run on throwaway threads and report back over an `mpsc` channel drained
-  in `tick()` — the same shape as the git panel's pull/push jobs. Replacing the on-disk binary while
-  mmux runs is safe: brew relinks the symlink, the running process keeps its inode.
+- **Check + install are automatic and invisible.** A check runs at startup and once a day. It
+  first does a cheap *local* test — run the on-disk binary (`brew --prefix` symlink) with
+  `--version` and compare to ours — so when a **sibling session already upgraded** the binary
+  while we keep running the old code, we jump straight to "ready" without touching the network.
+  Otherwise it `curl`s the tap formula (`brew` can't see a new release without a global `brew
+  update`) and compares its `version`. A newer formula gates the heavier install (`brew update` +
+  `brew upgrade mmux`). Everything runs on throwaway threads reporting over an `mpsc` channel
+  drained in `tick()` — the same shape as the git panel's pull/push jobs. Replacing the on-disk
+  binary while mmux runs is safe: brew relinks the symlink, the running process keeps its inode.
 - **Applying is user-gated.** Running the *new* code means replacing the inner process, which
-  necessarily ends the live panes (the same reason a TUI crash loses sessions — see
-  [Planned](#planned)). So the `UpdateState::Ready` step only lights a quiet bottom-right footer
-  badge; pressing `U` or clicking it sets `App.restart`, and `run()` — after restoring the
-  terminal — `exec`s the freshly-installed binary **in place** (via the stable `brew --prefix`
-  symlink, since `current_exe()` may point into a Cellar dir brew has already pruned). Same PID, so
-  tmux keeps the pane and the new TUI just redraws; `MMUX_INNER`/`MMUX_DIR` are inherited through
-  the exec. Autostart processes come back; ephemeral agents/terminals don't — which is why the
-  restart is never automatic.
+  necessarily ends the live panes. So the `UpdateState::Ready` step only lights a quiet
+  bottom-right footer badge; pressing `U` or clicking it sets `App.restart`, and `run()` — after
+  restoring the terminal — `exec`s the freshly-installed binary **in place** (via the stable
+  `brew --prefix` symlink, since `current_exe()` may point into a Cellar dir brew has already
+  pruned). Same PID, so tmux keeps the pane and the new TUI just redraws; `MMUX_INNER`/`MMUX_DIR`
+  are inherited through the exec. The ended panes come back on startup like any other reopen — see
+  [Session Restore](#session-restore) — so applying an update isn't disruptive.
 
 The updater is inert for non-brew installs (`is_brew_managed` fails) and dev builds, and is gated
 by `auto-update` config + the `MMUX_NO_UPDATE` env var. See
 [Configuration → Auto-Update](04-configuration.md#auto-update).
+
+## Session Restore
+
+mmux remembers the agents and terminals you had open and brings them back when you reopen a
+directory — after a quit, a crash, or a [self-update](#self-update) restart. `app/persist.rs`,
+`restore.rs`, and `agent.rs` implement it.
+
+- **Save.** `app/persist.rs` snapshots the live agents/terminals to
+  `~/.mmux/state/<session-hash>.yaml` (keyed by the same canonical-dir hash tmux uses, via
+  `tmux::session_name`). It writes on every structural change (a cheap fingerprint in `tick()`
+  gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
+  Only agents/terminals are saved — processes come back from config.
+- **Restore.** `App::new` always calls `restore_sessions` on startup; it's a no-op when there's no
+  file. This is safe to do unconditionally because the **tmux singleton** means a fresh inner
+  process only ever starts when there's no live session to attach to (a detach leaves the inner
+  process — and its panes — running, so reattaching never reaches this path). So there are never
+  live panes to clobber.
+  - **Claude / Codex agents resume their conversation.** `agent.rs` is a hardcoded, no-config
+    adapter detected purely by command basename. Claude lets mmux *own* the id (launch with
+    `--session-id <uuid>`, reattach with `--resume <uuid>`), so several `Claude #N` in one
+    directory each resume their own thread. Codex has no such flag, so mmux *discovers* the id by
+    matching the `cwd` Codex records under `~/.codex/sessions` (newest first) and reattaches with
+    `codex resume <uuid>`.
+  - **Terminals reopen at their live cwd.** `Pane::cwd()` reads the shell's working directory from
+    the OS (`/proc/<pid>/cwd` on Linux, `proc_pidinfo` on macOS), so a `cd` survives — though as a
+    fresh shell (no history/env/jobs). Editor panes reopen their file the same way.
+  - **Processes are left alone** — they're config-defined, so autostart brings them back and the
+    rest are a click away. They're never written to the state file.
+
+This is a convenience, never load-bearing: a missing or unparsable state file just means a fresh
+start, so every read/write swallows its errors. Closing a session (or all of them) before quitting
+removes it from the snapshot, so it's easy to get a clean slate.
 
 ## Navigation, Focus, and Regions
 
@@ -253,11 +288,14 @@ by `auto-update` config + the `MMUX_NO_UPDATE` env var. See
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |
 | Self-update: auto install, user-gated restart | The on-disk swap is safe mid-run, but applying it ends the panes — so the disruptive step waits for you, behind a quiet badge, while a long task runs undisturbed. |
+| Restore agents/terminals on every reopen | Snapshot the live sessions and rebuild on start — resuming Claude/Codex by session id and shells at their live cwd — so quitting, a crash, or a "restart to update" all bring your work back. Unconditional because the tmux singleton guarantees a fresh inner process means no live panes to clobber. A throwaway state file, never load-bearing. |
 
 ## Planned
 
-The v1 architecture has known limits — persistence covers detach/disconnect but not a TUI crash;
-selection is positional; mouse events other than the wheel aren't forwarded into panes; a linked
-project can be added live but only *removed* by a reopen. These, and the planned daemon/client
-split, are tracked in
+The v1 architecture has known limits. Persistence now covers detach/disconnect *and* a
+quit/crash/update reopen via [Session Restore](#session-restore) — but restore is a cold respawn
+(the conversation/cwd come back, not the live process or its in-flight work; a daemon would fix
+that). Selection is positional; mouse events other than the wheel aren't forwarded into panes; a
+linked project can be added live but only *removed* by a reopen. These, and the planned
+daemon/client split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

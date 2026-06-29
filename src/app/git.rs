@@ -422,14 +422,15 @@ impl Overlay {
         Overlay::Confirm { title, body, hint, action }
     }
 
-    /// The pre-quit confirmation. Quitting tears down the inner tmux session and with
-    /// it every agent, terminal, and process — detach (offered right in the modal) is
-    /// the non-destructive way out, leaving everything running in the background.
+    /// The pre-quit confirmation. Quitting tears down the inner tmux session, stopping
+    /// every running pane — but reopening the directory restores the agents/terminals
+    /// (see [`crate::restore`]), so this is a calm heads-up, not a danger gate. Detach
+    /// (offered right in the modal) keeps everything running live, uninterrupted.
     pub(crate) fn quit() -> Overlay {
         Overlay::Confirm {
-            title: "Quit mmux",
-            body: "This stops every running agent, terminal and process.\n\
-                   Detach instead to leave them running in the background."
+            title: "Quit mmux?",
+            body: "This stops all your agents, terminals, and processes.\n\
+                   Detach instead to keep them running in the background."
                 .into(),
             hint: "y quit · d detach · n cancel",
             action: Confirmed::Quit,

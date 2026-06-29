@@ -9,7 +9,7 @@ use portable_pty::{
 };
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -117,6 +117,9 @@ pub struct Pane {
     /// The child's exit code once it has been reaped — `None` while it's still
     /// running (or briefly, just after exit, before `wait()` returns).
     exit_code: Arc<Mutex<Option<u32>>>,
+    /// The child process id, used to read its live working directory so a
+    /// terminal's `cd` can survive a restart (see [`Pane::cwd`]).
+    pid: Option<u32>,
     size: (u16, u16),
 }
 
@@ -155,6 +158,7 @@ impl Pane {
         let mut child = slave.spawn_command(builder)?;
         drop(slave); // close our handle to the slave in the parent
         let killer = child.clone_killer();
+        let pid = child.process_id();
 
         let parser: SharedParser = Arc::new(Mutex::new(vt100::Parser::new_with_callbacks(
             rows,
@@ -222,8 +226,17 @@ impl Pane {
             running,
             killed,
             exit_code,
+            pid,
             size: (rows, cols),
         })
+    }
+
+    /// The child's current working directory, read live from the OS — so a
+    /// terminal that's been `cd`'d can be respawned where the user left it across
+    /// a restart. `None` if we don't have the pid or can't read it (the caller
+    /// then falls back to the recipe's launch dir). See [`process_cwd`].
+    pub fn cwd(&self) -> Option<PathBuf> {
+        process_cwd(self.pid?)
     }
 
     pub fn is_running(&self) -> bool {
@@ -440,6 +453,66 @@ impl Pane {
         p.screen_mut().set_scrollback(saved);
         Some(out)
     }
+}
+
+/// Read process `pid`'s current working directory from the OS.
+///
+/// `cd` lives in the kernel's per-process state, so we can recover it without the
+/// process's cooperation: Linux exposes it as the `/proc/<pid>/cwd` symlink;
+/// macOS has no `/proc`, so we ask the kernel via `proc_pidinfo`. Either way the
+/// result is sanity-checked with `is_dir()` before use, so a wrong read degrades
+/// to "no cwd" (caller falls back to the launch dir) rather than a bad path.
+#[cfg(target_os = "linux")]
+fn process_cwd(pid: u32) -> Option<PathBuf> {
+    let p = std::fs::read_link(format!("/proc/{pid}/cwd")).ok()?;
+    p.is_dir().then_some(p)
+}
+
+#[cfg(target_os = "macos")]
+fn process_cwd(pid: u32) -> Option<PathBuf> {
+    // `proc_pidinfo(PROC_PIDVNODEPATHINFO)` fills a `proc_vnodepathinfo`, whose
+    // first member `pvi_cdir` is the current-directory vnode. Its NUL-terminated
+    // path string sits right after the fixed-size `vnode_info` header (152 bytes)
+    // within each `vnode_info_path`. `proc_pidinfo` is in libproc, part of
+    // libSystem, so it links without an explicit crate.
+    const PROC_PIDVNODEPATHINFO: i32 = 9;
+    const VNODE_INFO_SIZE: usize = 152; // sizeof(struct vnode_info)
+    const MAXPATHLEN: usize = 1024;
+    const BUF_SIZE: usize = 2 * (VNODE_INFO_SIZE + MAXPATHLEN); // sizeof(proc_vnodepathinfo)
+    extern "C" {
+        fn proc_pidinfo(
+            pid: i32,
+            flavor: i32,
+            arg: u64,
+            buffer: *mut std::ffi::c_void,
+            buffersize: i32,
+        ) -> i32;
+    }
+    let mut buf = [0u8; BUF_SIZE];
+    let n = unsafe {
+        proc_pidinfo(
+            pid as i32,
+            PROC_PIDVNODEPATHINFO,
+            0,
+            buf.as_mut_ptr() as *mut std::ffi::c_void,
+            BUF_SIZE as i32,
+        )
+    };
+    if n < (VNODE_INFO_SIZE + 1) as i32 {
+        return None;
+    }
+    let path = &buf[VNODE_INFO_SIZE..];
+    let end = path.iter().position(|&b| b == 0).unwrap_or(0);
+    if end == 0 {
+        return None;
+    }
+    let p = PathBuf::from(std::str::from_utf8(&path[..end]).ok()?);
+    p.is_dir().then_some(p)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn process_cwd(_pid: u32) -> Option<PathBuf> {
+    None
 }
 
 /// Encode one mouse button press for a program tracking the mouse, in the

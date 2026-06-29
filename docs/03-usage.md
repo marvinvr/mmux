@@ -275,6 +275,12 @@ as a `GIT` entry in the sidebar.
   anything is still running — and the confirmation offers `d` to detach instead. With
   nothing running, `q` quits immediately.
 - Run `mmux` again in the same directory to reattach.
+- **Your session comes back.** Even after a `q` (or a crash, or a restart-to-update), reopening a
+  directory **restores the agents and terminals** you had open: **Claude and Codex agents resume
+  their conversation**, and **terminals reopen in the directory you left them in** (as a fresh
+  shell — history, env, and background jobs don't carry over). Anything that can't resume starts
+  fresh; processes come back via autostart or a click. To start clean instead, **close the sessions
+  (`x`) before quitting** — only what's still open is remembered.
 - Run **`mmux attach`** (alias `mmux a`) to open a picker of every running mmux session on the
   machine, plus recently opened directories that aren't currently running. Each row leads with the
   project's name (its `mmux.yaml` `name:`, else the folder) and shows its directory beside it in

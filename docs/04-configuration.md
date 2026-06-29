@@ -129,16 +129,20 @@ auto-update:
 When mmux was installed with Homebrew (the only install path it ships today), it keeps itself
 current in the background:
 
-- **On startup, and once a day** thereafter (sessions can run for days), it checks the
-  [tap formula](https://github.com/marvinvr/homebrew-mmux) for a newer release. The check is a
+- **On startup, and once a day** thereafter (sessions can run for days), it checks for a newer
+  release. First it cheaply notices if a **sibling mmux session already upgraded** the on-disk
+  binary; otherwise it checks the [tap formula](https://github.com/marvinvr/homebrew-mmux) with a
   single lightweight request — it does **not** run `brew update`.
 - **If a newer version exists, it installs it in the background** (`brew update` + `brew upgrade
   mmux`). This only swaps the on-disk binary; nothing you're running is disturbed.
 - **Once the update is staged, a quiet `↻ restart to update` badge** appears in the bottom-right.
   Press **`U`** (in the sidebar) or click the badge to restart **in place** onto the new version —
-  no need to quit and relaunch. Because the running process is what holds the old code, this
-  restart ends the live agents/terminals (autostart processes come back); it's never automatic, so
-  a long task is yours to interrupt when convenient.
+  no need to quit and relaunch. It's never automatic, so a long task is yours to interrupt when
+  convenient.
+- **The restart brings your work back.** Replacing the running process ends the live panes, but the
+  new one restores them the same way reopening a directory does — Claude/Codex agents resume their
+  conversation, terminals reopen where you left them — so applying an update doesn't cost you your
+  place. See [Session restore](03-usage.md#detaching-reattaching-and-the-attach-picker).
 
 It is **inert** for non-Homebrew installs (e.g. `cargo install`) and dev builds — no badge, no
 network calls. Turn it off per-project or globally with `auto-update: { enabled: false }`, or for a

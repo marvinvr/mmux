@@ -51,9 +51,18 @@ pub fn permitted(cfg_allows: bool) -> bool {
 /// Kick off a background check: verify we're a brew install, fetch the tap formula, and
 /// report whether a newer version exists. Silent (sends nothing) for non-brew builds, so
 /// a `cargo install`'d binary never shows a badge it can't act on.
+///
+/// First, cheaply and locally: a *sibling* mmux session may have already run the brew
+/// upgrade while we keep running the old code. If the on-disk binary is newer than ours,
+/// the update is effectively already staged — report it [`Installed`](UpdateMsg::Installed)
+/// straight away and skip both the network check and a redundant `brew upgrade`.
 pub fn spawn_check(tx: Sender<UpdateMsg>) {
     std::thread::spawn(move || {
         if !is_brew_managed() {
+            return;
+        }
+        if let Some(v) = installed_newer() {
+            let _ = tx.send(UpdateMsg::Installed(v));
             return;
         }
         let msg = match check_latest() {
@@ -63,6 +72,20 @@ pub fn spawn_check(tx: Sender<UpdateMsg>) {
         };
         let _ = tx.send(msg);
     });
+}
+
+/// The version of the binary an in-place restart would land on (the brew symlink),
+/// but only if it's strictly newer than the running one — i.e. a sibling session
+/// already upgraded it. `None` if it's the same/older, or we can't read it.
+fn installed_newer() -> Option<String> {
+    let out = Command::new(resolve_exe()).arg("--version").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    // `mmux --version` prints `mmux X.Y.Z`.
+    let text = String::from_utf8(out.stdout).ok()?;
+    let v = text.split_whitespace().nth(1)?.trim().to_string();
+    version_gt(&v, CURRENT).then_some(v)
 }
 
 /// Kick off the background install of `version` via brew. Reports [`UpdateMsg::Installed`]
@@ -84,7 +107,9 @@ pub fn spawn_install(tx: Sender<UpdateMsg>, version: String) {
 pub fn exec_restart() -> std::io::Error {
     use std::os::unix::process::CommandExt;
     // `MMUX_INNER` / `MMUX_DIR` are already in our env (tmux set them) and are inherited
-    // through exec, so the new image comes up as the inner TUI for the same directory.
+    // through exec, so the new image comes up as the inner TUI for the same directory —
+    // which restores the previous agents/terminals from the saved state on startup, the
+    // same as any other fresh open (see `crate::restore`).
     Command::new(resolve_exe()).arg("--inner").exec()
 }
 

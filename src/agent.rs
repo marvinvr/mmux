@@ -1,0 +1,243 @@
+//! Resume support for the two agents mmux ships presets for: **Claude Code** and
+//! **Codex**. This is deliberately *not* configurable — detection is purely the
+//! launch command's basename, and each tool's quirks live here:
+//!
+//! - **Claude** lets us *own* the session id: we mint a UUID, start it with
+//!   `--session-id <uuid>`, and later reattach with `--resume <uuid>`. That means
+//!   several `Claude #N` in one directory each resume their own conversation.
+//! - **Codex** has no "set the id" flag — it only resumes one we *discover*. So we
+//!   start it plain, then find the session it wrote under `~/.codex/sessions` by
+//!   matching the recorded `cwd` (newest first), and reattach with
+//!   `codex resume <uuid>`.
+//!
+//! Used by [`crate::app`] to persist and restore agents across a self-update
+//! restart (see [`crate::restore`]).
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+
+/// A resumable agent CLI mmux knows how to reattach across a restart.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tool {
+    Claude,
+    Codex,
+}
+
+impl Tool {
+    /// Detect a resumable agent from its launch command by basename, so
+    /// `claude`, `/opt/homebrew/bin/claude`, and `codex` all match.
+    pub fn detect(cmd: &str) -> Option<Tool> {
+        match Path::new(cmd).file_name()?.to_str()? {
+            "claude" => Some(Tool::Claude),
+            "codex" => Some(Tool::Codex),
+            _ => None,
+        }
+    }
+
+    /// Whether mmux assigns the session id at launch (Claude) rather than having
+    /// to discover it afterwards (Codex).
+    pub fn owns_id(self) -> bool {
+        matches!(self, Tool::Claude)
+    }
+}
+
+/// Per-session resume bookkeeping for a Claude/Codex agent: which tool, the
+/// session id we reattach by, and whether the *next* spawn should resume an
+/// existing session rather than start a fresh one.
+#[derive(Clone)]
+pub struct Resume {
+    pub tool: Tool,
+    /// The session id. Claude: minted up front. Codex: `None` until discovered.
+    pub id: Option<String>,
+    /// `false` for a brand-new agent (its first launch *creates* the session);
+    /// `true` afterwards and for any restored agent (launches *resume* it).
+    pub resume: bool,
+}
+
+impl Resume {
+    /// A fresh resumable agent: Claude gets a minted id; Codex starts id-less.
+    pub fn new(tool: Tool) -> Resume {
+        let id = tool.owns_id().then(mint_uuid);
+        Resume { tool, id, resume: false }
+    }
+
+    /// Restore a resumable agent from saved state — always reattaches.
+    pub fn restored(tool: Tool, id: Option<String>) -> Resume {
+        Resume { tool, id, resume: true }
+    }
+
+    /// The extra CLI args to append to the recipe for the *current* launch.
+    /// A Codex first launch (or any id-less state) appends nothing — it starts
+    /// a plain session, and the id is discovered later.
+    pub fn launch_args(&self) -> Vec<String> {
+        match (self.tool, self.resume, self.id.as_deref()) {
+            (Tool::Claude, false, Some(id)) => vec!["--session-id".into(), id.into()],
+            (Tool::Claude, true, Some(id)) => vec!["--resume".into(), id.into()],
+            // Codex `resume` is a subcommand taking the session UUID.
+            (Tool::Codex, true, Some(id)) => vec!["resume".into(), id.into()],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// A v4 UUID from `/dev/urandom`, formatted `8-4-4-4-12`. Enough for Claude's
+/// `--session-id` without pulling in the `uuid`/`rand` crates. Falls back to a
+/// time-seeded value if `/dev/urandom` is somehow unreadable; a collision there
+/// would at worst resume the wrong conversation, never corrupt anything.
+pub fn mint_uuid() -> String {
+    let mut b = [0u8; 16];
+    let ok = std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut b))
+        .is_ok();
+    if !ok {
+        let nanos: u128 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        b.copy_from_slice(&nanos.to_le_bytes()); // u128 → exactly 16 bytes
+    }
+    b[6] = (b[6] & 0x0f) | 0x40; // version 4
+    b[8] = (b[8] & 0x3f) | 0x80; // variant 1
+    let h = |r: &[u8]| r.iter().map(|x| format!("{x:02x}")).collect::<String>();
+    format!(
+        "{}-{}-{}-{}-{}",
+        h(&b[0..4]),
+        h(&b[4..6]),
+        h(&b[6..8]),
+        h(&b[8..10]),
+        h(&b[10..16])
+    )
+}
+
+/// Find the most recent Codex session recorded for `cwd`, skipping any id in
+/// `claimed` (so several Codex agents in one workspace bind to distinct
+/// sessions). Codex writes one `*.jsonl` per session under
+/// `~/.codex/sessions/YYYY/MM/DD/`, whose first line is a `session_meta` header
+/// carrying both `session_id` and `cwd`; we scan newest-first and return the
+/// first id whose `cwd` matches. Best-effort: returns `None` on any problem.
+pub fn discover_codex_session(cwd: &Path, claimed: &HashSet<String>) -> Option<String> {
+    let root = home()?.join(".codex").join("sessions");
+    let want = cwd.to_str()?;
+    let mut files = Vec::new();
+    collect_jsonl(&root, &mut files, 0);
+    // Newest first by modification time.
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    // Cap the scan so a huge history can't stall the (synchronous) save.
+    for (_, path) in files.into_iter().take(256) {
+        if let Some((id, file_cwd)) = read_codex_meta(&path) {
+            if file_cwd == want && !claimed.contains(&id) {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
+/// Recursively gather `*.jsonl` files under `dir` as `(modified_time, path)`.
+/// Shallow by nature (Codex nests only `YYYY/MM/DD`); capped in depth as a guard.
+fn collect_jsonl(dir: &Path, out: &mut Vec<(std::time::SystemTime, PathBuf)>, depth: usize) {
+    if depth > 4 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            collect_jsonl(&path, out, depth + 1);
+        } else if path.extension().is_some_and(|e| e == "jsonl") {
+            let mtime = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            out.push((mtime, path));
+        }
+    }
+}
+
+/// Pull `(session_id, cwd)` out of a Codex rollout file's first line without a
+/// JSON parser — the header is a single line of `"key":"value"` pairs.
+fn read_codex_meta(path: &Path) -> Option<(String, String)> {
+    let mut buf = [0u8; 4096];
+    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).ok()?;
+    let head = String::from_utf8_lossy(&buf[..n]);
+    let line = head.lines().next()?;
+    Some((json_str_field(line, "session_id")?, json_str_field(line, "cwd")?))
+}
+
+/// Extract the value of a `"field":"value"` string entry from a flat JSON line.
+fn json_str_field(line: &str, field: &str) -> Option<String> {
+    let key = format!("\"{field}\":\"");
+    let start = line.find(&key)? + key.len();
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_by_basename() {
+        assert_eq!(Tool::detect("claude"), Some(Tool::Claude));
+        assert_eq!(Tool::detect("/opt/homebrew/bin/claude"), Some(Tool::Claude));
+        assert_eq!(Tool::detect("codex"), Some(Tool::Codex));
+        assert_eq!(Tool::detect("/usr/local/bin/codex"), Some(Tool::Codex));
+        assert_eq!(Tool::detect("vim"), None);
+        assert_eq!(Tool::detect("zsh"), None);
+    }
+
+    #[test]
+    fn mints_uuid_shaped_ids() {
+        let id = mint_uuid();
+        assert_eq!(id.len(), 36);
+        let parts: Vec<&str> = id.split('-').collect();
+        assert_eq!(parts.iter().map(|p| p.len()).collect::<Vec<_>>(), vec![8, 4, 4, 4, 12]);
+        assert!(id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
+        assert_eq!(&id[14..15], "4"); // version nibble
+        assert_ne!(mint_uuid(), mint_uuid());
+    }
+
+    #[test]
+    fn claude_owns_id_codex_does_not() {
+        assert!(Tool::Claude.owns_id());
+        assert!(!Tool::Codex.owns_id());
+
+        // Claude: create then resume.
+        let mut r = Resume::new(Tool::Claude);
+        let id = r.id.clone().unwrap();
+        assert_eq!(r.launch_args(), vec!["--session-id".to_string(), id.clone()]);
+        r.resume = true;
+        assert_eq!(r.launch_args(), vec!["--resume".to_string(), id]);
+
+        // Codex: id-less first launch is plain; resume only once an id is known.
+        let mut c = Resume::new(Tool::Codex);
+        assert!(c.id.is_none());
+        assert!(c.launch_args().is_empty());
+        c.resume = true;
+        assert!(c.launch_args().is_empty());
+        c.id = Some("abc".into());
+        assert_eq!(c.launch_args(), vec!["resume".to_string(), "abc".to_string()]);
+    }
+
+    #[test]
+    fn parses_codex_meta_fields() {
+        let line = r#"{"timestamp":"x","type":"session_meta","payload":{"session_id":"019eff13-03d0-7c73-834c-c9a0c486e170","cwd":"/home/me/proj","originator":"codex-tui"}}"#;
+        assert_eq!(
+            json_str_field(line, "session_id").as_deref(),
+            Some("019eff13-03d0-7c73-834c-c9a0c486e170")
+        );
+        assert_eq!(json_str_field(line, "cwd").as_deref(), Some("/home/me/proj"));
+        assert_eq!(json_str_field(line, "missing"), None);
+    }
+}

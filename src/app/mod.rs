@@ -14,6 +14,7 @@ mod keymap;
 mod lifecycle;
 mod linkbrowse;
 mod nav;
+mod persist;
 pub(crate) mod picker;
 mod procform;
 mod session;
@@ -125,6 +126,10 @@ pub(crate) struct App {
     update_rx: Receiver<UpdateMsg>,
     last_update_check: Instant,
     restart: bool,
+    /// Last saved structural fingerprint of the restorable rows, so the restore
+    /// state file is only rewritten when the set of agents/terminals changes.
+    /// See [`persist`].
+    restore_sig: Option<u64>,
 }
 
 /// One project in the workspace: its config plus the runtime state scoped to it
@@ -202,6 +207,7 @@ impl App {
             update_rx,
             last_update_check: Instant::now(),
             restart: false,
+            restore_sig: None,
         };
 
         // Surface any non-fatal workspace-load problems (missing linked dirs, etc.).
@@ -220,6 +226,13 @@ impl App {
         for i in auto {
             app.sessions[i].spawn(rows, cols);
         }
+
+        // Bring the previous agents/terminals back (Claude/Codex resumed). This runs
+        // on every fresh start — after a quit, a crash, or a self-update restart — and
+        // is a no-op when there's no saved state. It's safe to do unconditionally: the
+        // tmux singleton means a *new* inner process only starts when there's no live
+        // session to attach to, so there are never live panes to clobber.
+        app.restore_sessions();
         app
     }
 
@@ -273,6 +286,9 @@ impl App {
         self.diff_upkeep();
         // Advance the background self-update (drain workers, run the daily re-check).
         self.poll_update();
+        // Persist the live agents/terminals when they change, so a self-update
+        // restart can bring them back (cheap no-op when nothing changed).
+        self.maybe_save_state();
     }
 
     /// Drive the self-update state machine: drain finished check/install steps, auto-start
@@ -433,6 +449,12 @@ pub fn run(ws: Workspace) -> Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
 
     let res = run_loop(&mut terminal, &mut app);
+
+    // Final snapshot while the panes are still alive, so the next open — after this
+    // quit, or the update restart below — restores them with each one's freshest cwd.
+    if res.is_ok() {
+        app.save_state();
+    }
 
     disable_raw_mode()?;
     execute!(

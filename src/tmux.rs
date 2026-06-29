@@ -127,7 +127,8 @@ fn reset_outer_terminal() {
 
 /// Deterministic, tmux-safe session name from a canonical path.
 /// Hex output (`[0-9a-f]`) avoids tmux's illegal `.`/`:` characters entirely.
-fn session_name(canon: &Path) -> String {
+/// Also reused to key the per-workspace [restore state](crate::restore) file.
+pub(crate) fn session_name(canon: &Path) -> String {
     let mut h = DefaultHasher::new();
     canon.hash(&mut h);
     format!("mmux-{:016x}", h.finish())

@@ -92,6 +92,11 @@ pub struct Session {
     /// Index of the workspace project (see [`crate::app`]) this session belongs to.
     /// Drives which sidebar group it lands in; the lifecycle is identical regardless.
     pub project: usize,
+    /// Resume bookkeeping for a Claude/Codex agent: lets a (re)start reattach to
+    /// the same conversation rather than start cold. `None` for terminals,
+    /// processes, and any agent that isn't one of the two we support. See
+    /// [`crate::agent`] and [`crate::restore`].
+    pub agent: Option<crate::agent::Resume>,
 }
 
 impl Session {
@@ -103,6 +108,7 @@ impl Session {
             error: None,
             recipe,
             project,
+            agent: None,
         }
     }
 
@@ -131,9 +137,16 @@ impl Session {
         if let Some(p) = self.pane.as_mut() {
             p.kill();
         }
+        // Append any Claude/Codex resume flags. The first launch *creates* the
+        // session (`--session-id`); after that, and for a restored agent, launches
+        // *resume* it (`--resume` / `codex resume`).
+        let mut args = self.recipe.args.clone();
+        if let Some(r) = self.agent.as_ref() {
+            args.extend(r.launch_args());
+        }
         match Pane::spawn(
             &self.recipe.cmd,
-            &self.recipe.args,
+            &args,
             &self.recipe.cwd,
             &self.recipe.env,
             rows,
@@ -142,6 +155,11 @@ impl Session {
             Ok(p) => {
                 self.pane = Some(p);
                 self.error = None;
+                // Subsequent (re)starts of this agent should resume the session
+                // this launch just created.
+                if let Some(r) = self.agent.as_mut() {
+                    r.resume = true;
+                }
             }
             Err(e) => {
                 self.pane = None;

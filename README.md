@@ -15,6 +15,9 @@ The whole thing runs inside an invisible, per-directory **tmux session**, so:
 - it keeps running after you close the terminal or drop SSH — run `mmux` again, or `mmux attach`
   from anywhere, to rejoin.
 
+Even after you **quit** (or a crash, or a restart-to-update), reopening a directory **restores your
+session** — Claude/Codex agents resume their conversation and terminals reopen where you left them.
+
 When an agent rings the bell or emits a notification escape (e.g. Claude Code announcing it's
 done), mmux lights a red attention dot on its sidebar row **and** raises a native desktop
 notification — even over SSH.
@@ -37,7 +40,8 @@ the macOS code-signing note.
 
 A Homebrew install **keeps itself up to date**: it checks in the background on startup and once a
 day, installs new releases automatically, and shows a quiet `↻ restart to update` badge — press
-`U` (or click it) to restart in place. See [Auto-Update](docs/04-configuration.md#auto-update).
+`U` (or click it) to restart in place (your session is restored, as above). See
+[Auto-Update](docs/04-configuration.md#auto-update).
 
 ## Quick Start
 
