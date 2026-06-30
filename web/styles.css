@@ -919,23 +919,15 @@ section {
   from { opacity: 0; transform: translate(8px, -6px) scale(.96); }
   to   { opacity: 1; transform: none; }
 }
-/* app icon — the mmux mark (dark squircle + green block cursor), drawn in CSS */
+/* app icon — the mmux mark (green tile, beveled, the m knocked out), as an inline
+   data: SVG (the same mark as the favicon / nav brand). No remote fetch. */
 .toast-icon {
   flex: 0 0 auto;
   width: 2.3rem;
   height: 2.3rem;
   border-radius: 8px;
-  background: #0d0e10;
   border: .5px solid rgba(255, 255, 255, .1);
-  display: grid;
-  place-items: center;
-}
-.toast-icon::before {
-  content: "";
-  width: .66rem;
-  height: 1.12rem;
-  border-radius: 2px;
-  background: var(--green);
+  background: #0d0e10 url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat;
 }
 .toast-main { min-width: 0; flex: 1 1 auto; }
 .toast-head {

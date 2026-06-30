@@ -330,6 +330,60 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
 /// or apply. `can_update` is the synchronous permitted-gate; the Homebrew-managed test
 /// is the worker's job, so a permitted build reads as up to date until a check says
 /// otherwise. Routed here from [`super::App::draw`] so it can see `self.update`.
+/// The mmux mark as half-block pixel art — the same green tile (beveled, with the
+/// `m` knocked out) as the web favicon, painted 16 px square into 16 cols × 8 rows
+/// via the `▀`/`▄` half-block glyphs (so the cells read square). `pad` leading
+/// spaces center it; cells over the knocked-out `m` fall back to the card background.
+fn mmux_logo_lines(pad: usize) -> Vec<Line<'static>> {
+    // one char per pixel — L light bevel, F face, D deep bevel, m knockout.
+    const GRID: [&str; 16] = [
+        "LLLLLLLLLLLLLLLD",
+        "LFFFFFFFFFFFFFFD",
+        "LFFFFFFFFFFFFFFD",
+        "LFFFFFFFFFFFFFFD",
+        "LFFmmmmmmmmmmFFD",
+        "LFFmmmmmmmmmmFFD",
+        "LFFmmFFmmFFmmFFD",
+        "LFFmmFFmmFFmmFFD",
+        "LFFmmFFmmFFmmFFD",
+        "LFFmmFFmmFFmmFFD",
+        "LFFmmFFmmFFmmFFD",
+        "LFFmmFFmmFFmmFFD",
+        "LFFFFFFFFFFFFFFD",
+        "LFFFFFFFFFFFFFFD",
+        "LFFFFFFFFFFFFFFD",
+        "DDDDDDDDDDDDDDDD",
+    ];
+    let color = |c: u8| match c {
+        b'L' => Some(Color::Rgb(134, 239, 172)),
+        b'F' => Some(Color::Rgb(74, 222, 128)),
+        b'D' => Some(Color::Rgb(22, 163, 74)),
+        _ => None, // knockout → default card background
+    };
+    (0..8)
+        .map(|r| {
+            let top = GRID[r * 2].as_bytes();
+            let bot = GRID[r * 2 + 1].as_bytes();
+            let mut spans = Vec::with_capacity(17);
+            if pad > 0 {
+                spans.push(Span::raw(" ".repeat(pad)));
+            }
+            for x in 0..16 {
+                // '▀' paints fg in the upper half + bg in the lower; '▄' the inverse.
+                // Pick the glyph so a knocked-out half always shows the default bg.
+                let (glyph, style) = match (color(top[x]), color(bot[x])) {
+                    (Some(t), Some(b)) => ("▀", Style::default().fg(t).bg(b)),
+                    (Some(t), None) => ("▀", Style::default().fg(t)),
+                    (None, Some(b)) => ("▄", Style::default().fg(b)),
+                    (None, None) => (" ", Style::default()),
+                };
+                spans.push(Span::styled(glyph, style));
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
 pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_update: bool) {
     let version = env!("CARGO_PKG_VERSION");
 
@@ -379,7 +433,7 @@ pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_
     let bold = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
     let label = Style::default().fg(Color::DarkGray);
     let link = Style::default().fg(Color::Cyan);
-    let lines: Vec<Line> = vec![
+    let text_lines: Vec<Line> = vec![
         Line::from(Span::styled(format!("mmux v{version}"), bold)),
         Line::from(Span::styled(
             "persistent terminals for your coding agents",
@@ -399,6 +453,12 @@ pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_
         Line::from(""),
         Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
     ];
+
+    // Top the card with the mmux mark (half-block pixel art), centered over the text.
+    let text_widest = text_lines.iter().map(|l| l.width()).max().unwrap_or(0);
+    let mut lines = mmux_logo_lines(text_widest.saturating_sub(16) / 2);
+    lines.push(Line::from(""));
+    lines.extend(text_lines);
 
     let widest = lines.iter().map(|l| l.width()).max().unwrap_or(0);
     let w = (widest as u16 + 4).clamp(24, 64);
