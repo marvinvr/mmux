@@ -34,7 +34,7 @@ pub enum UpdateMsg {
     /// The background `brew upgrade` finished — the new binary is on disk.
     Installed(String),
     /// A step failed (network, brew, parse). Carries a short reason; surfaced quietly
-    /// and retried on the next daily check.
+    /// and retried on the next periodic check.
     Failed(String),
 }
 
@@ -235,8 +235,10 @@ fn first_line(bytes: &[u8]) -> String {
         .to_string()
 }
 
-/// How often a long-running session re-checks for an update in the background.
-pub const CHECK_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
+/// How often a long-running session re-checks for an update in the background. Timed
+/// from each session's startup (not the wall clock), so independent sessions stagger
+/// their checks rather than all hitting the tap at once.
+pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[cfg(test)]
 mod tests {

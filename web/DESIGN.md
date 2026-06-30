@@ -181,7 +181,8 @@ kicker `// get it`, h2 **install in one line.** One big code row:
 Buttons row: `.btn.btn-brand` → github, a ghost button → the README. NO cargo / from-source.
 
 ### 4.7 `<footer class="site-footer">`
-`mmux` (small gradient) · `GPLv3` · `github`. Muted, roomy, a final `▮`.
+`mmux` (small gradient) · `GPLv3` · `github` · `built by marvinvr` (→ https://marvinvr.ch).
+Muted, roomy, a final `▮`.
 
 ---
 

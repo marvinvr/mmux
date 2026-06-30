@@ -119,7 +119,7 @@ Config: mmux.yaml in the directory, layered on top of an optional global
 ~/.mmux/config.yaml (project values override the global ones). See `mmux init`.
 Add `linked-projects` to show sibling clones in one sidebar (see `mmux docs`).
 
-KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x stop · r restart · R reload config · d detach · q quit
+KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x stop · r restart · R reload config · ? about · d detach · q quit
 KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=stop R=reload b=send Ctrl-b"#
     );
 }
@@ -219,8 +219,8 @@ FIELD REFERENCE
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
     git-panel   enabled (bool, default true; the panel is automatic for git repos)
     auto-update enabled (bool, default true; Homebrew installs only — checks on start
-                and daily, installs in the background, shows a "restart to update" badge.
-                Off for non-brew/dev builds or with MMUX_NO_UPDATE=1)
+                and every 6 hours, installs in the background, shows a "restart to
+                update" badge. Off for non-brew/dev builds or with MMUX_NO_UPDATE=1)
     (* required. cwd is relative to the file's directory. Omitted lists/maps are empty.)
 
 QUICK START

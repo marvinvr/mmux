@@ -65,6 +65,8 @@ pub(crate) enum FooterAction {
     SendLeaderB,
     /// Restart into a staged self-update (the bottom-right badge).
     ApplyUpdate,
+    /// Open the "About mmux" card (version + links + manual update check/apply).
+    About,
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
@@ -157,9 +159,15 @@ impl App {
             }
         }
 
-        // A modal overlay (commit prompt / branch switcher) floats above everything.
-        if let Some(ov) = self.overlay.as_ref() {
-            git::render_overlay(f, content, ov);
+        // A modal overlay (commit prompt / branch switcher / About card) floats above
+        // everything. The About card reads live update state, so it's drawn from a method
+        // with `&self` access rather than the stateless `render_overlay`.
+        match self.overlay.as_ref() {
+            Some(super::git::Overlay::About) => {
+                git::render_about(f, content, &self.update, self.can_self_update())
+            }
+            Some(ov) => git::render_overlay(f, content, ov),
+            None => {}
         }
 
         self.render_footer(f, footer);
@@ -299,6 +307,7 @@ impl App {
                 if self.active_git().is_some() {
                     v.push(Seg::btn("Tab", "git", FocusPanel));
                 }
+                v.push(Seg::btn("?", "about", About));
                 v.push(Seg::btn("d", "detach", Detach));
                 v.push(Seg::btn("q", "quit", Quit));
                 v

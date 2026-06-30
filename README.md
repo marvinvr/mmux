@@ -101,3 +101,5 @@ Working on the codebase? Start with [`AGENTS.md`](AGENTS.md).
 ## License
 
 GPLv3-or-later — see [LICENSE](LICENSE). Copyright © 2026 Marvin von Rappard.
+
+By [@marvinvr](https://marvinvr.ch)

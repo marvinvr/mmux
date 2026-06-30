@@ -10,6 +10,7 @@
 //! [`super::pane`] and stores the row maps [`render_git`] returns.
 
 use crate::app::git::{GitPanel, Overlay, PromptKind, Section};
+use crate::app::UpdateState;
 use crate::app::linkbrowse::{DirEntry, LinkBrowser, Preview};
 use crate::app::picker::Picker;
 use crate::app::procform::{ProcForm, Step, STEPS};
@@ -336,7 +337,94 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
         Overlay::Picker(p) => render_picker(f, area, p),
         Overlay::NewProcess(form) => render_procform(f, area, form),
         Overlay::LinkProject(b) => render_linkbrowse(f, area, b),
+        // Drawn by `render_about` (it needs live update state), routed there in `draw`.
+        Overlay::About => {}
     }
+}
+
+/// The "About mmux" card: the version, the project's home + source links (a quiet
+/// backlink to the author), and a live self-update status line with the keys to check
+/// or apply. `can_update` is the synchronous permitted-gate; the Homebrew-managed test
+/// is the worker's job, so a permitted build reads as up to date until a check says
+/// otherwise. Routed here from [`super::App::draw`] so it can see `self.update`.
+pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_update: bool) {
+    let version = env!("CARGO_PKG_VERSION");
+
+    // The update status line + the action key (if any) it unlocks.
+    let (status, status_style, action): (String, Style, Option<&str>) = if !can_update {
+        (
+            "self-update off for this build".into(),
+            Style::default().fg(Color::DarkGray),
+            None,
+        )
+    } else {
+        match update {
+            UpdateState::Idle => (
+                "✓ up to date".into(),
+                Style::default().fg(super::theme::ATTN),
+                Some("c check"),
+            ),
+            UpdateState::Checking => (
+                "checking for updates…".into(),
+                Style::default().fg(Color::Gray),
+                Some("c check"),
+            ),
+            UpdateState::Installing(v) => (
+                format!("↻ downloading v{v}…"),
+                Style::default().fg(Color::Gray),
+                None,
+            ),
+            UpdateState::Ready(v) => (
+                format!("↻ v{v} ready"),
+                Style::default().fg(super::theme::ATTN).add_modifier(Modifier::BOLD),
+                Some("u restart to update"),
+            ),
+        }
+    };
+    let hint = match action {
+        Some(a) => format!("{a} · esc close"),
+        None => "esc close".into(),
+    };
+
+    let bold = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
+    let label = Style::default().fg(Color::DarkGray);
+    let link = Style::default().fg(Color::Cyan);
+    let lines: Vec<Line> = vec![
+        Line::from(Span::styled(format!("mmux v{version}"), bold)),
+        Line::from(Span::styled(
+            "persistent terminals for your coding agents",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("built by  ", label),
+            Span::styled("marvinvr.ch", link),
+        ]),
+        Line::from(vec![
+            Span::styled("source    ", label),
+            Span::styled("github.com/marvinvr/mmux", link),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(status, status_style)),
+        Line::from(""),
+        Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
+    ];
+
+    let widest = lines.iter().map(|l| l.width()).max().unwrap_or(0);
+    let w = (widest as u16 + 4).clamp(24, 64);
+    let h = lines.len() as u16 + 2;
+    let rect = centered(area, w, h);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" About mmux ")
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 /// The "Link another project" browser: a path header, a live filter, the current

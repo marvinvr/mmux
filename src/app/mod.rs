@@ -55,10 +55,11 @@ pub(crate) enum Focus {
 }
 
 /// Background self-update progress, surfaced as the quiet bottom-right footer badge.
-/// Driven by [`crate::update`]: a check runs at startup (and daily); a found update is
-/// installed in the background; the badge then invites an in-place restart to apply it.
+/// Driven by [`crate::update`]: a check runs at startup (and every few hours after); a
+/// found update is installed in the background; the badge then invites an in-place restart
+/// to apply it.
 pub(crate) enum UpdateState {
-    /// Nothing known/in flight. The daily timer may start a check from here.
+    /// Nothing known/in flight. The periodic timer may start a check from here.
     Idle,
     /// A version check is running.
     Checking,
@@ -284,7 +285,7 @@ impl App {
         }
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
-        // Advance the background self-update (drain workers, run the daily re-check).
+        // Advance the background self-update (drain workers, run the periodic re-check).
         self.poll_update();
         // Persist the live agents/terminals when they change, so a self-update
         // restart can bring them back (cheap no-op when nothing changed).
@@ -292,7 +293,7 @@ impl App {
     }
 
     /// Drive the self-update state machine: drain finished check/install steps, auto-start
-    /// the install for a found update, and re-check once a day on a long-running session.
+    /// the install for a found update, and re-check every few hours on a long-running session.
     fn poll_update(&mut self) {
         while let Ok(msg) = self.update_rx.try_recv() {
             match msg {
@@ -311,7 +312,7 @@ impl App {
                     self.update = UpdateState::Ready(v);
                 }
                 // A check came back current, or a step failed (network/brew): fall back
-                // to idle so the daily timer retries. A failed *install* (we found an
+                // to idle so the periodic timer retries. A failed *install* (we found an
                 // update but couldn't apply it) gets one quiet flash; a failed *check*
                 // (commonly just offline) stays silent. A staged update is left untouched.
                 UpdateMsg::UpToDate => {
@@ -332,7 +333,7 @@ impl App {
                 }
             }
         }
-        // Daily re-check, only while idle (don't disturb an in-flight or staged update).
+        // Periodic re-check, only while idle (don't disturb an in-flight or staged update).
         if matches!(self.update, UpdateState::Idle)
             && self.last_update_check.elapsed() >= update::CHECK_EVERY
             && update::permitted(self.root_cfg().auto_update_enabled())
@@ -350,6 +351,34 @@ impl App {
         if matches!(self.update, UpdateState::Ready(_)) {
             self.restart = true;
         }
+    }
+
+    /// Kick a fresh update check on demand (the About popup's `c` key). Mirrors the
+    /// periodic re-check's gate exactly — only starts one while idle and permitted, so a
+    /// check/install already in flight or a staged update is left alone. The result flows
+    /// back through [`poll_update`](Self::poll_update) and the popup reflects it live.
+    pub(crate) fn check_now(&mut self) {
+        if matches!(self.update, UpdateState::Idle)
+            && update::permitted(self.root_cfg().auto_update_enabled())
+        {
+            self.last_update_check = Instant::now();
+            self.update = UpdateState::Checking;
+            update::spawn_check(self.update_tx.clone());
+        }
+    }
+
+    /// Whether self-update is even on the table for this build — the cheap, synchronous
+    /// gate the About popup uses to decide whether to offer the check. This is the config
+    /// / dev-build / opt-out test only; the Homebrew-managed check is the worker's job, so
+    /// a permitted non-brew build still reads as updatable here until a check says otherwise.
+    pub(crate) fn can_self_update(&self) -> bool {
+        update::permitted(self.root_cfg().auto_update_enabled())
+    }
+
+    /// Open the "About mmux" card (the `?` key / footer chip). Stateless overlay; its
+    /// content is read live from `self.update` when drawn.
+    pub(crate) fn open_about(&mut self) {
+        self.overlay = Some(git::Overlay::About);
     }
 
     /// Drain every pane's captured notifications and return the escape bytes to

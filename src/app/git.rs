@@ -374,6 +374,10 @@ pub(crate) enum Overlay {
     },
     /// The Ctrl+P fuzzy file picker (state in [`super::picker`]).
     Picker(super::picker::Picker),
+    /// The "About mmux" card: version, the project's home/source links, and a live
+    /// self-update status with the keys to check / apply. Stateless — it reads
+    /// [`App::update`](super::App) at render time (see [`view::git::render_about`]).
+    About,
     /// The "+ New Process" guided form (state in [`super::procform`]).
     NewProcess(super::procform::ProcForm),
     /// The "Link another project" directory browser (state in [`super::linkbrowse`]).

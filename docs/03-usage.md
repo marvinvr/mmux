@@ -77,6 +77,7 @@ region they apply to.
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `L` | [Link another project](04-configuration.md#linked-projects) into the workspace (also the button at the bottom of the sidebar) |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
+| `?` | Open the [About card](#the-about-card) (version, links, manual update check/apply) |
 | `[` · `]` | Switch to the previous / next project ([linked projects](04-configuration.md#linked-projects); no-op with one project) |
 | `Tab` | Jump to the git panel (or into the selected pane if there is no panel) |
 | `d` | Detach (the session keeps running in the background) |
@@ -177,6 +178,22 @@ The list includes hidden files, and — even though it otherwise honours `.gitig
 surfaces gitignored env files (`.env`, `.env.local`, `.envrc`, …) so you can edit them. The chosen
 file opens in `$VISUAL`/`$EDITOR` (else `micro`, else `nano`) as a temporary terminal row marked
 `✎ <file>`. That row disappears on its own when you quit the editor.
+
+## The About Card
+
+Press **`?`** in the sidebar (or click the `[? about]` footer chip) to open a small card with the
+running version, a link home (`marvinvr.ch`) and to the source, and the current
+[self-update](04-configuration.md#auto-update) status. From it:
+
+| Key | Action |
+| --- | --- |
+| `c` | Check for updates now (when self-update is available and idle) |
+| `u` | Restart to apply a staged update (when one is ready) |
+| `Esc` / `q` / `?` | Close |
+
+The status line reflects the background updater live: `up to date`, `checking…`, `downloading
+v…`, or `v… ready`. On a non-Homebrew or dev build — where mmux can't update itself — it reads
+`self-update off for this build` and the check is hidden.
 
 ## Adding a Process
 

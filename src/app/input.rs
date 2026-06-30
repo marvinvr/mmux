@@ -57,6 +57,8 @@ impl App {
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
             // is showing); otherwise a no-op.
             KeyCode::Char('U') => self.apply_update(),
+            // The About card: version + links + a manual update check/apply.
+            KeyCode::Char('?') => self.open_about(),
             KeyCode::Char('d') => crate::tmux::detach(),
             // Jump between projects (no-op in a single-project workspace).
             KeyCode::Char(']') => self.jump_project(1),
@@ -193,6 +195,12 @@ impl App {
             self.linkbrowse_key(k);
             return;
         }
+        // The About card's actions (check / apply update) need `&mut self`, so it gets
+        // its own handler rather than threading through the `Act` resolution below.
+        if matches!(self.overlay, Some(Overlay::About)) {
+            self.about_key(k);
+            return;
+        }
         enum Act {
             None,
             Close,
@@ -261,9 +269,11 @@ impl App {
                 KeyCode::Char('d') if matches!(action, Confirmed::Quit) => Act::Detach,
                 _ => Act::Close,
             },
-            // Handled above by `procform_key` / `linkbrowse_key`; arms kept for match
-            // exhaustiveness.
-            Some(Overlay::NewProcess(_)) | Some(Overlay::LinkProject(_)) => Act::None,
+            // Handled above by `procform_key` / `linkbrowse_key` / `about_key`; arms kept
+            // for match exhaustiveness.
+            Some(Overlay::NewProcess(_)) | Some(Overlay::LinkProject(_)) | Some(Overlay::About) => {
+                Act::None
+            }
             None => Act::None,
         };
         match act {
@@ -285,6 +295,21 @@ impl App {
                 self.overlay = None;
                 self.open_in_editor(pi, path);
             }
+        }
+    }
+
+    /// Keys for the "About mmux" card: `c` runs a manual update check, `u` applies a
+    /// staged one (restarts in place), and Esc/`q`/`?` close it. Both update actions are
+    /// guarded inside their handlers, so they're harmless no-ops when nothing's pending.
+    fn about_key(&mut self, k: KeyEvent) {
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => self.overlay = None,
+            KeyCode::Char('c') | KeyCode::Char('C') => self.check_now(),
+            KeyCode::Char('u') | KeyCode::Char('U') => {
+                self.overlay = None;
+                self.apply_update();
+            }
+            _ => {}
         }
     }
 
@@ -501,6 +526,7 @@ impl App {
             FooterAction::FocusSidebar => self.focus = Focus::Sidebar,
             FooterAction::SendLeaderB => self.send_focused(vec![0x02]),
             FooterAction::ApplyUpdate => self.apply_update(),
+            FooterAction::About => self.open_about(),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
             FooterAction::GitDiff => self.git_toggle_diff(),

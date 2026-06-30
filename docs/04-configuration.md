@@ -129,8 +129,10 @@ auto-update:
 When mmux was installed with Homebrew (the only install path it ships today), it keeps itself
 current in the background:
 
-- **On startup, and once a day** thereafter (sessions can run for days), it checks for a newer
-  release. First it cheaply notices if a **sibling mmux session already upgraded** the on-disk
+- **On startup, and every 6 hours** thereafter (sessions can run for days), it checks for a newer
+  release. The timer runs from each session's startup, so independent sessions stagger their checks
+  rather than all hitting the tap at once. First it cheaply notices if a **sibling mmux session
+  already upgraded** the on-disk
   binary; otherwise it checks the [tap formula](https://github.com/marvinvr/homebrew-mmux) with a
   single lightweight request — it does **not** run `brew update`.
 - **If a newer version exists, it installs it in the background** (`brew update` + `brew upgrade
@@ -139,6 +141,9 @@ current in the background:
   Press **`U`** (in the sidebar) or click the badge to restart **in place** onto the new version —
   no need to quit and relaunch. It's never automatic, so a long task is yours to interrupt when
   convenient.
+- **To check or apply on demand,** open the [About card](03-usage.md#the-about-card) with **`?`**:
+  it shows the running version and the live update status, with `c` to check now and `u` to apply a
+  staged update.
 - **The restart brings your work back.** Replacing the running process ends the live panes, but the
   new one restores them the same way reopening a directory does — Claude/Codex agents resume their
   conversation, terminals reopen where you left them — so applying an update doesn't cost you your

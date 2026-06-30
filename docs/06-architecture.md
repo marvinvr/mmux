@@ -71,8 +71,8 @@ then `run_loop` cycles:
 `tick()` runs every loop: it steps drag auto-scroll, prunes exited agent/terminal rows, makes the
 selected row's project the **active** one (see [follow-active](#workspaces-and-projects)), drains
 finished background git jobs from every project's panel, gives the *visible* git panel a throttled
-refresh, and advances the [self-updater](#self-update) (drains its worker channel, runs the daily
-re-check).
+refresh, and advances the [self-updater](#self-update) (drains its worker channel, runs the
+periodic re-check).
 
 ## The Unified Session Model
 
@@ -191,7 +191,8 @@ is `HEAD` vs the working tree (staged + unstaged together); an untracked file is
 `restore.rs` + `app/persist.rs` make *applying* an update feel like nothing happened. It splits
 cleanly along the inner/outer grain:
 
-- **Check + install are automatic and invisible.** A check runs at startup and once a day. It
+- **Check + install are automatic and invisible.** A check runs at startup and every 6 hours
+  thereafter (timed from each session's startup, so independent sessions stagger their checks). It
   first does a cheap *local* test — run the on-disk binary (`brew --prefix` symlink) with
   `--version` and compare to ours — so when a **sibling session already upgraded** the binary
   while we keep running the old code, we jump straight to "ready" without touching the network.
