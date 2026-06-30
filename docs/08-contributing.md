@@ -75,11 +75,8 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
 - **Stable selection (the natural next refactor).** Replace the positional `sel`/`build_nav()`
   with a selection-by-identity model (e.g. a `SessionId`) in `nav.rs`. It removes the
   rebuild-and-clamp dance; `nav.rs` is intentionally the single file that would change.
-- **Mouse (except the wheel) isn't forwarded into panes.** Clicks and drag drive mmux's own focus,
-  scrollback, and copy — so an inner program's mouse (e.g. a TUI you run in a terminal) doesn't
-  receive button/motion events. The wheel is the exception: over a full-screen program on the
-  alternate screen it's handed through (`Pane::wheel_input`) as a wheel event or arrow keys.
-- **Copy is drag-select only.** A keyboard copy-mode is still future.
+- **Copy is drag-select only.** A keyboard copy-mode is still future. (Note: over a program that
+  tracks the mouse, the drag goes to *it* — hold Shift to drag-select for the clipboard instead.)
 - **Attention detection is bell/OSC-based.** It keys off the terminal bell and program-emitted
   notification OSCs (9/777/99). An idle "agent went quiet" heuristic is still future.
 - **Linked projects are a flat list.** A project can be *added* live — the `+ Link another project`

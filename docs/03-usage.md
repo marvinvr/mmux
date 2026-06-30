@@ -235,9 +235,11 @@ reopen.
 
 ## Mouse
 
-mmux drives its own focus, scrollback, and copy from the mouse. Mouse events are otherwise **not**
-forwarded into the focused program — the one exception is the wheel over a full-screen program (see
-**Main pane** below), which has no scrollback of its own to scroll.
+mmux drives its own focus, scrollback, and copy from the mouse. Over the main pane, though, a
+program that **tracks the mouse** (micro, vim, lazygit, …) gets clicks, drags, and motion forwarded
+to it — so you can click to place the cursor or drag to select inside the program, exactly as in a
+plain terminal. Hold **Shift** to bypass that and use mmux's own [drag-to-copy](#scrollback-and-copy)
+instead. Programs that don't track the mouse are unaffected: their pane drag-selects as always.
 
 - **Sidebar.** Single-click selects a row. For an **agent or terminal** it also jumps into the
   running session (clearing its attention dot); double-click a `+ New Agent`/`+ New Terminal`
@@ -252,14 +254,15 @@ forwarded into the focused program — the one exception is the wheel over a ful
   [previews the file's diff](#the-diff-preview) in the main pane. Double-click a file to
   stage/unstage it or a branch to switch to it. The scroll wheel moves the cursor (and the open
   preview follows it).
-- **Main pane.** Single-click focuses it. **Click and drag to select text and copy it** to the
-  clipboard on release (a footer flash confirms `copied N chars`); dragging to the top or bottom
-  edge auto-scrolls through scrollback while held. The scroll wheel scrolls scrollback (wheel up
-  reveals older lines) — but over a **full-screen program** (nano, micro, `less`, vim, …), which
-  runs on the alternate screen and has no scrollback, the wheel is handed to the program instead:
-  forwarded as a mouse-wheel event if it tracks the mouse, otherwise as arrow keys. When a
-  [diff preview](#the-diff-preview) occupies the pane it's a read-only pager instead — the wheel
-  and the keys scroll the diff.
+- **Main pane.** Single-click focuses it. If the program tracks the mouse, the click/drag/release
+  goes to it (place the cursor, select in-app); otherwise — or with **Shift** held — **click and
+  drag to select text and copy it** to the clipboard on release (a footer flash confirms
+  `copied N chars`), and dragging to the top or bottom edge auto-scrolls through scrollback while
+  held. The scroll wheel scrolls scrollback (wheel up reveals older lines) — but over a
+  **full-screen program** (nano, micro, `less`, vim, …), which runs on the alternate screen and has
+  no scrollback, the wheel is handed to the program instead: forwarded as a mouse-wheel event if it
+  tracks the mouse, otherwise as arrow keys. When a [diff preview](#the-diff-preview) occupies the
+  pane it's a read-only pager instead — the wheel and the keys scroll the diff.
 - **Footer.** The shortcut chips are clickable — each is an alias for its keybinding.
 
 ## Scrollback and Copy
@@ -267,8 +270,9 @@ forwarded into the focused program — the one exception is the wheel over a ful
 Each pane keeps 5000 lines of scrollback. Scroll it with the wheel; typing snaps back to the live
 view. To copy, **drag-select** across the main pane — the text goes to the clipboard via OSC 52
 (which works over SSH and through the tmux jail) plus a local helper
-(`pbcopy`/`wl-copy`/`xclip`/`xsel`). Selection can span scrollback with edge auto-scroll. Only
-the main pane is selectable; the git panel is native text, not a copyable grid. There is no
+(`pbcopy`/`wl-copy`/`xclip`/`xsel`). Selection can span scrollback with edge auto-scroll. If the
+program tracks the mouse it would otherwise eat the drag, so **hold Shift** to drag-select over it.
+Only the main pane is selectable; the git panel is native text, not a copyable grid. There is no
 keyboard copy-mode yet.
 
 ## Narrow Terminals and Phones

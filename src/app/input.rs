@@ -8,6 +8,7 @@ use super::procform::{ProcForm, Step};
 use super::session::Kind;
 use super::view::FooterAction;
 use super::{App, Focus};
+use crate::pane::MouseAction;
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -436,11 +437,59 @@ impl App {
         match m.kind {
             MouseEventKind::ScrollUp => self.scroll_at(m.column, m.row, 3),
             MouseEventKind::ScrollDown => self.scroll_at(m.column, m.row, -3),
+            // A program tracking the mouse gets the click/drag/release/motion
+            // itself (so micro/vim/… place the cursor, select, …); holding Shift
+            // bypasses to mmux's own drag-to-copy. Otherwise fall through to the
+            // native focus/selection routing below.
+            _ if self.forward_mouse(&m) => {}
             MouseEventKind::Down(MouseButton::Left) => self.on_left_down(m.column, m.row),
             MouseEventKind::Drag(MouseButton::Left) => self.on_left_drag(m.column, m.row),
             MouseEventKind::Up(MouseButton::Left) => self.on_left_up(),
             _ => {}
         }
+    }
+
+    /// Forward a click/drag/release/motion to the inner program when it's
+    /// tracking the mouse and the event lands inside its live pane; returns true
+    /// if it consumed the event. Shift held (the copy escape hatch), a diff
+    /// pager, or any region other than the main pane all decline, so mmux's own
+    /// focus routing and drag-to-copy handle those instead.
+    fn forward_mouse(&mut self, m: &MouseEvent) -> bool {
+        if m.modifiers.contains(KeyModifiers::SHIFT) {
+            return false;
+        }
+        if self.diff.is_some() || !hit(self.regions.main, m.column, m.row) {
+            return false;
+        }
+        let action = match m.kind {
+            MouseEventKind::Down(_) => MouseAction::Down,
+            MouseEventKind::Up(_) => MouseAction::Up,
+            MouseEventKind::Drag(_) => MouseAction::Drag,
+            MouseEventKind::Moved => MouseAction::Move,
+            _ => return false, // wheel handled separately
+        };
+        let button = match m.kind {
+            MouseEventKind::Down(b) | MouseEventKind::Up(b) | MouseEventKind::Drag(b) => button_code(b),
+            _ => 0,
+        };
+        let (ox, oy) = self.regions.main_inner.map_or((0, 0), |r| (r.x, r.y));
+        let sent = match self.current_nav().and_then(|n| self.pane_at(n)) {
+            Some(p) => match p.mouse_input(action, button, m.column, m.row, ox, oy) {
+                Some(bytes) => {
+                    p.reset_scroll(); // a forwarded event acts on the live view
+                    p.send(bytes);
+                    true
+                }
+                None => false,
+            },
+            None => false,
+        };
+        if sent && matches!(m.kind, MouseEventKind::Down(_)) {
+            // A press focuses the pane so the following keys reach the program.
+            self.focus = Focus::Terminal;
+            self.clear_focused_attention();
+        }
+        sent
     }
 
     /// Left press: route focus exactly as before, and — when it lands inside a
@@ -851,6 +900,16 @@ const BRANCH_CLICK_KEY: usize = 1 << 24;
 /// True if `(col, row)` falls inside `rect` (when present).
 fn hit(rect: Option<Rect>, col: u16, row: u16) -> bool {
     rect.is_some_and(|r| col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height)
+}
+
+/// The base xterm button code for a crossterm mouse button (0 left, 1 middle,
+/// 2 right) — what `Pane::mouse_input` expects.
+fn button_code(b: MouseButton) -> u8 {
+    match b {
+        MouseButton::Left => 0,
+        MouseButton::Middle => 1,
+        MouseButton::Right => 2,
+    }
 }
 
 /// Which pane a drag-to-copy selection is happening over. Only the main pane is

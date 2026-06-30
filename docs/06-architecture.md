@@ -272,8 +272,14 @@ removes it from the snapshot, so it's easy to get a clean slate.
 - **Notifications:** captured pane events → `collect_notifications` → `notify.rs` builds the OSC
   escape (wrapped in tmux passthrough when inside tmux) → written to stdout → the outer terminal
   renders the popup. See [Notifications](05-notifications.md).
-- **Copy:** mouse drag → a `Selection` in buffer coordinates → on release `Pane::contents_block`
-  stitches the text across scrollback → `clipboard::copy` (OSC 52 + a local helper).
+- **Mouse forwarding:** over the main pane, `App::forward_mouse` asks `Pane::mouse_input` to encode
+  the click/drag/release/motion as an xterm report **iff** the program negotiated a matching mouse
+  mode (and the event is reportable under it) — then sends it to the PTY instead of running mmux's
+  own routing. Shift held bypasses this (so drag-to-copy still works), as do the git panel and a
+  diff pager. This is what lets micro/vim/… place the cursor on a click.
+- **Copy:** a non-forwarded mouse drag → a `Selection` in buffer coordinates → on release
+  `Pane::contents_block` stitches the text across scrollback → `clipboard::copy` (OSC 52 + a local
+  helper).
 - **Wheel:** over the normal screen it drives our own scrollback; over a program on the alternate
   screen (which has none) `Pane::wheel_input` hands the notch to the program — a forwarded
   mouse-wheel event if it tracks the mouse, else synthesized arrow keys ("alternate scroll").
@@ -296,7 +302,6 @@ removes it from the snapshot, so it's easy to get a clean slate.
 The v1 architecture has known limits. Persistence now covers detach/disconnect *and* a
 quit/crash/update reopen via [Session Restore](#session-restore) — but restore is a cold respawn
 (the conversation/cwd come back, not the live process or its in-flight work; a daemon would fix
-that). Selection is positional; mouse events other than the wheel aren't forwarded into panes; a
-linked project can be added live but only *removed* by a reopen. These, and the planned
-daemon/client split, are tracked in
+that). Selection is positional; a linked project can be added live but only *removed* by a reopen.
+These, and the planned daemon/client split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

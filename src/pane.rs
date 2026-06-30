@@ -383,9 +383,46 @@ impl Pane {
                 let btn = if up { 64 } else { 65 };
                 let x = col.saturating_sub(ox) + 1;
                 let y = row.saturating_sub(oy) + 1;
-                mouse_wheel_seq(btn, x, y, s.mouse_protocol_encoding())
+                mouse_seq(btn, false, false, x, y, s.mouse_protocol_encoding())
             };
             Some(bytes)
+        })
+        .flatten()
+    }
+
+    /// Translate a mouse press/release/drag/move over this pane into input *for
+    /// the program*, or `None` when it isn't tracking the mouse (or this event
+    /// isn't reportable under the mode it negotiated) — the caller then does its
+    /// own thing (focus / drag-to-copy). The click/drag analogue of
+    /// [`Pane::wheel_input`]; together they let micro/vim/lazygit/… be driven by
+    /// the mouse — click to place the cursor, drag to select in the program.
+    ///
+    /// `button` is the base button (0 left, 1 middle, 2 right); `col`/`row` are
+    /// absolute screen cells and `ox`/`oy` the pane's content-area origin, used
+    /// to place the report in the program's own (1-based) coordinate space.
+    pub fn mouse_input(&self, action: MouseAction, button: u8, col: u16, row: u16, ox: u16, oy: u16) -> Option<Vec<u8>> {
+        self.with_screen(|s| {
+            use vt100::MouseProtocolMode as Mode;
+            let mode = s.mouse_protocol_mode();
+            // Report only what the negotiated mode asked for: a press in any mode,
+            // a release from VT200 up, a drag needs ButtonMotion, a bare move
+            // needs AnyMotion. Anything else falls back to mmux's own handling.
+            let reportable = match action {
+                MouseAction::Down => mode != Mode::None,
+                MouseAction::Up => matches!(mode, Mode::PressRelease | Mode::ButtonMotion | Mode::AnyMotion),
+                MouseAction::Drag => matches!(mode, Mode::ButtonMotion | Mode::AnyMotion),
+                MouseAction::Move => mode == Mode::AnyMotion,
+            };
+            if !reportable {
+                return None;
+            }
+            let motion = matches!(action, MouseAction::Drag | MouseAction::Move);
+            let release = matches!(action, MouseAction::Up);
+            // A bare move carries no held button, so it reports the "no button" code.
+            let btn = if matches!(action, MouseAction::Move) { 3 } else { button };
+            let x = col.saturating_sub(ox) + 1;
+            let y = row.saturating_sub(oy) + 1;
+            Some(mouse_seq(btn, motion, release, x, y, s.mouse_protocol_encoding()))
         })
         .flatten()
     }
@@ -515,20 +552,72 @@ fn process_cwd(_pid: u32) -> Option<PathBuf> {
     None
 }
 
-/// Encode one mouse button press for a program tracking the mouse, in the
-/// encoding it negotiated. `btn` is the xterm button code (wheel bit included);
-/// `x`/`y` are 1-based cells. Wheel events are press-only (no release).
-fn mouse_wheel_seq(btn: u8, x: u16, y: u16, enc: vt100::MouseProtocolEncoding) -> Vec<u8> {
+/// What the user did with the mouse, in the terms [`Pane::mouse_input`] needs to
+/// encode an xterm mouse report for a program that tracks the mouse.
+#[derive(Clone, Copy)]
+pub enum MouseAction {
+    /// Button pressed.
+    Down,
+    /// Button released.
+    Up,
+    /// Motion with a button held (a drag).
+    Drag,
+    /// Motion with no button held.
+    Move,
+}
+
+/// Encode one mouse event for a program tracking the mouse, in the encoding it
+/// negotiated. `btn` is the base xterm button code (0/1/2 left/middle/right, or
+/// 64/65 for the wheel); `motion` adds the drag/move bit and `release` marks a
+/// button-up. `x`/`y` are 1-based cells. SGR signals a release with a trailing
+/// `m`; the legacy encodings report it as the generic button 3 instead.
+fn mouse_seq(btn: u8, motion: bool, release: bool, x: u16, y: u16, enc: vt100::MouseProtocolEncoding) -> Vec<u8> {
+    let motion_bit = if motion { 32 } else { 0 };
     match enc {
-        vt100::MouseProtocolEncoding::Sgr => format!("\x1b[<{btn};{x};{y}M").into_bytes(),
-        // Legacy single-byte encodings carry value + 32; clamp to their range.
-        _ => vec![
-            0x1b,
-            b'[',
-            b'M',
-            32u8.saturating_add(btn),
-            (x + 32).min(255) as u8,
-            (y + 32).min(255) as u8,
-        ],
+        vt100::MouseProtocolEncoding::Sgr => {
+            let cb = btn + motion_bit;
+            let end = if release { 'm' } else { 'M' };
+            format!("\x1b[<{cb};{x};{y}{end}").into_bytes()
+        }
+        // Legacy single-byte encodings carry value + 32; a release is the generic
+        // button 3, and coords clamp to their range.
+        _ => {
+            let cb = if release { 3 } else { btn } + motion_bit;
+            vec![
+                0x1b,
+                b'[',
+                b'M',
+                32u8.saturating_add(cb),
+                (x + 32).min(255) as u8,
+                (y + 32).min(255) as u8,
+            ]
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vt100::MouseProtocolEncoding::{Default as Legacy, Sgr};
+
+    #[test]
+    fn sgr_encodes_button_state_in_the_final_byte() {
+        // Left press / release at (col 3, row 5): same code, M vs m.
+        assert_eq!(mouse_seq(0, false, false, 3, 5, Sgr), b"\x1b[<0;3;5M");
+        assert_eq!(mouse_seq(0, false, true, 3, 5, Sgr), b"\x1b[<0;3;5m");
+        // A drag adds the motion bit (32) to the button.
+        assert_eq!(mouse_seq(0, true, false, 3, 5, Sgr), b"\x1b[<32;3;5M");
+        // The wheel reuses this path press-only (button 64 = wheel up).
+        assert_eq!(mouse_seq(64, false, false, 3, 5, Sgr), b"\x1b[<64;3;5M");
+    }
+
+    #[test]
+    fn legacy_offsets_by_32_and_reports_release_as_button_3() {
+        // Left press: code 0, coords +32 (3→35, 5→37).
+        assert_eq!(mouse_seq(0, false, false, 3, 5, Legacy), vec![0x1b, b'[', b'M', 32, 35, 37]);
+        // Any release collapses to the generic button 3 (→ 35).
+        assert_eq!(mouse_seq(2, false, true, 3, 5, Legacy), vec![0x1b, b'[', b'M', 35, 35, 37]);
+        // A drag is button + the motion bit (0 + 32 → 64).
+        assert_eq!(mouse_seq(0, true, false, 3, 5, Legacy), vec![0x1b, b'[', b'M', 64, 35, 37]);
     }
 }
