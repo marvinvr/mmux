@@ -167,10 +167,10 @@ fn default_throttle() -> u64 {
 
 impl Config {
     /// Load the effective config for `dir`: the global `~/.mmux/config.yaml` (if any)
-    /// with the project's `mmux.yaml` (if any) merged on top.
+    /// with the project layer (`mmux.yaml` + an optional `mmux.local.yml`) merged on top.
     pub fn load(dir: &Path) -> Result<Config> {
         let global = load_file(global_config_path().as_deref())?;
-        let project = load_file(config_path(dir).as_deref())?;
+        let project = load_project(dir)?;
 
         let mut cfg = match (global, project) {
             (g, Some(p)) => merge(g, p),
@@ -267,7 +267,7 @@ fn dir_basename(dir: &Path) -> String {
 /// [`Config::display_name`] this reads only the *project* config, never the global
 /// one — so a global `name:` can't leak onto every unrelated directory in the picker.
 pub fn project_name(dir: &Path) -> String {
-    load_file(config_path(dir).as_deref())
+    load_project(dir)
         .ok()
         .flatten()
         .and_then(|c| c.name)
@@ -281,6 +281,98 @@ fn load_file(path: Option<&Path>) -> Result<Option<Config>> {
     let cfg: Config =
         serde_yaml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
     Ok(Some(cfg))
+}
+
+/// Load the project layer for `dir`: the project `mmux.yaml`/`.yml`, with an optional
+/// `mmux.local.yml`/`.yaml` **deep-merged** on top. The local file is the developer's
+/// private (usually git-ignored) override — and unlike the wholesale global→project
+/// [`merge`], it is applied field-by-field (see [`deep_merge`]), so it can flip a
+/// single nested key (say `notifications.enabled`) without restating its siblings.
+/// It is honored only here, in the project directory — never for the global config.
+/// Returns `None` when neither file exists.
+fn load_project(dir: &Path) -> Result<Option<Config>> {
+    let base = config_path(dir);
+    let local = local_config_path(dir);
+    if base.is_none() && local.is_none() {
+        return Ok(None);
+    }
+    // Start from the project file's tree (or an empty mapping when only a local file
+    // exists), then layer the local override on top, key by key.
+    let mut value = match &base {
+        Some(p) => load_value(p)?,
+        None => serde_yaml::Value::Mapping(Default::default()),
+    };
+    if let Some(p) = &local {
+        let over = load_value(p)?;
+        // An empty/blank local file parses to `null` — a no-op override, not a request
+        // to blank the whole config.
+        if !over.is_null() {
+            deep_merge(&mut value, over);
+        }
+    }
+    let cfg: Config = serde_yaml::from_value(value)
+        .with_context(|| format!("parsing project config in {}", dir.display()))?;
+    Ok(Some(cfg))
+}
+
+/// Read and parse a YAML file into an untyped [`serde_yaml::Value`] (the form
+/// [`deep_merge`] works on, before the merged tree is deserialized into [`Config`]).
+fn load_value(path: &Path) -> Result<serde_yaml::Value> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    serde_yaml::from_str(&text).with_context(|| format!("parsing {}", path.display()))
+}
+
+/// Recursively layer `over` onto `base`, the rule behind the `mmux.local.yml` override:
+/// - two **mappings** merge key by key (recursing into nested mappings), so an override
+///   touches only the keys it names and leaves the siblings intact;
+/// - two **named sequences** (every item a mapping with a scalar `name` — the shape of
+///   `agents:`/`processes:`) merge by `name`: a same-named entry is deep-merged in place,
+///   a new one is appended (matching how [`merge`] treats them);
+/// - anything else (scalars, plain sequences like `args`/`linked-projects`, or a type
+///   mismatch) is **replaced** wholesale by `over`.
+fn deep_merge(base: &mut serde_yaml::Value, over: serde_yaml::Value) {
+    use serde_yaml::Value;
+    match (base, over) {
+        (Value::Mapping(base), Value::Mapping(over)) => {
+            for (k, v) in over {
+                if base.contains_key(&k) {
+                    deep_merge(base.get_mut(&k).unwrap(), v);
+                } else {
+                    base.insert(k, v);
+                }
+            }
+        }
+        (Value::Sequence(base), Value::Sequence(over))
+            if is_named_seq(base) && is_named_seq(&over) =>
+        {
+            merge_named_seq(base, over);
+        }
+        (base, over) => *base = over,
+    }
+}
+
+/// Whether `seq` is a non-empty sequence of mappings that each carry a scalar `name` —
+/// i.e. an `agents:`/`processes:` list, which [`deep_merge`] merges by name. An empty
+/// list is not "named", so an empty override sequence clears the base instead.
+fn is_named_seq(seq: &[serde_yaml::Value]) -> bool {
+    !seq.is_empty() && seq.iter().all(|v| v.get("name").and_then(|n| n.as_str()).is_some())
+}
+
+/// Merge `over`'s items into `base` by their `name`: a same-named entry is deep-merged
+/// in place (so a partial override needn't restate the whole entry), a new one appended.
+fn merge_named_seq(base: &mut Vec<serde_yaml::Value>, over: Vec<serde_yaml::Value>) {
+    use serde_yaml::Value;
+    for item in over {
+        let name = item.get("name").and_then(Value::as_str).map(str::to_owned);
+        let pos = base
+            .iter()
+            .position(|x| x.get("name").and_then(Value::as_str) == name.as_deref());
+        match pos {
+            Some(i) => deep_merge(&mut base[i], item),
+            None => base.push(item),
+        }
+    }
 }
 
 /// Merge `project` on top of `base`: project values win. Agents and processes merge
@@ -350,6 +442,19 @@ fn merge_named<T>(base: Vec<T>, over: Vec<T>, key: impl Fn(&T) -> String) -> Vec
 /// Returns the config path in `dir` if one exists.
 pub fn config_path(dir: &Path) -> Option<PathBuf> {
     for name in ["mmux.yaml", "mmux.yml"] {
+        let p = dir.join(name);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Returns the local-override path in `dir` if one exists (`mmux.local.yaml`/`.yml`).
+/// This is the private, per-developer file deep-merged over the project config; see
+/// [`load_project`]. Project-only (there is no global counterpart by design).
+pub fn local_config_path(dir: &Path) -> Option<PathBuf> {
+    for name in ["mmux.local.yaml", "mmux.local.yml"] {
         let p = dir.join(name);
         if p.exists() {
             return Some(p);
@@ -851,5 +956,62 @@ mod tests {
         let mut project = cfg("name: p\n");
         project.dir = PathBuf::from("/work/proj");
         assert_eq!(merge(Some(base), project).dir, PathBuf::from("/work/proj"));
+    }
+
+    // ── deep_merge: mmux.local.yml layered over the project config ────────────
+    fn deep(base: &str, over: &str) -> serde_yaml::Value {
+        let mut b: serde_yaml::Value = serde_yaml::from_str(base).unwrap();
+        let o: serde_yaml::Value = serde_yaml::from_str(over).unwrap();
+        deep_merge(&mut b, o);
+        b
+    }
+
+    #[test]
+    fn deep_merge_overrides_one_nested_key_keeping_siblings() {
+        // The whole point: flip notifications.enabled without restating mechanism.
+        let merged = deep(
+            "notifications:\n  enabled: true\n  mechanism: bell\n  throttle_secs: 9\n",
+            "notifications:\n  enabled: false\n",
+        );
+        let cfg: Config = serde_yaml::from_value(merged).unwrap();
+        let n = cfg.notifications.unwrap();
+        assert!(!n.enabled); // overridden
+        assert_eq!(n.mechanism, NotifyMechanism::Bell); // sibling preserved
+        assert_eq!(n.throttle_secs, 9); // sibling preserved
+    }
+
+    #[test]
+    fn deep_merge_named_seq_merges_by_name_and_appends() {
+        // A partial agent override touches one field; same-named entry deep-merges,
+        // a brand-new agent is appended, untouched ones survive.
+        let merged = deep(
+            "agents:\n  - name: Claude\n    cmd: claude\n    args: [\"--old\"]\n  - name: Codex\n    cmd: codex\n",
+            "agents:\n  - name: Claude\n    args: [\"--new\"]\n  - name: Gemini\n    cmd: gemini\n",
+        );
+        let cfg: Config = serde_yaml::from_value(merged).unwrap();
+        let names: Vec<&str> = cfg.agents.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Claude", "Codex", "Gemini"]);
+        // Claude keeps its cmd (not restated) but takes the new args.
+        assert_eq!(cfg.agents[0].cmd, "claude");
+        assert_eq!(cfg.agents[0].args, vec!["--new"]);
+    }
+
+    #[test]
+    fn deep_merge_replaces_plain_sequences_wholesale() {
+        // `args` is a plain (unnamed) sequence, so the override replaces it outright.
+        let merged = deep(
+            "agents:\n  - name: Claude\n    cmd: claude\n    args: [\"a\", \"b\"]\n",
+            "agents:\n  - name: Claude\n    args: [\"c\"]\n",
+        );
+        let cfg: Config = serde_yaml::from_value(merged).unwrap();
+        assert_eq!(cfg.agents[0].args, vec!["c"]);
+    }
+
+    #[test]
+    fn deep_merge_empty_named_seq_clears_the_base() {
+        // `processes: []` in the local file means "no processes here", not a no-op.
+        let merged = deep("processes:\n  - name: Dev\n    cmd: npm\n", "processes: []\n");
+        let cfg: Config = serde_yaml::from_value(merged).unwrap();
+        assert!(cfg.processes.is_empty());
     }
 }

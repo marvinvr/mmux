@@ -1,6 +1,7 @@
 # Configuration
 
-mmux is configured with YAML. There are two files, and they are merged at launch.
+mmux is configured with YAML. There are two files, merged at launch — plus an optional private
+[`mmux.local.yml`](#local-overrides--mmuxlocalyml) override for the project.
 
 ## The Two Files
 
@@ -30,6 +31,41 @@ The project file is layered on top of the global one, and **project values win**
 - A relative `cwd` always resolves against the **project** directory — even for an agent or
   process defined in the global config. So a global `claude` agent runs in whatever project you
   opened, not in `$HOME`.
+
+## Local Overrides — `mmux.local.yml`
+
+Alongside the project file you can drop a **`mmux.local.yml`** (or `mmux.local.yaml`; `.yaml`
+wins if both exist) — a private, per-developer override, layered on top of `mmux.yaml`. It's the
+file you keep out of git (add it to `.gitignore`) for machine-specific tweaks: disabling
+notifications on your laptop, pointing an agent at a beta binary, adding a process only you run.
+
+It exists **only** for the project file — there is **no** global counterpart, by design.
+
+Unlike the wholesale global→project merge above, the local file is merged **deeply**, so it
+overrides exactly what it names and leaves everything else intact:
+
+- **Nested maps merge key by key.** A local `notifications:` block that sets only
+  `enabled: false` keeps the project's `mechanism`, `throttle_secs`, etc. — the opposite of the
+  global→project rule, where an unset sub-field falls back to its built-in default.
+- **`agents` and `processes` merge by `name`**, just like the global merge — and a same-named
+  entry is itself merged field-by-field, so a partial override (e.g. just new `args` for `Claude`)
+  needn't restate `cmd`. A name not already present is appended.
+- **Plain lists** (`args`, `linked-projects`) and scalars are **replaced** wholesale. An empty
+  list (`processes: []`) therefore *clears* the project's — a handy way to say "none here".
+
+The layering order is: global → project → local, so a local value wins over both. Run
+`mmux check` to print the fully merged result, and `R` ([live reload](#live-reload)) picks up
+local edits without dropping panes.
+
+```yaml
+# ./mmux.local.yml — git-ignored; just your overrides
+notifications:
+  enabled: false        # quiet on this machine; mechanism/throttle inherited
+
+agents:
+  - name: Claude        # tweak one field; cmd is inherited from mmux.yaml
+    args: ["--model", "claude-opus-4-8"]
+```
 
 ## Example
 

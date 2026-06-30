@@ -116,7 +116,8 @@ Each directory gets exactly one mmux session, kept alive inside tmux. Run `mmux`
 again in the same directory to reattach to whatever was already running.
 
 Config: mmux.yaml in the directory, layered on top of an optional global
-~/.mmux/config.yaml (project values override the global ones). See `mmux init`.
+~/.mmux/config.yaml (project values override the global ones). A private
+mmux.local.yml deep-overrides the project file. See `mmux init`/`mmux docs`.
 Add `linked-projects` to show sibling clones in one sidebar (see `mmux docs`).
 
 KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · R reload config · ? about · d detach · q quit
@@ -183,6 +184,15 @@ PROJECT FILE — ./mmux.yaml
       # It needs no config; disable it with:
       # git-panel:
       #   enabled: false
+
+LOCAL OVERRIDE — ./mmux.local.yml   (optional, project-only, usually git-ignored)
+    A private per-developer file layered on top of ./mmux.yaml — for machine-specific
+    tweaks (quiet notifications, a beta agent binary, a process only you run). Unlike
+    the wholesale global→project merge, it is merged DEEPLY: nested maps merge key by
+    key (a local `notifications: {{ enabled: false }}` keeps the project's mechanism),
+    agents/processes merge by name (a same-named entry field-by-field, so you can
+    override just one agent's args), and plain lists/scalars are replaced. There is no
+    global counterpart. Layering order: global → project → local.
 
 GLOBAL FILE — ~/.mmux/config.yaml
     Same schema. Put the things you want in EVERY project here — typically your
