@@ -345,7 +345,6 @@ impl App {
                 let mut v = vec![
                     Seg::hint("↑↓ move"),
                     Seg::btn("⏎", "open", Activate),
-                    Seg::hint("dbl-click +New"),
                     Seg::btn("s", "start", Start),
                     Seg::btn("x", "close", Stop),
                     Seg::btn("r", "restart", Restart),
@@ -411,8 +410,6 @@ impl App {
             }
             Focus::Terminal => (
                 vec![
-                    Seg::hint("keys → pane"),
-                    Seg::hint("drag = copy"),
                     Seg::hint("Ctrl-b →"),
                     Seg::btn("h", "back", FocusSidebar),
                     Seg::btn("d", "detach", Detach),
