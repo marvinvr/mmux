@@ -6,17 +6,21 @@
 //!   `--session-id <uuid>`, and later reattach with `--resume <uuid>`. That means
 //!   several `Claude #N` in one directory each resume their own conversation.
 //! - **Codex** has no "set the id" flag — it only resumes one we *discover*. So we
-//!   start it plain, then find the session it wrote under `~/.codex/sessions` by
-//!   matching the recorded `cwd` (newest first), and reattach with
-//!   `codex resume <uuid>`.
+//!   start it plain, find the session it wrote under `~/.codex/sessions`, and
+//!   reattach with `codex resume <uuid>`.
 //!
-//! Used by [`crate::app`] to persist and restore agents across a self-update
-//! restart (see [`crate::restore`]).
+//! The minted/started id only fixes which conversation a launch *creates*. Which
+//! conversation an agent is *currently in* can change underneath us — the user can
+//! `/resume`, `/new`, or `/clear` inside the agent — so the id we reattach by is
+//! re-derived from disk at save time via [`sessions_for`]: both tools write one
+//! transcript per conversation tagged with its `cwd`, and the active one is simply
+//! the newest for that cwd. Used by [`crate::app`] to persist and restore agents
+//! across a quit/crash/self-update reopen (see [`crate::restore`]).
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// A resumable agent CLI mmux knows how to reattach across a restart.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -112,28 +116,51 @@ pub fn mint_uuid() -> String {
     )
 }
 
-/// Find the most recent Codex session recorded for `cwd`, skipping any id in
-/// `claimed` (so several Codex agents in one workspace bind to distinct
-/// sessions). Codex writes one `*.jsonl` per session under
-/// `~/.codex/sessions/YYYY/MM/DD/`, whose first line is a `session_meta` header
-/// carrying both `session_id` and `cwd`; we scan newest-first and return the
-/// first id whose `cwd` matches. Best-effort: returns `None` on any problem.
-pub fn discover_codex_session(cwd: &Path, claimed: &HashSet<String>) -> Option<String> {
-    let root = home()?.join(".codex").join("sessions");
-    let want = cwd.to_str()?;
+/// Every conversation `tool` recorded for `cwd`, as `(session_id, mtime)` and
+/// **newest first** — the basis for re-deriving which conversation an agent is
+/// currently in (see the module docs). Both tools write one `*.jsonl` per session:
+/// Claude under `~/.claude/projects/<dir>/<id>.jsonl` (id is the filename, `cwd`
+/// is recorded in the opening lines), Codex under `~/.codex/sessions/YYYY/MM/DD/`
+/// (id and `cwd` in the first `session_meta` line). Best-effort: an unreadable
+/// home or tree yields an empty list.
+pub fn sessions_for(tool: Tool, cwd: &Path) -> Vec<(String, SystemTime)> {
+    match session_root(tool) {
+        Some(root) => scan_sessions(tool, &root, cwd),
+        None => Vec::new(),
+    }
+}
+
+/// Where `tool` keeps its per-conversation transcripts under `$HOME`.
+fn session_root(tool: Tool) -> Option<PathBuf> {
+    let home = home()?;
+    Some(match tool {
+        Tool::Claude => home.join(".claude").join("projects"),
+        Tool::Codex => home.join(".codex").join("sessions"),
+    })
+}
+
+/// The transcripts under `root` whose recorded `cwd` matches, newest first. Split
+/// from [`sessions_for`] so the home-independent scan is unit-testable.
+fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime)> {
+    let Some(want) = cwd.to_str() else { return Vec::new() };
     let mut files = Vec::new();
-    collect_jsonl(&root, &mut files, 0);
+    collect_jsonl(root, &mut files, 0);
     // Newest first by modification time.
     files.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut out = Vec::new();
     // Cap the scan so a huge history can't stall the (synchronous) save.
-    for (_, path) in files.into_iter().take(256) {
-        if let Some((id, file_cwd)) = read_codex_meta(&path) {
-            if file_cwd == want && !claimed.contains(&id) {
-                return Some(id);
+    for (mtime, path) in files.into_iter().take(256) {
+        let meta = match tool {
+            Tool::Claude => read_claude_meta(&path),
+            Tool::Codex => read_codex_meta(&path),
+        };
+        if let Some((id, file_cwd)) = meta {
+            if file_cwd == want {
+                out.push((id, mtime));
             }
         }
     }
-    None
+    out
 }
 
 /// Recursively gather `*.jsonl` files under `dir` as `(modified_time, path)`.
@@ -158,6 +185,20 @@ fn collect_jsonl(dir: &Path, out: &mut Vec<(std::time::SystemTime, PathBuf)>, de
             out.push((mtime, path));
         }
     }
+}
+
+/// Pull `(session_id, cwd)` out of a Claude transcript: the id is the filename
+/// stem (`<id>.jsonl`), and the `cwd` is the first one recorded in the opening
+/// lines (the `system` entries Claude writes at launch). A brand-new session whose
+/// `cwd` line isn't written yet has no match and is skipped — so a just-spawned
+/// agent never binds to a stale conversation. Best-effort: `None` on any problem.
+fn read_claude_meta(path: &Path) -> Option<(String, String)> {
+    let id = path.file_stem()?.to_str()?.to_string();
+    let mut buf = [0u8; 8192];
+    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).ok()?;
+    let head = String::from_utf8_lossy(&buf[..n]);
+    let cwd = head.lines().find_map(|l| json_str_field(l, "cwd"))?;
+    Some((id, cwd))
 }
 
 /// Pull `(session_id, cwd)` out of a Codex rollout file's first line without a
@@ -239,5 +280,61 @@ mod tests {
         );
         assert_eq!(json_str_field(line, "cwd").as_deref(), Some("/home/me/proj"));
         assert_eq!(json_str_field(line, "missing"), None);
+    }
+
+    fn write(path: &Path, body: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+
+    #[test]
+    fn reads_claude_id_from_filename_and_cwd_from_opening_lines() {
+        let dir = std::env::temp_dir().join(format!("mmux-claude-meta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // The `mode`/`permission-mode` preamble carries no cwd; the `system` line does.
+        let f = dir.join("11111111-1111-4111-8111-111111111111.jsonl");
+        write(
+            &f,
+            "{\"type\":\"mode\",\"sessionId\":\"x\"}\n\
+             {\"type\":\"permission-mode\",\"sessionId\":\"x\"}\n\
+             {\"type\":\"system\",\"cwd\":\"/home/me/proj\",\"gitBranch\":\"main\"}\n",
+        );
+        assert_eq!(
+            read_claude_meta(&f),
+            Some(("11111111-1111-4111-8111-111111111111".into(), "/home/me/proj".into()))
+        );
+        // A just-launched session with only the preamble has no cwd yet → no match.
+        let g = dir.join("22222222-2222-4222-8222-222222222222.jsonl");
+        write(&g, "{\"type\":\"mode\",\"sessionId\":\"y\"}\n");
+        assert_eq!(read_claude_meta(&g), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scans_sessions_newest_first_filtered_by_cwd() {
+        let root = std::env::temp_dir().join(format!("mmux-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let body = |cwd: &str| format!("{{\"type\":\"system\",\"cwd\":\"{cwd}\"}}\n");
+        // Two conversations for the wanted cwd (older `a`, then newer `b`), one for
+        // a different cwd, and one with no cwd line — all under a project subdir.
+        let p = |id: &str| root.join("proj").join(format!("{id}.jsonl"));
+        write(&p("aaaa1111-1111-4111-8111-111111111111"), &body("/want"));
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        write(&p("bbbb2222-2222-4222-8222-222222222222"), &body("/want"));
+        write(&p("cccc3333-3333-4333-8333-333333333333"), &body("/other"));
+        write(&p("dddd4444-4444-4444-8444-444444444444"), "{\"type\":\"mode\"}\n");
+
+        let ids: Vec<String> = scan_sessions(Tool::Claude, &root, Path::new("/want"))
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                "bbbb2222-2222-4222-8222-222222222222".to_string(),
+                "aaaa1111-1111-4111-8111-111111111111".to_string(),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

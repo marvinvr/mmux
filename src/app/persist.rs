@@ -8,7 +8,7 @@
 
 use super::session::{Kind, Recipe, Session};
 use super::App;
-use crate::agent::{Resume, Tool};
+use crate::agent::Resume;
 use crate::restore::{self, SnapKind, Snapshot, State};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -50,10 +50,10 @@ impl App {
     }
 
     /// Snapshot every running agent/terminal to `~/.mmux/state/<hash>.yaml`. Reads
-    /// each pane's **live** cwd (so a `cd` survives) and discovers any missing
-    /// Codex session ids first. Processes are excluded — they return from config.
+    /// each pane's **live** cwd (so a `cd` survives) and re-derives each agent's
+    /// current conversation id first. Processes are excluded — they return from config.
     pub(crate) fn save_state(&mut self) {
-        self.discover_codex_ids();
+        self.refresh_agent_ids();
         let root = self.root_dir().to_path_buf();
         let mut sessions = Vec::new();
         for s in &self.sessions {
@@ -90,23 +90,42 @@ impl App {
         restore::save(&root, &state);
     }
 
-    /// Bind a session id to each Codex agent that lacks one, by matching the
-    /// session Codex wrote for that cwd. Already-bound ids are reserved first so
-    /// distinct Codex agents don't collide on the same conversation.
-    fn discover_codex_ids(&mut self) {
-        let mut claimed: HashSet<String> = self
-            .sessions
-            .iter()
-            .filter_map(|s| s.agent.as_ref().and_then(|r| r.id.clone()))
-            .collect();
+    /// Re-derive each Claude/Codex agent's *current* conversation id from disk, so
+    /// a session the user switched to in-agent (`/resume`, `/new`, `/clear`) comes
+    /// back rather than the one we launched. For each agent we look at the
+    /// transcripts the tool recorded for its cwd, newest first, and:
+    ///   * a fresh agent with no id yet adopts the newest (a Codex first launch);
+    ///   * an agent already bound to a conversation switches only to a *strictly
+    ///     newer* one — so a just-spawned agent whose transcript isn't written yet
+    ///     keeps the id we launched it with instead of grabbing a stale conversation.
+    /// Ids are claimed as we go so several agents in one directory bind to distinct
+    /// conversations. mtime is the only signal the tools expose, so with multiple
+    /// same-directory agents the newest conversations are matched by recency, not
+    /// identity — best-effort, like the rest of restore.
+    fn refresh_agent_ids(&mut self) {
+        let mut claimed: HashSet<String> = HashSet::new();
         for s in &mut self.sessions {
-            if let Some(r) = s.agent.as_mut() {
-                if r.tool == Tool::Codex && r.id.is_none() {
-                    if let Some(id) = crate::agent::discover_codex_session(&s.recipe.cwd, &claimed) {
-                        claimed.insert(id.clone());
-                        r.id = Some(id);
+            let Some(r) = s.agent.as_mut() else { continue };
+            let ranked = crate::agent::sessions_for(r.tool, &s.recipe.cwd);
+            let newest = ranked.iter().find(|(id, _)| !claimed.contains(id));
+            let chosen = match (r.id.as_deref(), newest) {
+                // Fresh agent (Codex first launch): take the newest if one exists.
+                (None, Some((id, _))) => Some(id.clone()),
+                // Bound already: adopt a different conversation only when it's newer
+                // than the one we're on (keeps a not-yet-flushed launch stable).
+                (Some(x), Some((id, mtime))) if id != x => {
+                    let cur = ranked.iter().find(|(i, _)| i == x).map(|(_, m)| *m);
+                    match cur {
+                        Some(cm) if *mtime > cm => Some(id.clone()),
+                        _ => Some(x.to_string()),
                     }
                 }
+                (Some(x), _) => Some(x.to_string()),
+                (None, None) => None,
+            };
+            if let Some(id) = chosen {
+                claimed.insert(id.clone());
+                r.id = Some(id);
             }
         }
     }

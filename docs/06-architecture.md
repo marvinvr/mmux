@@ -227,7 +227,10 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   `~/.mmux/state/<session-hash>.yaml` (keyed by the same canonical-dir hash tmux uses, via
   `tmux::session_name`). It writes on every structural change (a cheap fingerprint in `tick()`
   gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
-  Only agents/terminals are saved — processes come back from config.
+  Each save also re-derives every agent's **current** conversation id from disk (`refresh_agent_ids`
+  → `agent::sessions_for`), so a session the user switched to *inside* the agent — `/resume`, `/new`,
+  `/clear` — is the one that comes back, not the one mmux launched. Only agents/terminals are saved —
+  processes come back from config.
 - **Restore.** `App::new` always calls `restore_sessions` on startup; it's a no-op when there's no
   file. This is safe to do unconditionally because the **tmux singleton** means a fresh inner
   process only ever starts when there's no live session to attach to (a detach leaves the inner
@@ -236,9 +239,12 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   - **Claude / Codex agents resume their conversation.** `agent.rs` is a hardcoded, no-config
     adapter detected purely by command basename. Claude lets mmux *own* the id (launch with
     `--session-id <uuid>`, reattach with `--resume <uuid>`), so several `Claude #N` in one
-    directory each resume their own thread. Codex has no such flag, so mmux *discovers* the id by
-    matching the `cwd` Codex records under `~/.codex/sessions` (newest first) and reattaches with
-    `codex resume <uuid>`.
+    directory each resume their own thread. Codex has no such flag, so mmux launches it plain and
+    reattaches with `codex resume <uuid>`. Either way the id reattached by is the one **re-derived
+    at save time** (`agent::sessions_for` — the newest transcript the tool recorded for that cwd),
+    so switching conversations inside the agent is followed; the launch id is just the starting
+    point. With several same-directory agents, mtime is the only signal, so the newest
+    conversations are matched to panes by recency, not identity — best-effort.
   - **Terminals reopen at their live cwd.** `Pane::cwd()` reads the shell's working directory from
     the OS (`/proc/<pid>/cwd` on Linux, `proc_pidinfo` on macOS), so a `cd` survives — though as a
     fresh shell (no history/env/jobs). Editor panes reopen their file the same way.
