@@ -119,8 +119,8 @@ Config: mmux.yaml in the directory, layered on top of an optional global
 ~/.mmux/config.yaml (project values override the global ones). See `mmux init`.
 Add `linked-projects` to show sibling clones in one sidebar (see `mmux docs`).
 
-KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x stop · r restart · R reload config · ? about · d detach · q quit
-KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=stop R=reload b=send Ctrl-b"#
+KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · R reload config · ? about · d detach · q quit
+KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close R=reload b=send Ctrl-b"#
     );
 }
 
@@ -142,7 +142,7 @@ WHAT IT IS
     drop SSH. Run `mmux` again to reattach.
 
     Agent rows show a subtitle (the terminal title the program sets, e.g. what
-    Claude is doing) and a red ● when the program rings the bell (needs you).
+    Claude is doing) and turn green when the agent goes idle (i.e. needs you).
 
 CONFIG: TWO LAYERS, MERGED
     mmux reads a GLOBAL config and a PROJECT config and merges them at launch:
@@ -153,7 +153,8 @@ CONFIG: TWO LAYERS, MERGED
 
     Project values win. `agents` and `processes` merge BY NAME (a project entry
     with the same name replaces the global one; otherwise it's appended). `name`,
-    `git-panel`, and `notifications` are overridden whole if the project sets them.
+    `git-panel`, `notifications`, and `auto-update` are overridden whole if the
+    project sets them.
     Relative `cwd`s always resolve against the PROJECT directory, so a global agent
     runs in whatever project you're in. Either file alone is enough; you don't need both.
 

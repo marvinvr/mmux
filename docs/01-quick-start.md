@@ -44,7 +44,7 @@ You land in the TUI. The sidebar lists your agents, terminals, and processes; th
 shows git if the directory is a repository.
 
 - Move with `↑`/`↓` (or `j`/`k`).
-- Press `Enter` on a `+ New …` row to spawn an agent, terminal, or process.
+- Press `Enter` on a `+ New …` row to add an agent or terminal (a process opens a short form first).
 - Press `Enter` on a running row to jump into its pane; `Ctrl-b h` returns to the sidebar.
 - Press `Tab` to focus the git panel.
 - Press `d` to detach (the session keeps running) or `q` to quit.

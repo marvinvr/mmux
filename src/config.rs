@@ -65,8 +65,8 @@ pub struct GitPanelConfig {
 }
 
 /// Settings for background self-update (only acts on Homebrew installs). When enabled
-/// and mmux was installed via brew, it checks for a newer release on startup and once a
-/// day, installs it in the background, and shows a quiet "restart to update" badge.
+/// and mmux was installed via brew, it checks for a newer release on startup and every 6
+/// hours, installs it in the background, and shows a quiet "restart to update" badge.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AutoUpdateConfig {
     /// Master switch (default: true). The updater is also inert for non-brew installs
