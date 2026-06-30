@@ -26,9 +26,7 @@ pub(crate) struct Regions {
     pub sidebar: Option<Rect>,
     pub main: Option<Rect>,
     pub right: Option<Rect>,
-    pub menu: Option<Rect>,      // tap → open the left sidebar drawer
-    pub panel_btn: Option<Rect>, // tap → open the right panel
-    pub link_btn: Option<Rect>,  // tap → open the "Link another project" browser
+    pub link_btn: Option<Rect>, // tap → open the "Link another project" browser
     pub rows: Vec<(u16, usize)>,
     // Footer shortcut buttons: each `[key label]` chip and the action it fires.
     pub footer_btns: Vec<(Rect, FooterAction)>,
@@ -62,6 +60,9 @@ pub(crate) enum FooterAction {
     Quit,
     FocusPanel,
     FocusSidebar,
+    /// Compact-only: dismiss the current full-screen panel (drawer / git / diff) and
+    /// return to the pane. The bottom-corner counterpart to the `menu`/`git` openers.
+    CloseToMain,
     SendLeaderB,
     /// Restart into a staged self-update (the bottom-right badge).
     ApplyUpdate,
@@ -120,8 +121,8 @@ impl App {
             // Single column: the drawer, or the focused pane with hamburger button(s).
             match self.focus {
                 Focus::Sidebar => self.render_sidebar(f, content),
-                Focus::Right => self.render_right(f, content, true),
-                Focus::Terminal => self.render_main(f, content, true),
+                Focus::Right => self.render_right(f, content),
+                Focus::Terminal => self.render_main(f, content),
             }
         } else {
             let sw = (content.width / 3)
@@ -141,8 +142,8 @@ impl App {
                     ])
                     .split(content);
                 self.render_sidebar(f, h[0]);
-                self.render_main(f, h[1], false);
-                self.render_right(f, h[2], false);
+                self.render_main(f, h[1]);
+                self.render_right(f, h[2]);
             } else {
                 let h = Layout::default()
                     .direction(Direction::Horizontal)
@@ -152,9 +153,9 @@ impl App {
                 // No room for a 3rd column: the git panel shares the main area when
                 // focused (reach it via Tab or the sidebar entry).
                 if self.focus == Focus::Right && self.active_git().is_some() {
-                    self.render_right(f, h[1], false);
+                    self.render_right(f, h[1]);
                 } else {
-                    self.render_main(f, h[1], false);
+                    self.render_main(f, h[1]);
                 }
             }
         }
@@ -192,27 +193,72 @@ impl App {
             return;
         }
 
-        let bg = Color::Cyan;
-        let bar = Style::default().fg(Color::Black).bg(bg); // separators, label text
-        let key = bar.add_modifier(Modifier::BOLD); // the shortcut glyph pops
-        let dim = Style::default().fg(Color::Rgb(0, 70, 75)).bg(bg); // braces + hints
+        let bar = Style::default().fg(Color::Black).bg(Color::Cyan);
+        let (left, right) = self.footer_segments();
 
-        let mut spans: Vec<Span> = Vec::new();
+        // Left cluster: a leading pad space, then the segments from the left edge.
+        let (lspans, lbtns, _) = Self::layout_segs(&left, area.x + 1, area.y);
+        let mut spans = vec![Span::styled(" ", bar)];
+        spans.extend(lspans);
+        f.render_widget(Paragraph::new(Line::from(spans)), area);
+
+        // Right cluster: flush to the right edge (one cell of margin), so a primary
+        // action — `[git]` from a pane, `[✕ close]` from a panel — reads as the opposite
+        // bottom corner from the left cluster. Drawn last so it sits above a left cluster
+        // that overflows under it (e.g. the git panel's many action chips on a phone);
+        // its hit-rects go *first* in `footer_btns` so a tap there wins for the same reason.
+        let mut btns = Vec::new();
+        if !right.is_empty() {
+            let (_, _, w) = Self::layout_segs(&right, 0, area.y);
+            let rx = area.x + area.width.saturating_sub(w + 1);
+            let (rspans, rbtns, _) = Self::layout_segs(&right, rx, area.y);
+            f.render_widget(
+                Paragraph::new(Line::from(rspans)),
+                Rect { x: rx, y: area.y, width: w, height: 1 },
+            );
+            btns = rbtns;
+        }
+        btns.extend(lbtns);
+
+        self.regions.footer_btns = btns;
+        // The self-update badge floats on the right, drawn after the shortcuts so it sits
+        // above them and registers its own click target.
+        self.render_update_badge(f, area);
+    }
+
+    /// Lay a footer segment list out into styled spans plus per-button click rects,
+    /// starting at `start_x` on row `y`. Also returns the x just past the last span —
+    /// the cluster's total width when called with `start_x == 0`, used to right-align it.
+    fn layout_segs(
+        segs: &[Seg],
+        start_x: u16,
+        y: u16,
+    ) -> (Vec<Span<'static>>, Vec<(Rect, FooterAction)>, u16) {
+        let bar = Style::default().fg(Color::Black).bg(Color::Cyan); // separators, label text
+        let key = bar.add_modifier(Modifier::BOLD); // the shortcut glyph pops
+        let dim = Style::default().fg(Color::Rgb(0, 70, 75)).bg(Color::Cyan); // braces + hints
+        let mut spans: Vec<Span<'static>> = Vec::new();
         let mut btns: Vec<(Rect, FooterAction)> = Vec::new();
-        let mut x = area.x;
-        let pad = |spans: &mut Vec<Span>, x: &mut u16| {
-            spans.push(Span::styled(" ", bar));
-            *x += 1;
-        };
-        pad(&mut spans, &mut x);
-        for (i, seg) in self.footer_segments().iter().enumerate() {
+        let mut x = start_x;
+        for (i, seg) in segs.iter().enumerate() {
             if i > 0 {
-                pad(&mut spans, &mut x);
+                spans.push(Span::styled(" ", bar));
+                x += 1;
             }
             match seg {
                 Seg::Hint(t) => {
                     spans.push(Span::styled(t.clone(), dim));
                     x += t.chars().count() as u16;
+                }
+                // A glyph-less button (empty key) is a pure touch chip — `[git]` — with
+                // its single word bold so the whole chip reads as the tap target.
+                Seg::Btn { key: k, label, action } if k.is_empty() => {
+                    let start = x;
+                    spans.push(Span::styled("[", dim));
+                    spans.push(Span::styled(label.clone(), key));
+                    spans.push(Span::styled("]", dim));
+                    x += 2 + label.chars().count() as u16;
+                    btns.push((Rect { x: start, y, width: x - start, height: 1 }, *action));
                 }
                 Seg::Btn { key: k, label, action } => {
                     let start = x;
@@ -222,17 +268,11 @@ impl App {
                     spans.push(Span::styled(label.clone(), bar));
                     spans.push(Span::styled("]", dim));
                     x += 3 + (k.chars().count() + label.chars().count()) as u16;
-                    btns.push((Rect { x: start, y: area.y, width: x - start, height: 1 }, *action));
+                    btns.push((Rect { x: start, y, width: x - start, height: 1 }, *action));
                 }
             }
         }
-        pad(&mut spans, &mut x);
-
-        f.render_widget(Paragraph::new(Line::from(spans)), area);
-        self.regions.footer_btns = btns;
-        // The self-update badge floats on the right, drawn after the shortcuts so it sits
-        // above them and registers its own click target.
-        self.render_update_badge(f, area);
+        (spans, btns, x)
     }
 
     /// The bottom-right self-update badge: a faint "updating…" while brew runs in the
@@ -270,26 +310,37 @@ impl App {
         }
     }
 
-    /// The footer's segments for the current focus/layout: plain hints plus the
-    /// clickable shortcut buttons. Each button's action mirrors its keybinding.
-    fn footer_segments(&self) -> Vec<Seg> {
+    /// The footer's segments for the current focus/layout, split into a left cluster
+    /// and a right-aligned cluster. Plain hints plus clickable shortcut buttons; each
+    /// button's action mirrors its keybinding. Compact (phone) layouts keep the chrome
+    /// to a `menu`/`git`/`close` toggle in the two bottom corners; wide layouts spell
+    /// out every shortcut on the left.
+    fn footer_segments(&self) -> (Vec<Seg>, Vec<Seg>) {
         use FooterAction::*;
         match self.focus {
-            // A focused diff preview is a pager: scroll + close, plus the usual way back.
+            // A focused diff preview is a pager. On a phone: scroll, plus a right-corner
+            // [✕ close] back to the git panel it came from. Wide keeps the key hints.
             Focus::Terminal if self.diff.is_some() => {
-                let mut v = vec![Seg::hint("↑↓ scroll"), Seg::btn("esc", "close", DiffClose)];
-                v.push(if self.compact {
-                    Seg::btn("☰", "menu", FocusSidebar)
-                } else {
-                    Seg::btn("h", "back", DiffClose)
-                });
-                v
+                if self.compact {
+                    return (
+                        vec![Seg::hint("↑↓ scroll")],
+                        vec![Seg::btn("✕", "close", DiffClose)],
+                    );
+                }
+                (
+                    vec![
+                        Seg::hint("↑↓ scroll"),
+                        Seg::btn("esc", "close", DiffClose),
+                        Seg::btn("h", "back", DiffClose),
+                    ],
+                    vec![],
+                )
             }
-            Focus::Sidebar if self.compact => vec![
-                Seg::hint("↑↓ move"),
-                Seg::btn("⏎", "open", Activate),
-                Seg::btn("q", "quit", Quit),
-            ],
+            // The drawer on a phone *is* the menu, so all it needs is a way back to the
+            // pane — in the same bottom-left corner that opened it.
+            Focus::Sidebar if self.compact => {
+                (vec![Seg::btn("✕", "close", CloseToMain)], vec![])
+            }
             Focus::Sidebar => {
                 let mut v = vec![
                     Seg::hint("↑↓ move"),
@@ -310,10 +361,12 @@ impl App {
                 v.push(Seg::btn("?", "about", About));
                 v.push(Seg::btn("d", "detach", Detach));
                 v.push(Seg::btn("q", "quit", Quit));
-                v
+                (v, vec![])
             }
-            // The git panel: clickable buttons mirroring its keymap, like the other
-            // panels. The ⏎ action is section-aware (stage a file / switch a branch).
+            // The git panel: clickable buttons mirroring its keymap. The ⏎ action is
+            // section-aware (stage a file / switch a branch). On a phone the trailing key
+            // becomes a right-corner [✕ close] back to the pane (the same corner that
+            // opened git); wide keeps [h back] to the drawer.
             Focus::Right => {
                 let section = self.active_git().map(|g| g.section);
                 let activate = match section {
@@ -339,52 +392,36 @@ impl App {
                     Seg::btn("p", "pull", GitPull),
                     Seg::btn("P", "push", GitPush),
                 ]);
-                v.push(if self.compact {
-                    Seg::btn("☰", "menu", FocusSidebar)
-                } else {
-                    Seg::btn("h", "back", FocusSidebar)
-                });
-                v
+                if self.compact {
+                    return (v, vec![Seg::btn("✕", "close", CloseToMain)]);
+                }
+                v.push(Seg::btn("h", "back", FocusSidebar));
+                (v, vec![])
             }
-            _ if self.compact => vec![
-                Seg::hint("keys → pane"),
-                Seg::btn("☰", "menu", FocusSidebar),
-                Seg::btn("Ctrl-b d", "detach", Detach),
-            ],
-            Focus::Terminal => vec![
-                Seg::hint("keys → pane"),
-                Seg::hint("drag = copy"),
-                Seg::hint("Ctrl-b →"),
-                Seg::btn("h", "back", FocusSidebar),
-                Seg::btn("d", "detach", Detach),
-                Seg::btn("x", "close", Stop),
-                Seg::btn("b", "send Ctrl-b", SendLeaderB),
-            ],
+            // The focused pane on a phone: bottom-left [☰ menu] opens the drawer,
+            // bottom-right [git] opens the panel. Typed keys go straight to the program,
+            // so there's no need to spell that out.
+            _ if self.compact => {
+                let right = if self.active_git().is_some() {
+                    vec![Seg::btn("", "git", FocusPanel)]
+                } else {
+                    vec![]
+                };
+                (vec![Seg::btn("☰", "menu", FocusSidebar)], right)
+            }
+            Focus::Terminal => (
+                vec![
+                    Seg::hint("keys → pane"),
+                    Seg::hint("drag = copy"),
+                    Seg::hint("Ctrl-b →"),
+                    Seg::btn("h", "back", FocusSidebar),
+                    Seg::btn("d", "detach", Detach),
+                    Seg::btn("x", "close", Stop),
+                    Seg::btn("b", "send Ctrl-b", SendLeaderB),
+                ],
+                vec![],
+            ),
         }
     }
 
-    /// Draw the right-panel "open" button right-aligned in `zone` (a top-border row),
-    /// returning the rect it occupies so clicks can be routed to it.
-    pub(crate) fn draw_panel_button(&self, f: &mut Frame, zone: Rect) -> Rect {
-        let name = self
-            .active_git()
-            .map(|g| if g.branch.is_empty() { "git" } else { g.branch.as_str() })
-            .unwrap_or("git");
-        let label = format!(" {name} ☰ ");
-        let w = (label.chars().count() as u16).clamp(1, zone.width);
-        let rect = Rect {
-            x: zone.x + zone.width.saturating_sub(w),
-            y: zone.y,
-            width: w,
-            height: 1,
-        };
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                label,
-                Style::default().fg(Color::Black).bg(Color::Cyan),
-            ))),
-            rect,
-        );
-        rect
-    }
 }

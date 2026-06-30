@@ -46,7 +46,7 @@ One inherent `impl App`, split across files. `mod.rs` defines the struct; the ot
 
 | File | Responsibility |
 | --- | --- |
-| `mod.rs` | `draw()`: the responsive layout split, the per-frame `Regions` hit-rects, the footer (clickable shortcut chips via `FooterAction`/`Seg`), and the panel "open" button. `COMPACT_W` / `MAIN_MIN` live here. |
+| `mod.rs` | `draw()`: the responsive layout split, the per-frame `Regions` hit-rects, and the footer — `footer_segments()` returns a left + a right-aligned cluster of clickable shortcut chips (`FooterAction`/`Seg`, laid out by `layout_segs`), which in compact mode become the `menu`/`git`/`✕ close` toggle in the two bottom corners. `COMPACT_W` / `MAIN_MIN` live here. |
 | `sidebar.rs` | `render_sidebar`: per-project boxes (or a single drawer), the `AGENTS`/`TERMINAL`/`PROCESSES` (+ compact `GIT`) sections, one styled row per nav entry via `nav_row()`, and the `+ Link another project` button reserved on the bottom inner row of a sidebar box (`reserve_link_row`). |
 | `pane.rs` | `render_main` / `render_right` (share `render_screen`/`render_placeholder`), `main_title`, `placeholder_text`, the diff preview (`render_diff`/`diff_title`), the focused-pane cursor placement, and `paint_selection` (the drag-selection overlay). `render_right` delegates the real panel to `view::git`. |
 | `git.rs` | All git rendering: the three bordered git boxes, the five overlay renderers (commit/new-branch prompt, discard confirm, file picker, process form, link-project browser), and `render_about` (the About card, drawn from `draw` so it can read live update state). |

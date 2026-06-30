@@ -278,14 +278,18 @@ keyboard copy-mode yet.
 ## Narrow Terminals and Phones
 
 When the terminal is narrow (under 60 columns — e.g. SSH from a phone), mmux switches to a
-**single-column** layout: one region fills the screen and the title bar carries tap targets.
+**single-column** layout: one region fills the screen and all navigation lives in the footer's two
+bottom corners, so the same corner that opens a panel also closes it.
 
-- **`☰`** (top-left) opens the sidebar drawer.
-- A **`<branch> ☰`** button (top-right) opens the git panel.
+- On a **pane**: **`[☰ menu]`** (bottom-left) opens the sidebar drawer; **`[git]`** (bottom-right)
+  opens the git panel. Typed keys go straight to the program.
+- On the **drawer** or the **git panel**: **`[✕ close]`** returns to the pane — bottom-left for the
+  drawer (mirroring `[☰ menu]`), bottom-right for the git panel (mirroring `[git]`). The git panel
+  keeps its action buttons (stage, commit, push, …) on the left.
 
-Pick something in the drawer to view it full-screen; tap `☰` to go back. Everything stays
-reachable by keyboard (`Ctrl-b h` returns to the drawer), and in this mode the git panel appears
-as a `GIT` entry in the sidebar.
+Pick something in the drawer to view it full-screen. Everything stays reachable by keyboard
+(`Ctrl-b h` returns to the drawer), and in this mode the git panel also appears as a `GIT` entry in
+the sidebar.
 
 ## Detaching, Reattaching, and the Attach Picker
 

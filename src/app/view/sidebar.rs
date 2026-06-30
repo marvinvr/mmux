@@ -178,18 +178,9 @@ impl App {
         f.render_widget(block, area);
         self.regions.sidebar = Some(area);
         // The link button takes the drawer's bottom inner row; sections fill the rest.
+        // (In compact mode the git panel is reachable via its `GIT` row below and the
+        // `[git]` footer button on the pane — the drawer carries no title-bar targets.)
         let (content, link_row) = reserve_link_row(inner);
-        // In compact mode, the drawer gets a button on the top-right to open the panel.
-        if self.compact && self.active_git().is_some() {
-            let half = area.width / 2;
-            let rz = Rect {
-                x: area.x + half,
-                y: area.y,
-                width: area.width - half,
-                height: 1,
-            };
-            self.regions.panel_btn = Some(self.draw_panel_button(f, rz));
-        }
 
         self.regions.rows.clear();
         let nav = self.build_nav();

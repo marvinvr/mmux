@@ -18,7 +18,7 @@ use ratatui::Frame;
 use tui_term::widget::{Cursor, PseudoTerminal};
 
 impl App {
-    pub(crate) fn render_main(&mut self, f: &mut Frame, area: Rect, compact_bar: bool) {
+    pub(crate) fn render_main(&mut self, f: &mut Frame, area: Rect) {
         let nav = self.current_nav();
         let focus = self.focus;
         let border = if focus == Focus::Terminal {
@@ -27,13 +27,11 @@ impl App {
             Color::DarkGray
         };
         // A git diff preview re-titles the pane (file path + ±counts); otherwise the
-        // usual session/launcher name.
+        // usual session/launcher name. Navigation lives entirely in the footer now, so
+        // the title bar carries no tap targets.
         let title: Line = match &self.diff {
-            Some(v) => diff_title(v, compact_bar),
-            None => {
-                let base = self.main_title(nav);
-                Line::from(if compact_bar { format!(" ☰ {}", base.trim()) } else { base })
-            }
+            Some(v) => diff_title(v),
+            None => Line::from(self.main_title(nav)),
         };
         let block = Block::default()
             .borders(Borders::ALL)
@@ -42,25 +40,6 @@ impl App {
         let inner = block.inner(area);
         f.render_widget(block, area);
         self.regions.main = Some(area);
-        if compact_bar {
-            // Left third of the title bar = open the menu; right = open the panel.
-            self.regions.menu = Some(Rect {
-                x: area.x,
-                y: area.y,
-                width: (area.width / 3).max(3),
-                height: 1,
-            });
-            if self.active_git().is_some() {
-                let half = area.width / 2;
-                let rz = Rect {
-                    x: area.x + half,
-                    y: area.y,
-                    width: area.width - half,
-                    height: 1,
-                };
-                self.regions.panel_btn = Some(self.draw_panel_button(f, rz));
-            }
-        }
         if inner.width == 0 || inner.height == 0 {
             return;
         }
@@ -84,20 +63,11 @@ impl App {
 
     /// The right column: the active project's native git panel (changed files,
     /// staging, recent commits). A plain placeholder when the project isn't a repo.
-    pub(crate) fn render_right(&mut self, f: &mut Frame, area: Rect, compact_bar: bool) {
+    pub(crate) fn render_right(&mut self, f: &mut Frame, area: Rect) {
         self.regions.right = Some(area);
-        if compact_bar {
-            // The whole title bar returns to the menu.
-            self.regions.menu = Some(Rect {
-                x: area.x,
-                y: area.y,
-                width: area.width,
-                height: 1,
-            });
-        }
         let focused = self.focus == Focus::Right;
         let hits = match self.active_git() {
-            Some(g) => super::git::render_git(f, area, g, focused, compact_bar),
+            Some(g) => super::git::render_git(f, area, g, focused),
             None => {
                 let border = if focused { Color::Magenta } else { Color::DarkGray };
                 let block = Block::default()
@@ -245,12 +215,9 @@ fn render_screen(f: &mut Frame, area: Rect, pane: &Pane, focused: bool) {
 }
 
 /// The diff pane's title: ` Δ path/to/file.rs  +12 −3 `, the counts coloured like
-/// the diff body. `compact_bar` prefixes the ☰ menu glyph like the other panes.
-fn diff_title(v: &DiffView, compact_bar: bool) -> Line<'static> {
+/// the diff body.
+fn diff_title(v: &DiffView) -> Line<'static> {
     let mut spans = Vec::new();
-    if compact_bar {
-        spans.push(Span::raw(" ☰"));
-    }
     spans.push(Span::raw(" Δ "));
     spans.push(Span::styled(
         v.path.clone(),

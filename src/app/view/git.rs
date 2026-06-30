@@ -31,14 +31,8 @@ pub(crate) struct GitRows {
 }
 
 /// Draw the git panel into `area` as three bordered boxes, returning the file and
-/// branch row maps for click routing. `compact_bar` prefixes the top box with ☰.
-pub(crate) fn render_git(
-    f: &mut Frame,
-    area: Rect,
-    git: &GitPanel,
-    focused: bool,
-    compact_bar: bool,
-) -> GitRows {
+/// branch row maps for click routing.
+pub(crate) fn render_git(f: &mut Frame, area: Rect, git: &GitPanel, focused: bool) -> GitRows {
     let mut hit = GitRows::default();
     if area.width < 3 || area.height < 3 {
         return hit;
@@ -68,7 +62,7 @@ pub(crate) fn render_git(
         .split(area);
 
     hit.changes_area = Some(chunks[0]);
-    render_changes(f, chunks[0], git, focused, compact_bar, &mut hit.rows);
+    render_changes(f, chunks[0], git, focused, &mut hit.rows);
     if side_h > 0 {
         hit.branches_area = Some(chunks[1]);
         render_branches(f, chunks[1], git, focused, &mut hit.branches);
@@ -92,15 +86,10 @@ fn render_changes(
     area: Rect,
     git: &GitPanel,
     focused: bool,
-    compact_bar: bool,
     hit: &mut Vec<(u16, usize)>,
 ) {
     let active = focused && git.section == Section::Changes;
-    let mut title = String::new();
-    if compact_bar {
-        title.push_str(" ☰");
-    }
-    title.push_str(" Changes ");
+    let mut title = String::from(" Changes ");
     if !git.branch.is_empty() {
         title.push_str(&format!("· {}", git.branch));
         if git.ahead > 0 {

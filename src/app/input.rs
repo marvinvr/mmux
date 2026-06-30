@@ -501,20 +501,9 @@ impl App {
             self.footer_action(action);
             return;
         }
-        // Hamburger buttons first — they overlay the top row of other regions.
-        if hit(self.regions.panel_btn, c, r) {
-            if self.active_git().is_some() {
-                self.focus = Focus::Right;
-            }
-            return;
-        }
         // The "Link another project" button pinned to the sidebar's bottom row.
         if hit(self.regions.link_btn, c, r) {
             self.open_link_browser();
-            return;
-        }
-        if hit(self.regions.menu, c, r) {
-            self.focus = Focus::Sidebar;
             return;
         }
         if hit(self.regions.sidebar, c, r) {
@@ -573,6 +562,7 @@ impl App {
                 }
             }
             FooterAction::FocusSidebar => self.focus = Focus::Sidebar,
+            FooterAction::CloseToMain => self.focus = Focus::Terminal,
             FooterAction::SendLeaderB => self.send_focused(vec![0x02]),
             FooterAction::ApplyUpdate => self.apply_update(),
             FooterAction::About => self.open_about(),
