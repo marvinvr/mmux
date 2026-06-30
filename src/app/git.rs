@@ -143,9 +143,6 @@ impl GitPanel {
     /// tree is empty.
     pub(crate) fn discard_target(&self) -> Option<(String, String)> {
         match self.rows.get(self.cursor) {
-            Some(TreeRow::Root { .. }) => {
-                Some((".".into(), "Discard ALL changes in the working tree?".into()))
-            }
             Some(TreeRow::Dir { path, .. }) => {
                 Some((path.clone(), format!("Discard all changes in {path}/ ?")))
             }
@@ -171,20 +168,13 @@ impl GitPanel {
         res
     }
 
-    /// Stage / unstage whatever the cursor is on, then refresh. The cursor can be a
-    /// file (just that path), a directory (everything under it — `git add <dir>`), or
-    /// the root (the whole repo). Already-staged targets toggle back to unstaged, so
-    /// the checkbox flips. Whole-file/-dir only — no hunk staging.
+    /// Stage / unstage whatever the cursor is on, then refresh. The cursor can be a file
+    /// (just that path) or a directory (everything under it — `git add <dir>`); stage the
+    /// whole repo with `a` instead. Already-staged targets toggle back to unstaged, so the
+    /// checkbox flips. Whole-file/-dir only — no hunk staging.
     pub(crate) fn toggle_selected(&mut self) -> Result<(), String> {
         let res = match self.rows.get(self.cursor) {
             None => return Ok(()),
-            Some(TreeRow::Root { staged }) => {
-                if *staged == Stage::All {
-                    git::unstage_all(&self.dir)
-                } else {
-                    git::stage_all(&self.dir)
-                }
-            }
             Some(TreeRow::Dir { path, staged, .. }) => {
                 let (path, all) = (path.clone(), *staged == Stage::All);
                 if all {
@@ -207,8 +197,16 @@ impl GitPanel {
         res
     }
 
-    pub(crate) fn stage_all(&mut self) -> Result<(), String> {
-        let res = git::stage_all(&self.dir);
+    /// Stage everything — or, when it's all already staged, unstage everything. This is
+    /// the `a` key, and the home of the whole-repo toggle the (now removed) root row used
+    /// to host.
+    pub(crate) fn toggle_all(&mut self) -> Result<(), String> {
+        let all_staged = !self.files.is_empty() && self.files.iter().all(|f| f.staged);
+        let res = if all_staged {
+            git::unstage_all(&self.dir)
+        } else {
+            git::stage_all(&self.dir)
+        };
         self.refresh();
         res
     }
@@ -493,8 +491,8 @@ impl App {
         }
     }
 
-    pub(crate) fn git_stage_all(&mut self) {
-        if let Some(Err(e)) = self.active_git_mut().map(|g| g.stage_all()) {
+    pub(crate) fn git_toggle_all(&mut self) {
+        if let Some(Err(e)) = self.active_git_mut().map(|g| g.toggle_all()) {
             self.flash_git(first_line(&e));
         }
     }

@@ -147,11 +147,11 @@
         title: "Changes · main ↑1",
         active: active,
         lines: [
-          { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " app/", c: "info" }] },
-          { tokens: [{ t: " " }, { t: "  [~]", c: "warn" }, { t: " src/", c: "info" }] },
-          { tokens: [{ t: "▌", c: "ai" }, { t: "    [✓]", c: "ok" }, { t: " auth.rs", c: "warn" }], cls: "git-sel" },
-          { tokens: [{ t: " " }, { t: "    [ ]", c: "dim" }, { t: " token.rs", c: "warn" }] },
-          { tokens: [{ t: " " }, { t: "    [✓]", c: "ok" }, { t: " lib.rs", c: "ok" }] },
+          { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " src/", c: "info" }] },
+          { tokens: [{ t: "▌", c: "ai" }, { t: "  [✓]", c: "ok" }, { t: " auth.rs", c: "warn" }], cls: "git-sel" },
+          { tokens: [{ t: " " }, { t: "  [ ]", c: "dim" }, { t: " token.rs", c: "warn" }] },
+          { tokens: [{ t: " " }, { t: "  [✓]", c: "ok" }, { t: " lib.rs", c: "ok" }] },
+          { tokens: [{ t: " " }, { t: "[ ]", c: "dim" }, { t: " Cargo.toml", c: "warn" }] },
         ],
       },
       {
@@ -461,7 +461,7 @@
       },
       state: {
         title: "~/dev/app",
-        status: "native git panel — staged changes on the magenta cursor",
+        status: "native git panel — stage a file, a folder, or [a] for all",
         multiProject: false,
         projects: [{ name: "app", active: true }],
         sidebar: [

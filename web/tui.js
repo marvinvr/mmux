@@ -122,11 +122,11 @@
           title: "Changes · main ↑1",
           active: true,
           lines: [
-            { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " app/", c: "info" }] },
-            { tokens: [{ t: " " }, { t: "  [~]", c: "warn" }, { t: " src/", c: "info" }] },
-            { tokens: [{ t: "▌", c: "ai" }, { t: "    [✓]", c: "ok" }, { t: " auth.rs", c: "warn" }], cls: "git-sel" },
-            { tokens: [{ t: " " }, { t: "    [ ]", c: "dim" }, { t: " token.rs", c: "warn" }] },
-            { tokens: [{ t: " " }, { t: "    [✓]", c: "ok" }, { t: " lib.rs", c: "ok" }] },
+            { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " src/", c: "info" }] },
+            { tokens: [{ t: "▌", c: "ai" }, { t: "  [✓]", c: "ok" }, { t: " auth.rs", c: "warn" }], cls: "git-sel" },
+            { tokens: [{ t: " " }, { t: "  [ ]", c: "dim" }, { t: " token.rs", c: "warn" }] },
+            { tokens: [{ t: " " }, { t: "  [✓]", c: "ok" }, { t: " lib.rs", c: "ok" }] },
+            { tokens: [{ t: " " }, { t: "[ ]", c: "dim" }, { t: " Cargo.toml", c: "warn" }] },
           ],
         },
         {
@@ -1664,16 +1664,14 @@
     function initGit() {
       state._git = {
         roots: [
-          { id: "app", name: "app/", kind: "dir", children: [
-            { id: "app/src", name: "src/", kind: "dir", children: [
-              { id: "app/src/auth.rs", name: "auth.rs", kind: "file", change: "modified", staged: true },
-              { id: "app/src/token.rs", name: "token.rs", kind: "file", change: "modified", staged: false },
-              { id: "app/src/lib.rs", name: "lib.rs", kind: "file", change: "added", staged: true },
-            ] },
-            { id: "app/Cargo.toml", name: "Cargo.toml", kind: "file", change: "modified", staged: false },
+          { id: "src", name: "src/", kind: "dir", children: [
+            { id: "src/auth.rs", name: "auth.rs", kind: "file", change: "modified", staged: true },
+            { id: "src/token.rs", name: "token.rs", kind: "file", change: "modified", staged: false },
+            { id: "src/lib.rs", name: "lib.rs", kind: "file", change: "added", staged: true },
           ] },
+          { id: "Cargo.toml", name: "Cargo.toml", kind: "file", change: "modified", staged: false },
         ],
-        cursor: "app/src/auth.rs",
+        cursor: "src/auth.rs",
       };
       rebuildGit();
     }

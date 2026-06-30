@@ -119,10 +119,12 @@ is mmux's own UI, not an embedded tool, and is driven entirely by the keyboard a
 It has three boxes:
 
 - **Changes** — a compressed tree of changed files with staging checkboxes:
-  `[✓]` (green) fully staged · `[~]` (yellow) partially staged · `[ ]` (gray) unstaged. The
-  filename color encodes the change: red (untracked/deleted/unmerged), green (added), cyan
-  (renamed/copied), yellow (modified). The box title shows the branch with `↑ahead`/`↓behind`
-  counts and a `pulling…`/`pushing…` note during network operations.
+  `[✓]` (green) fully staged · `[~]` (yellow) partially staged · `[ ]` (gray) unstaged. The tree
+  starts at the repo's top-level files and folders — there is no whole-repo row taking up the first
+  line (stage everything with `a`). The filename color encodes the change: red
+  (untracked/deleted/unmerged), green (added), cyan (renamed/copied), yellow (modified). The box
+  title shows the branch with `↑ahead`/`↓behind` counts and a `pulling…`/`pushing…` note during
+  network operations.
 - **Branches** — local branches, current one marked, with upstream tracking notes.
 - **Recent** — the last 20 commits, display-only.
 
@@ -132,9 +134,9 @@ Focus the panel with `Tab` (or click it), then:
 | --- | --- |
 | `↑` / `k` · `↓` / `j` | Move the cursor (with a diff preview open, it follows the cursor) |
 | `Tab` | Toggle between the Changes and Branches boxes |
-| `Enter` · `Space` | Stage/unstage the file, directory, or whole repo under the cursor — or, in Branches, switch to the branch |
+| `Enter` · `Space` | Stage/unstage the file or directory under the cursor — or, in Branches, switch to the branch |
 | `v` | Preview the selected file's diff in the main pane (press again to close) |
-| `a` | Stage all changes |
+| `a` | Stage all changes (press again to unstage all) |
 | `c` | Commit (opens a message prompt) |
 | `n` | New branch (opens a name prompt; creates and switches) |
 | `d` | Discard the selected path (destructive — asks for confirmation) |
@@ -144,10 +146,10 @@ Focus the panel with `Tab` (or click it), then:
 | `r` | Refresh |
 | `h` · `←` · `Esc` | Close the diff preview if open, else back to the sidebar |
 
-Staging is whole-file, whole-directory, or whole-repo — there is no hunk staging. Committing with
-nothing staged stages everything first. Pull and push never block the UI; a second press while
-one is in flight is ignored. The panel re-reads git state on a short throttle, so commits an
-agent makes in the main pane show up on their own.
+Staging is whole-file or whole-directory (or `a` for the whole repo) — there is no hunk staging.
+Committing with nothing staged stages everything first. Pull and push never block the UI; a second
+press while one is in flight is ignored. The panel re-reads git state on a short throttle, so commits
+an agent makes in the main pane show up on their own.
 
 ### The Diff Preview
 

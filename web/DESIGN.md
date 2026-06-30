@@ -508,11 +508,11 @@ active), tests (running, "vitest · watch"), typecheck (stopped, "tsc --watch").
 mirroring `src/app/view/git.rs`:
 ```
 ┌ Changes · main ↑1 ┐
- [~] app/                  (root, "[~]" warn, "app/" info=blue)
-   [~] src/
-▌    [✓] auth.rs           (cursor row: "▌" ai/magenta, "[✓]" ok, name warn=modified, .git-sel bg)
-     [ ] token.rs
-     [✓] lib.rs            (name ok=added)
+ [~] src/                  (top-level dir at depth 0 — no whole-repo root row; "[~]" warn, "src/" info=blue)
+▌  [✓] auth.rs            (cursor row: "▌" ai/magenta, "[✓]" ok, name warn=modified, .git-sel bg)
+   [ ] token.rs
+   [✓] lib.rs             (name ok=added)
+ [ ] Cargo.toml           (top-level file, also at depth 0)
 ┌ Branches ┐
  ● main   origin/main      ("●"+name ok=green, track dim)
    feat/tokens

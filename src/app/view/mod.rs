@@ -71,6 +71,7 @@ pub(crate) enum FooterAction {
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
+    GitStageAll,
     GitDiff,
     DiffClose,
     GitDiscard,
@@ -377,9 +378,10 @@ impl App {
                     Seg::btn("Tab", "section", GitSection),
                     Seg::btn("⏎", activate, GitActivate),
                 ];
-                // Diff preview and discard both target a file in the changes tree, so
+                // Stage-all, diff preview and discard all target the changes tree, so
                 // only offer them there; stash is whole-tree and always available.
                 if section != Some(Section::Branches) {
+                    v.push(Seg::btn("a", "all", GitStageAll));
                     let diff_label = if self.diff.is_some() { "close" } else { "diff" };
                     v.push(Seg::btn("v", diff_label, GitDiff));
                     v.push(Seg::btn("d", "discard", GitDiscard));

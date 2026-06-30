@@ -114,19 +114,13 @@ fn render_changes(
         return;
     }
     // Window over the precomputed tree so the cursor's row stays on screen. Every row
-    // (root / dir / file) is selectable, so every visible one is registered for clicks.
-    let root_label = git
-        .dir
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("/");
+    // (dir / file) is selectable, so every visible one is registered for clicks.
     let (start, count) = window(git.rows.len(), git.cursor, inner.height as usize);
     let mut lines = Vec::with_capacity(count);
     for off in 0..count {
         let i = start + off;
         let selected = active && i == git.cursor;
         let line = match &git.rows[i] {
-            TreeRow::Root { staged } => node_row(root_label, 0, *staged, selected, inner.width),
             TreeRow::Dir { label, depth, staged, .. } => {
                 node_row(label, *depth, *staged, selected, inner.width)
             }
@@ -195,8 +189,8 @@ fn fill_selection(line: &mut Line<'static>, width: u16) {
     line.style = Style::default().bg(Color::Rgb(45, 45, 60));
 }
 
-/// A directory (or the whole-repo root) row: selection bar, indentation, an aggregate
-/// staging checkbox, then the (possibly chain-compressed) name with a trailing slash.
+/// A directory row: selection bar, indentation, an aggregate staging checkbox, then the
+/// (possibly chain-compressed) name with a trailing slash.
 fn node_row(label: &str, depth: usize, staged: Stage, selected: bool, width: u16) -> Line<'static> {
     let bar = if selected { "▌" } else { " " };
     let indent = "  ".repeat(depth);

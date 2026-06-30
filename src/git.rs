@@ -197,8 +197,8 @@ pub fn branches(dir: &Path) -> Vec<Branch> {
         .collect()
 }
 
-/// Aggregate staged state of a directory subtree (or the whole-repo root): are all,
-/// some, or none of its changed files staged. Drives the tree checkbox.
+/// Aggregate staged state of a directory subtree: are all, some, or none of its
+/// changed files staged. Drives the tree checkbox.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stage {
     None,
@@ -206,20 +206,21 @@ pub enum Stage {
     All,
 }
 
-/// One row in the flattened changed-files tree. `depth` is the indent level. Every
-/// row is a selectable stage target: the [`Root`](TreeRow::Root) stages the whole
-/// repo, a [`Dir`](TreeRow::Dir) stages its `path`, a [`File`](TreeRow::File) (whose
-/// `idx` points back into the slice handed to [`tree_rows`]) stages just itself.
+/// One row in the flattened changed-files tree. `depth` is the indent level, starting
+/// at 0 for the repo's top-level entries — there is no whole-repo root row (stage
+/// everything with `a` instead). Every row is a selectable stage target: a
+/// [`Dir`](TreeRow::Dir) stages its `path`, a [`File`](TreeRow::File) (whose `idx`
+/// points back into the slice handed to [`tree_rows`]) stages just itself.
 pub enum TreeRow {
-    Root { staged: Stage },
     Dir { label: String, path: String, depth: usize, staged: Stage },
     File { idx: usize, depth: usize },
 }
 
-/// Group changed files into a directory tree under a whole-repo root and flatten it
-/// depth-first (subdirs before files, both alphabetical) into render-ready rows.
-/// Single-child directory chains are compressed onto one row (`src/app/view`) so the
-/// tree stays shallow in a narrow column. Returns empty when there are no changes.
+/// Group changed files into a directory tree and flatten it depth-first (subdirs before
+/// files, both alphabetical) into render-ready rows, with the repo's top-level entries
+/// at `depth` 0 (no whole-repo root row). Single-child directory chains are compressed
+/// onto one row (`src/app/view`) so the tree stays shallow in a narrow column. Returns
+/// empty when there are no changes.
 pub fn tree_rows(files: &[FileEntry]) -> Vec<TreeRow> {
     if files.is_empty() {
         return Vec::new();
@@ -304,9 +305,8 @@ pub fn tree_rows(files: &[FileEntry]) -> Vec<TreeRow> {
             out.push(TreeRow::File { idx, depth });
         }
     }
-    let (rs, rt) = tally(&root, files);
-    let mut out = vec![TreeRow::Root { staged: stage_of(rs, rt) }];
-    walk(&root, 1, "", files, &mut out);
+    let mut out = Vec::new();
+    walk(&root, 0, "", files, &mut out);
     out
 }
 
@@ -432,14 +432,14 @@ mod tests {
         }
     }
 
-    /// A whole-repo root tops the tree; a single-child chain collapses onto one
-    /// header; root files sort after subdirectories (all nested under the root).
+    /// The repo's top-level entries sit at depth 0 (no whole-repo root row); a
+    /// single-child chain collapses onto one header; root files sort after subdirectories.
     #[test]
-    fn tree_has_root_and_compresses_chains() {
+    fn tree_compresses_chains_without_root() {
         let files = vec![fe("src/app/view/git.rs"), fe("README.md")];
         let rows = tree_rows(&files);
         match &rows[..] {
-            [TreeRow::Root { staged: Stage::None }, TreeRow::Dir { label, depth: 1, .. }, TreeRow::File { idx: 0, depth: 2 }, TreeRow::File { idx: 1, depth: 1 }] => {
+            [TreeRow::Dir { label, depth: 0, .. }, TreeRow::File { idx: 0, depth: 1 }, TreeRow::File { idx: 1, depth: 0 }] => {
                 assert_eq!(label, "src/app/view")
             }
             _ => panic!("unexpected tree shape"),
@@ -453,7 +453,7 @@ mod tests {
     fn trailing_slash_dir_is_named_not_nameless() {
         let rows = tree_rows(&[fe("embedded/")]);
         match &rows[..] {
-            [TreeRow::Root { .. }, TreeRow::Dir { label, path, depth: 1, .. }] => {
+            [TreeRow::Dir { label, path, depth: 0, .. }] => {
                 assert_eq!(label, "embedded");
                 assert_eq!(path, "embedded");
             }
@@ -462,14 +462,14 @@ mod tests {
     }
 
     /// A directory with two children isn't compressed; it carries its `git add` path
-    /// and an aggregate staged state (one of two staged → partial, at dir and root).
+    /// and an aggregate staged state (one of two staged → partial) at depth 0.
     #[test]
     fn tree_dir_path_and_partial_stage() {
         let mut files = vec![fe("src/a.rs"), fe("src/b.rs")];
         files[0].staged = true;
         let rows = tree_rows(&files);
         match &rows[..] {
-            [TreeRow::Root { staged: Stage::Partial }, TreeRow::Dir { path, depth: 1, staged: Stage::Partial, .. }, TreeRow::File { depth: 2, .. }, TreeRow::File { depth: 2, .. }] => {
+            [TreeRow::Dir { path, depth: 0, staged: Stage::Partial, .. }, TreeRow::File { depth: 1, .. }, TreeRow::File { depth: 1, .. }] => {
                 assert_eq!(path, "src")
             }
             _ => panic!("unexpected tree shape"),

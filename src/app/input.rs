@@ -155,7 +155,7 @@ impl App {
             KeyCode::Char(' ') | KeyCode::Enter => self.git_activate(),
             KeyCode::Char('v') => self.git_toggle_diff(),
             KeyCode::Char('b') => self.git_focus_branches(),
-            KeyCode::Char('a') => self.git_stage_all(),
+            KeyCode::Char('a') => self.git_toggle_all(),
             KeyCode::Char('d') => self.git_discard_prompt(),
             KeyCode::Char('s') => self.git_stash(),
             KeyCode::Char('c') => self.git_commit_prompt(),
@@ -568,6 +568,7 @@ impl App {
             FooterAction::About => self.open_about(),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
+            FooterAction::GitStageAll => self.git_toggle_all(),
             FooterAction::GitDiff => self.git_toggle_diff(),
             FooterAction::DiffClose => {
                 self.clear_diff();
