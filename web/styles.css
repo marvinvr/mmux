@@ -251,11 +251,19 @@ section {
   gap: 1.5rem;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -.02em;
 }
-.brand::before { content: "$ "; color: var(--green); font-weight: 500; }
+.brand-mark {
+  display: block;
+  width: 1.3em;
+  height: 1.3em;
+  flex: none;
+}
 .nav-links {
   display: flex;
   align-items: center;

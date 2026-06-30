@@ -2,6 +2,8 @@
 
 ![mmux](assets/mmux.png)
 
+<img src="assets/logo.png" alt="mmux logo" width="72" align="right">
+
 **Persistent terminals for your AI coding agents.**
 
 A per-directory terminal multiplexer in a single Rust binary. Type `mmux` in a project and you

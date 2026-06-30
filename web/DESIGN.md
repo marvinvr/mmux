@@ -133,7 +133,9 @@ Breakpoints: `--bp-md: 900px` (terminal panel hides, grid → fewer cols), `--bp
 ## 4. Page sections (semantic, in order) + verbatim copy
 
 ### 4.1 `<header class="site-nav">` — sticky, translucent
-- `.brand` wordmark `mmux` (gradient), links to `#top`.
+- `.brand`: the **mmux mark** (`.brand-mark` — an inline pixel SVG: a green tile, beveled, with
+  the `m` knocked out; the same mark drives the `data:` favicon, the apple-touch icon, and
+  `assets/logo.svg`/`assets/logo.png` in the repo root) + the `mmux` wordmark, links to `#top`.
 - `.nav-links`: `the demo · features · how it works · github` (github → https://github.com/marvinvr/mmux).
   On phones (≤640px) the in-page section links drop out, leaving just the `.brand` logo and `github`.
 - `.btn.btn-brand` "install" → scrolls to `#install` (glowing gradient button).
