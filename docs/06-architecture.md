@@ -211,8 +211,11 @@ cleanly along the inner/outer grain:
   [Session Restore](#session-restore) — so applying an update isn't disruptive.
 
 The updater is inert for non-brew installs (`is_brew_managed` fails) and dev builds, and is gated
-by `auto-update` config + the `MMUX_NO_UPDATE` env var. See
-[Configuration → Auto-Update](04-configuration.md#auto-update).
+by `auto-update` config + the `MMUX_NO_UPDATE` env var. Because `is_brew_managed` needs a
+subprocess (`brew --prefix`), it's tested in the worker, not the synchronous `permitted` gate — so
+a permitted non-brew build optimistically enters `Checking`, and the worker reports back
+`NotManaged` to settle it into the terminal `UpdateState::Unsupported` (no badge; the About card
+reads "self-update off"). See [Configuration → Auto-Update](04-configuration.md#auto-update).
 
 ## Session Restore
 

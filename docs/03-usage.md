@@ -192,8 +192,9 @@ running version, a link home (`marvinvr.ch`) and to the source, and the current
 | `Esc` / `q` / `?` | Close |
 
 The status line reflects the background updater live: `up to date`, `checking…`, `downloading
-v…`, or `v… ready`. On a non-Homebrew or dev build — where mmux can't update itself — it reads
-`self-update off for this build` and the check is hidden.
+v…`, or `v… ready`. Where mmux can't update itself the check is hidden: a dev build or one with
+auto-update disabled reads `self-update off for this build`, and a non-Homebrew install (e.g.
+`cargo install`) reads `self-update off (not a Homebrew install)` once the check confirms it.
 
 ## Adding a Process
 

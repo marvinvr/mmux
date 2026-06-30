@@ -36,6 +36,10 @@ pub enum UpdateMsg {
     /// A step failed (network, brew, parse). Carries a short reason; surfaced quietly
     /// and retried on the next periodic check.
     Failed(String),
+    /// This isn't a Homebrew install, so the updater can't act. A terminal verdict (no
+    /// retry buys anything): it resolves the optimistic `Checking` state the UI starts in
+    /// into a quiet "self-update off" rather than leaving the About card spinning forever.
+    NotManaged,
 }
 
 /// The cheap, synchronous gate: should the updater run at all? Covers everything that
@@ -49,8 +53,11 @@ pub fn permitted(cfg_allows: bool) -> bool {
 }
 
 /// Kick off a background check: verify we're a brew install, fetch the tap formula, and
-/// report whether a newer version exists. Silent (sends nothing) for non-brew builds, so
-/// a `cargo install`'d binary never shows a badge it can't act on.
+/// report whether a newer version exists. A non-brew build can't self-update, so it reports
+/// [`NotManaged`](UpdateMsg::NotManaged) and stops — enough for the UI to resolve its
+/// optimistic `Checking` state into a quiet "off", without ever showing a badge it can't act
+/// on. (It can't decline silently: the caller already flipped to `Checking` before spawning
+/// us, so a worker that returns without sending leaves the About card spinning forever.)
 ///
 /// First, cheaply and locally: a *sibling* mmux session may have already run the brew
 /// upgrade while we keep running the old code. If the on-disk binary is newer than ours,
@@ -59,6 +66,7 @@ pub fn permitted(cfg_allows: bool) -> bool {
 pub fn spawn_check(tx: Sender<UpdateMsg>) {
     std::thread::spawn(move || {
         if !is_brew_managed() {
+            let _ = tx.send(UpdateMsg::NotManaged);
             return;
         }
         if let Some(v) = installed_newer() {

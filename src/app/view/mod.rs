@@ -295,7 +295,7 @@ impl App {
                     .add_modifier(Modifier::BOLD),
                 true,
             ),
-            UpdateState::Idle | UpdateState::Checking => return,
+            UpdateState::Idle | UpdateState::Checking | UpdateState::Unsupported => return,
         };
         let w = (text.chars().count() as u16).min(area.width);
         if w == 0 {

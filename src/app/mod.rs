@@ -67,6 +67,9 @@ pub(crate) enum UpdateState {
     Installing(String),
     /// `version` is installed and staged; the badge offers the restart.
     Ready(String),
+    /// Not a Homebrew install, so self-update can't act here. Terminal: the periodic
+    /// re-check and the About card's `c` only fire from `Idle`, so we never spin on it.
+    Unsupported,
 }
 
 pub(crate) struct App {
@@ -329,6 +332,14 @@ impl App {
                     }
                     if !matches!(self.update, UpdateState::Ready(_)) {
                         self.update = UpdateState::Idle;
+                    }
+                }
+                // Not a brew install: settle into the terminal `Unsupported` state so the
+                // About card reads "self-update off" instead of an eternal "checking…".
+                // Silent — no flash, no badge — since there's nothing the user can do.
+                UpdateMsg::NotManaged => {
+                    if matches!(self.update, UpdateState::Checking) {
+                        self.update = UpdateState::Unsupported;
                     }
                 }
             }

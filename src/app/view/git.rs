@@ -368,6 +368,13 @@ pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_
                 Style::default().fg(super::theme::ATTN).add_modifier(Modifier::BOLD),
                 Some("u restart to update"),
             ),
+            // A check ran and found this isn't a Homebrew install — self-update can't act,
+            // so there's no `c` to offer. Same wording as the synchronous off-build case.
+            UpdateState::Unsupported => (
+                "self-update off (not a Homebrew install)".into(),
+                Style::default().fg(Color::DarkGray),
+                None,
+            ),
         }
     };
     let hint = match action {
