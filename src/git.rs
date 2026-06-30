@@ -475,4 +475,62 @@ mod tests {
             _ => panic!("unexpected tree shape"),
         }
     }
+
+    // ── parse_change: one porcelain-v2 status line → FileEntry ───────────────
+    #[test]
+    fn parse_change_ordinary_index_and_worktree_states() {
+        // "1 XY sub mH mI mW hH hI <path>" — worktree-modified, unstaged.
+        let e = parse_change("1 .M N... 100644 100644 100644 aaaa bbbb src/main.rs").unwrap();
+        assert_eq!(e.path, "src/main.rs");
+        assert!(!e.staged && e.unstaged && !e.untracked);
+        assert_eq!(e.glyph, 'M');
+
+        // Staged-only (index column set, worktree clean): glyph falls back to the index status.
+        let e = parse_change("1 A. N... 100644 100644 100644 aaaa bbbb new.rs").unwrap();
+        assert!(e.staged && !e.unstaged);
+        assert_eq!(e.glyph, 'A');
+
+        // Staged AND unstaged at once.
+        let e = parse_change("1 MM N... 100644 100644 100644 aaaa bbbb both.rs").unwrap();
+        assert!(e.staged && e.unstaged);
+        assert_eq!(e.glyph, 'M');
+    }
+
+    #[test]
+    fn parse_change_keeps_paths_with_spaces() {
+        // v2 ordinary entries leave the path as the unquoted rest of the line.
+        let e = parse_change("1 .M N... 100644 100644 100644 aaaa bbbb my file.txt").unwrap();
+        assert_eq!(e.path, "my file.txt");
+    }
+
+    #[test]
+    fn parse_change_rename_uses_new_path_before_the_tab() {
+        // "2 XY sub mH mI mW hH hI <score> <new>\t<orig>" — keep the new name.
+        let e = parse_change("2 R. N... 100644 100644 100644 aaaa bbbb R100 new.rs\told.rs").unwrap();
+        assert_eq!(e.path, "new.rs");
+        assert!(e.staged);
+        assert_eq!(e.glyph, 'R');
+    }
+
+    #[test]
+    fn parse_change_unmerged_and_untracked() {
+        let u = parse_change("u UU N... 100644 100644 100644 100644 a b c conflict.rs").unwrap();
+        assert_eq!(u.path, "conflict.rs");
+        assert_eq!(u.glyph, 'U');
+        assert!(u.unstaged && !u.staged);
+
+        let q = parse_change("? whatever.log").unwrap();
+        assert_eq!(q.path, "whatever.log");
+        assert!(q.untracked && q.unstaged && !q.staged);
+        assert_eq!(q.glyph, '?');
+    }
+
+    #[test]
+    fn parse_change_skips_headers_ignored_and_malformed() {
+        assert!(parse_change("# branch.head main").is_none());
+        assert!(parse_change("! ignored.txt").is_none());
+        assert!(parse_change("").is_none());
+        // An ordinary line with too few fields is rejected, not panicked on.
+        assert!(parse_change("1 .M too short").is_none());
+    }
 }

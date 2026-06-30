@@ -789,4 +789,67 @@ mod tests {
         );
         assert_eq!(split_command("  "), (String::new(), vec![]));
     }
+
+    // ── merge: project layered over global ───────────────────────────────────
+    fn cfg(yaml: &str) -> Config {
+        serde_yaml::from_str(yaml).expect("test config parses")
+    }
+
+    #[test]
+    fn merge_returns_project_verbatim_when_no_base() {
+        let project = cfg("name: proj\nagents:\n  - name: Claude\n    cmd: claude\n");
+        let merged = merge(None, project);
+        assert_eq!(merged.name.as_deref(), Some("proj"));
+        assert_eq!(merged.agents.len(), 1);
+    }
+
+    #[test]
+    fn merge_replaces_scalar_blocks_wholesale_else_falls_back() {
+        let base = cfg("name: global\ngit-panel:\n  enabled: true\nnotifications:\n  enabled: false\n");
+        let project = cfg("name: proj\ngit-panel:\n  enabled: false\n");
+        let merged = merge(Some(base), project);
+        // Project's name and git-panel win outright…
+        assert_eq!(merged.name.as_deref(), Some("proj"));
+        assert!(!merged.git_panel.unwrap().enabled);
+        // …but a block the project doesn't set falls back to the global wholesale
+        // (no field-level merge — the global's notifications come through intact).
+        assert!(!merged.notifications.unwrap().enabled);
+    }
+
+    #[test]
+    fn merge_name_falls_back_to_base_when_project_unset() {
+        let base = cfg("name: global\n");
+        let project = cfg("agents: []\n"); // no name set
+        assert_eq!(merge(Some(base), project).name.as_deref(), Some("global"));
+    }
+
+    #[test]
+    fn merge_agents_and_processes_by_name() {
+        let base = cfg("agents:\n  - name: Claude\n    cmd: claude\n  - name: Codex\n    cmd: codex\n");
+        let project = cfg("agents:\n  - name: Claude\n    cmd: claude-beta\n  - name: Gemini\n    cmd: gemini\n");
+        let merged = merge(Some(base), project);
+        let names: Vec<&str> = merged.agents.iter().map(|a| a.name.as_str()).collect();
+        // Same-name entry is replaced in place; a new one is appended; the untouched survives.
+        assert_eq!(names, ["Claude", "Codex", "Gemini"]);
+        assert_eq!(merged.agents[0].cmd, "claude-beta");
+    }
+
+    #[test]
+    fn merge_linked_projects_project_wins_else_base() {
+        let base = || cfg("linked-projects:\n  - ../g1\n  - ../g2\n");
+        // Project lists none → inherit the global list.
+        let inherited = merge(Some(base()), cfg("name: p\n"));
+        assert_eq!(inherited.linked_projects, vec!["../g1", "../g2"]);
+        // Project lists some → its list replaces the global's outright (no concat).
+        let overridden = merge(Some(base()), cfg("linked-projects:\n  - ../p1\n"));
+        assert_eq!(overridden.linked_projects, vec!["../p1"]);
+    }
+
+    #[test]
+    fn merge_dir_comes_from_the_project() {
+        let base = cfg("name: g\n");
+        let mut project = cfg("name: p\n");
+        project.dir = PathBuf::from("/work/proj");
+        assert_eq!(merge(Some(base), project).dir, PathBuf::from("/work/proj"));
+    }
 }

@@ -564,3 +564,30 @@ fn rank(entries: &[Entry], query: &str) -> Vec<usize> {
     });
     scored.into_iter().map(|(_, i)| i).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::session_name;
+    use std::path::Path;
+
+    #[test]
+    fn session_name_is_deterministic_and_tmux_safe() {
+        // The singleton-per-directory guarantee rests on this being stable for a
+        // given path within a run, and free of tmux's illegal `.`/`:` characters.
+        let a = session_name(Path::new("/Users/me/project"));
+        let b = session_name(Path::new("/Users/me/project"));
+        assert_eq!(a, b, "the same path must map to the same session name");
+
+        let hex = a.strip_prefix("mmux-").expect("session names are mmux-prefixed");
+        assert_eq!(hex.len(), 16, "16 hex digits of the path hash");
+        assert!(
+            hex.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            "lowercase hex only — no `.`/`:` tmux forbids: {a}"
+        );
+    }
+
+    #[test]
+    fn session_name_differs_by_path() {
+        assert_ne!(session_name(Path::new("/a/one")), session_name(Path::new("/a/two")));
+    }
+}

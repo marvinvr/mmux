@@ -49,10 +49,13 @@ handles it). See [Installation](02-installation.md#from-source).
 
 ## Tests
 
-`cargo test` currently covers the pure, easily-isolated pieces: `keymap::encode_key`, the
-`input.rs` cell/selection geometry (`cell_at`, `Selection::ordered`), the `picker.rs` fuzzy
-score, `notify.rs` escape formatting, parts of `config.rs`, and the `wizard.rs` YAML builders.
-The PTY/TUI layers are verified by hand by the maintainer.
+`cargo test` covers the pure, easily-isolated pieces: `keymap::encode_key`, the `input.rs`
+cell/selection geometry (`cell_at`, `Selection::ordered`), the `pane.rs` mouse-sequence encoding,
+the `picker.rs` fuzzy score, `notify.rs` escape formatting, `config.rs` (the project-over-global
+`merge` precedence and the comment-preserving YAML splicer), `git::parse_change` porcelain parsing
+plus the changed-files tree, `tmux::session_name` hashing, `agent.rs` session-id parsing,
+`update.rs` version comparison, and the `wizard.rs` YAML builders. The PTY/TUI layers are verified
+by hand by the maintainer.
 
 ## Release
 
