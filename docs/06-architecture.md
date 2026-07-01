@@ -188,15 +188,28 @@ is `HEAD` vs the working tree (staged + unstaged together); an untracked file is
 `/dev/null` so it shows all-added.
 
 When the changed file is an image (`png`/`jpg`/`gif`/`webp`/`bmp`), `DiffView` carries a decoded
-`PreviewImage` instead of text lines, and the pane shows the picture. mmux draws its whole UI
-*through* the invisible tmux session, where terminal graphics protocols (Kitty/Sixel/iTerm2) are
-unreliable — so rather than emit a protocol, the image is rendered as **half-block coloured text**
-(`▀`, top pixel → foreground, bottom → background) written straight into the ratatui buffer by
-`view::pane::render_image`. It's just styled cells, so it survives tmux and needs no capability
-detection (truecolor degrades gracefully to 256-colour if the terminal lacks it). The source is
-decoded once (bounded by a file-size cap and `image::Limits`, since it runs on the UI thread) and
-re-rasterized only when the pane's cell size changes; `diff_upkeep` skips the throttled re-decode
-for images.
+`PreviewImage` instead of text lines, and the pane shows the picture. There are two render paths:
+
+- **Sixel (real pixels), the primary path.** mmux draws its whole UI *through* the invisible tmux
+  session; tmux 3.4+ (built with sixel, as Homebrew's is) *renders sixel natively* for terminals
+  that support it, so we lean on that instead of fighting a graphics protocol. At startup
+  `tmux::client_supports_sixel` asks tmux (`#{client_termfeatures}`) whether the attached terminal
+  does sixel — a reliable gate, since tmux only advertises it when it will faithfully render what
+  we emit (overridable via `MMUX_SIXEL`). When on, `render_main` doesn't draw the image into the
+  ratatui buffer at all: it stashes an `icy_sixel`-encoded string (sized to the pane via the
+  terminal's pixel-per-cell, cached per size) in `App.pending_sixel`, and `run_loop`'s `emit_sixel`
+  writes it on top of the just-drawn frame — the same after-draw escape channel the notifications
+  use. Because tmux diffs its own screen, the sixel is only re-emitted when the picture or its
+  placement *changes* (`last_sixel`); leaving the picture forces one full repaint so tmux clears
+  the leftover pixels a plain cell diff wouldn't touch.
+- **Half-blocks, the fallback.** Where sixel isn't available, `view::pane::render_image` paints the
+  image as coloured `▀` cells (top pixel → foreground, bottom → background) straight into the
+  buffer — just styled text, so it survives tmux on any terminal (truecolor degrading to 256-colour
+  as needed), at the cost of coarse resolution.
+
+Either way the source is decoded once (bounded by a file-size cap and `image::Limits`, since it
+runs on the UI thread) and re-encoded/re-rasterized only when the pane's cell size changes;
+`diff_upkeep` skips the throttled re-decode for images.
 
 ## Self-Update
 

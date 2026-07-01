@@ -50,7 +50,17 @@ impl App {
         // instead of a textual diff.
         if let Some(v) = self.diff.as_mut() {
             if let Some(img) = v.image.as_mut() {
-                render_image(f, inner, img);
+                // Real pixels via sixel where the terminal supports it (the encoded
+                // picture is stashed and painted on top of this frame in `run_loop`);
+                // otherwise the half-block fallback drawn straight into the buffer.
+                if self.sixel {
+                    match img.sixel(inner.width, inner.height, self.cell_px) {
+                        Some(data) => self.pending_sixel = Some((inner, data.to_string())),
+                        None => render_image(f, inner, img),
+                    }
+                } else {
+                    render_image(f, inner, img);
+                }
             } else {
                 render_diff(f, inner, v);
             }

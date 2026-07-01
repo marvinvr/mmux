@@ -171,6 +171,22 @@ fn configure_session(name: &str, title: &str) {
     }
 }
 
+/// Whether the attached client's terminal supports sixel graphics, per tmux's own
+/// capability detection (`client_termfeatures`). mmux draws *through* tmux, and tmux
+/// (3.4+, built with sixel) renders sixel natively for capable clients — so this is the
+/// reliable gate for showing a real-pixel image preview instead of the half-block
+/// fallback: when tmux says the client does sixel, tmux will faithfully render what we
+/// emit (and it never advertises it for a client that can't). Cheap; queried once.
+pub(crate) fn client_supports_sixel() -> bool {
+    Command::new("tmux")
+        .args(["display-message", "-p", "#{client_termfeatures}"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("sixel"))
+        .unwrap_or(false)
+}
+
 fn which_tmux() -> Option<()> {
     Command::new("tmux")
         .arg("-V")

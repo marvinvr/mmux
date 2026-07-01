@@ -40,6 +40,7 @@ use ratatui::crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use ratatui::layout::Rect;
 use ratatui::Terminal;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
@@ -117,6 +118,20 @@ pub(crate) struct App {
     /// selected session. Set by clicking a file / `v`; follows the cursor; cleared
     /// when a session is selected (see [`git`] and [`App::diff_upkeep`]).
     diff: Option<DiffView>,
+
+    /// Whether to draw an image diff as a real sixel picture (terminal supports it,
+    /// detected once at startup) rather than the half-block fallback. See `run_loop`.
+    sixel: bool,
+    /// Terminal cell size in pixels `(w, h)`, needed to scale a sixel to a cell area.
+    /// Best-effort from the terminal; a sane default when it doesn't report pixels.
+    cell_px: (u16, u16),
+    /// Set during a frame when an image preview should be painted as a sixel: the pane
+    /// rect + the encoded bytes. Consumed just after the draw (like the notification
+    /// escapes) and written on top of the frame. `last_sixel` remembers what's currently
+    /// on screen so we only re-emit on a change — tmux keeps rendering the untouched
+    /// cells, so a static picture costs nothing per frame.
+    pending_sixel: Option<(Rect, String)>,
+    last_sixel: Option<(Rect, String)>,
 
     // Notifications.
     in_tmux: bool,                          // wrap notification OSCs in tmux passthrough?
@@ -202,6 +217,10 @@ impl App {
             drag_scroll: 0,
             overlay: None,
             diff: None,
+            sixel: detect_sixel(),
+            cell_px: detect_cell_px(),
+            pending_sixel: None,
+            last_sixel: None,
             // Our stdout flows through the tmux jail, so notification OSCs need the
             // passthrough wrapper to reach the real terminal.
             in_tmux: std::env::var_os("TMUX").is_some(),
@@ -480,6 +499,28 @@ impl App {
     }
 }
 
+/// Whether to render image diffs as real sixel pictures. `MMUX_SIXEL=0/1` forces it
+/// off/on; otherwise we ask tmux whether the outer terminal supports sixel.
+fn detect_sixel() -> bool {
+    match std::env::var("MMUX_SIXEL").ok().as_deref() {
+        Some("0") | Some("off") | Some("false") | Some("no") => false,
+        Some("1") | Some("on") | Some("true") | Some("yes") => true,
+        _ => crate::tmux::client_supports_sixel(),
+    }
+}
+
+/// The terminal's pixel-per-cell size, for scaling a sixel to a cell area. Derived from
+/// the reported window pixel size ÷ its cell grid; a common 10×20 fallback when the
+/// terminal (or tmux) doesn't report pixel dimensions.
+fn detect_cell_px() -> (u16, u16) {
+    match ratatui::crossterm::terminal::window_size() {
+        Ok(ws) if ws.width > 0 && ws.height > 0 && ws.columns > 0 && ws.rows > 0 => {
+            ((ws.width / ws.columns).max(1), (ws.height / ws.rows).max(1))
+        }
+        _ => (10, 20),
+    }
+}
+
 pub fn run(ws: Workspace) -> Result<()> {
     let mut app = App::new(ws);
 
@@ -537,6 +578,61 @@ fn build_note(name: &str, notes: &[Notify]) -> Note {
     }
 }
 
+/// Paint the pending image-diff sixel on top of the frame ratatui just drew (the same
+/// after-draw escape channel the notifications use). tmux renders the sixel natively and
+/// diffs its own screen, so we only actually emit when the picture or its placement
+/// *changed* — a static preview then sits there for free. Suppressed while a modal is
+/// open (it would cover it); when the picture goes away we force one full repaint so tmux
+/// clears the leftover pixels (a plain cell diff wouldn't touch them).
+fn emit_sixel(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
+    let pending = app.pending_sixel.take().filter(|_| app.overlay.is_none());
+    match &pending {
+        Some((rect, data)) => {
+            // Re-emit only when the picture or its placement changed — an unchanged
+            // sixel is still on tmux's screen, so a static preview costs nothing.
+            let changed = match &app.last_sixel {
+                Some((r, d)) => r != rect || d != data,
+                None => true,
+            };
+            if changed {
+                let mut out = stdout();
+                write!(out, "\x1b7")?; // save cursor
+                // Wipe the previous picture's cells first, so switching to a
+                // smaller/differently-shaped image leaves no leftover pixels around it.
+                // Both frames are image-mode (the pane buffer there is blank), so erasing
+                // to spaces stays consistent with what ratatui believes it drew.
+                if let Some((old, _)) = &app.last_sixel {
+                    erase_rect(&mut out, *old)?;
+                }
+                // Jump to the pane's top-left (1-based), draw, restore the cursor.
+                write!(out, "\x1b[{};{}H{}\x1b8", rect.y + 1, rect.x + 1, data)?;
+                out.flush()?;
+                app.last_sixel = Some((*rect, data.clone()));
+            }
+        }
+        None => {
+            // Leaving the picture for normal cell content (or a modal opened over it):
+            // force one full repaint so tmux overwrites the sixel pixels a plain cell
+            // diff wouldn't touch, and redraw at once so no blank frame shows.
+            if app.last_sixel.take().is_some() {
+                terminal.clear()?;
+                terminal.draw(|f| app.draw(f))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Blank every cell of `r` with cursor-positioned spaces (caller brackets this with
+/// save/restore-cursor). Used to wipe a previous sixel before drawing a new one.
+fn erase_rect(out: &mut Stdout, r: Rect) -> std::io::Result<()> {
+    let blanks = " ".repeat(r.width as usize);
+    for y in r.y..r.y.saturating_add(r.height) {
+        write!(out, "\x1b[{};{}H{}", y + 1, r.x + 1, blanks)?;
+    }
+    Ok(())
+}
+
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
     loop {
         terminal.draw(|f| app.draw(f))?;
@@ -548,6 +644,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             out.write_all(&notes)?;
             out.flush()?;
         }
+        emit_sixel(terminal, app)?;
         if app.should_quit || app.restart {
             break;
         }

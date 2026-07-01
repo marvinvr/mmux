@@ -407,8 +407,12 @@ pub(crate) struct PreviewImage {
     src: image::RgbaImage,
     /// Natural pixel dimensions, shown in the pane title.
     pub dims: (u32, u32),
-    /// Cached rasterization for the last `(cols, rows)` it was drawn at.
+    /// Cached half-block rasterization for the last `(cols, rows)` it was drawn at
+    /// (the fallback path, when the terminal can't do sixel).
     cache: Option<(u16, u16, Vec<Vec<HalfCell>>)>,
+    /// Cached sixel encoding for the last `(cols, rows)` — the real-pixel path. `None`
+    /// inside the tuple means the encode failed (cached so we don't retry every frame).
+    sixel_cache: Option<(u16, u16, Option<String>)>,
 }
 
 impl PreviewImage {
@@ -432,7 +436,19 @@ impl PreviewImage {
         if dims.0 == 0 || dims.1 == 0 {
             return None;
         }
-        Some(PreviewImage { src, dims, cache: None })
+        Some(PreviewImage { src, dims, cache: None, sixel_cache: None })
+    }
+
+    /// The sixel encoding sized to fit `cols`×`rows` cells given the terminal's
+    /// `cell_px` pixel-per-cell, cached by target size so it re-encodes only on a
+    /// resize (encoding + colour quantization is far too costly to run per frame).
+    /// `None` when encoding fails. See [`super::view`] and `run_loop` for how it's drawn.
+    pub(crate) fn sixel(&mut self, cols: u16, rows: u16, cell_px: (u16, u16)) -> Option<&str> {
+        if self.sixel_cache.as_ref().map(|(w, h, _)| (*w, *h)) != Some((cols, rows)) {
+            let encoded = encode_sixel(&self.src, cols, rows, cell_px);
+            self.sixel_cache = Some((cols, rows, encoded));
+        }
+        self.sixel_cache.as_ref().and_then(|(_, _, s)| s.as_deref())
     }
 
     /// The half-block grid sized to fit `cols`×`rows` cells (aspect preserved),
@@ -445,6 +461,32 @@ impl PreviewImage {
         }
         &self.cache.as_ref().unwrap().2
     }
+}
+
+/// Resize `src` to fit the `cols`×`rows` cell area at `cell_px` pixels-per-cell
+/// (aspect preserved; sharp Lanczos downscale so text stays as legible as the pixel
+/// budget allows) and encode it as a sixel string. `None` if encoding fails.
+fn encode_sixel(src: &image::RgbaImage, cols: u16, rows: u16, cell_px: (u16, u16)) -> Option<String> {
+    let (cw, ch) = (cell_px.0.max(1) as u32, cell_px.1.max(1) as u32);
+    let (avail_w, avail_h) = (cols as u32 * cw, rows as u32 * ch);
+    if avail_w == 0 || avail_h == 0 {
+        return None;
+    }
+    let (iw, ih) = (src.width() as f64, src.height() as f64);
+    let scale = (avail_w as f64 / iw).min(avail_h as f64 / ih);
+    let nw = ((iw * scale).round() as u32).max(1);
+    let nh = ((ih * scale).round() as u32).max(1);
+    // Lanczos when shrinking (keeps edges/text crisp), nearest when blowing up a small
+    // icon (no muddy interpolation).
+    let filter = if scale < 1.0 {
+        image::imageops::FilterType::Lanczos3
+    } else {
+        image::imageops::FilterType::Nearest
+    };
+    let resized = image::imageops::resize(src, nw, nh, filter);
+    icy_sixel::SixelImage::from_rgba(resized.into_raw(), nw as usize, nh as usize)
+        .encode()
+        .ok()
 }
 
 /// Resize `src` to fit `cols`×`2·rows` pixels (aspect preserved — a terminal cell is
