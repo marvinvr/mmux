@@ -725,6 +725,7 @@ pub fn write_starter(dir: &Path) -> Result<()> {
 
 const STARTER: &str = r#"# mmux workspace config.
 # Run `mmux` in this directory to open (or reattach to) the session.
+# New here? Run `mmux docs` for the full guide to this file and how mmux works.
 # `name` is optional — it defaults to this directory's name.
 # name: my-workspace
 

@@ -102,6 +102,7 @@ fn check() -> Result<()> {
 fn print_help() {
     println!(
         r#"mmux — persistent, per-directory multiplexer for AI agents & dev processes
+https://mmux.org
 
 USAGE:
     mmux            Open (or reattach to) the mmux session for the current directory
@@ -132,6 +133,8 @@ fn print_docs() {
     println!(
         r##"mmux — persistent, per-directory multiplexer for AI agents & dev processes
 ===========================================================================
+
+Home & docs: https://mmux.org
 
 WHAT IT IS
     Type `mmux` in a directory and you get a TUI: a left sidebar split into

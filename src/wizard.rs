@@ -199,7 +199,8 @@ fn build_global_yaml(agents: &[Agent]) -> String {
     let mut s = String::new();
     s.push_str("# mmux global config (~/.mmux/config.yaml).\n");
     s.push_str("# Agents here are available in EVERY project. A project's mmux.yaml can\n");
-    s.push_str("# override or add to them by name.\n\n");
+    s.push_str("# override or add to them by name.\n");
+    s.push_str("# Full guide: run `mmux docs`.\n\n");
     s.push_str("agents:\n");
     s.push_str(&agent_items(agents));
     s.push_str("\n# A git panel is shown automatically in every git repo. To disable it:\n");
@@ -221,7 +222,8 @@ fn build_local_yaml(
 ) -> String {
     let mut s = String::new();
     s.push_str("# mmux workspace config.\n");
-    s.push_str("# Run `mmux` in this directory to open (or reattach to) the session.\n\n");
+    s.push_str("# Run `mmux` in this directory to open (or reattach to) the session.\n");
+    s.push_str("# New here? Run `mmux docs` for the full guide to this file and how mmux works.\n\n");
     s.push_str(&format!("name: {}\n\n", yaml_scalar(name)));
 
     // Agents
