@@ -943,10 +943,11 @@
       if (sel && !sel.launcher && sel.status === "running") state.main = mainFor(sel);
     }
 
+    // The "click a row to play" chip is intentionally disabled — keep it hidden
+    // regardless of caller. (Restore the body below to bring the hint back.)
     function showHint(show) {
       if (!hintEl) return;
-      hintEl.hidden = !show;
-      if (show) hintEl.textContent = "click a row to play  ·  ↑↓ ⏎ x";
+      hintEl.hidden = true;
     }
 
     var listenersAttached = false;

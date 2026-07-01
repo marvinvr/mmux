@@ -184,7 +184,7 @@ Buttons row: `.btn.btn-brand` → github, a ghost button → the README. NO carg
 
 ### 4.7 `<footer class="site-footer">`
 `mmux` (small gradient) · `GPLv3` · `github` · `built by marvinvr` (→ https://marvinvr.ch).
-Muted, roomy, a final `▮`.
+Muted, roomy.
 
 ---
 

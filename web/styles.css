@@ -458,8 +458,7 @@ section {
   transition: border-color .2s ease;
   height: 34rem;
 }
-/* engaged sandbox: a crisp green edge, not a glow */
-.tw.tw--engaged { border-color: var(--green); }
+/* engaged sandbox: no green edge — clicking in leaves the border untouched */
 
 /* the macOS Terminal window bar: traffic lights on the left, a centered title,
  * nothing on the right. A touch lighter than the screen, like real mac chrome. */
