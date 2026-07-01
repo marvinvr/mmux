@@ -4,7 +4,7 @@
 //! recipe/rect/resize target they touch.
 
 use super::theme::status_label;
-use crate::app::git::{DiffKind, DiffLine, DiffView};
+use crate::app::git::{DiffKind, DiffLine, DiffView, PreviewImage};
 use crate::app::input::SelTarget;
 use crate::app::nav::Nav;
 use crate::app::session::Kind;
@@ -46,9 +46,14 @@ impl App {
         self.regions.main_inner = Some(inner);
 
         // The diff preview takes over the pane as a read-only pager — no PTY resize,
-        // no drag-to-copy (it isn't a vt100 grid).
-        if let Some(v) = &self.diff {
-            render_diff(f, inner, v);
+        // no drag-to-copy (it isn't a vt100 grid). An image file shows its picture
+        // instead of a textual diff.
+        if let Some(v) = self.diff.as_mut() {
+            if let Some(img) = v.image.as_mut() {
+                render_image(f, inner, img);
+            } else {
+                render_diff(f, inner, v);
+            }
             return;
         }
 
@@ -215,8 +220,21 @@ fn render_screen(f: &mut Frame, area: Rect, pane: &Pane, focused: bool) {
 }
 
 /// The diff pane's title: ` Δ path/to/file.rs  +12 −3 `, the counts coloured like
-/// the diff body.
+/// the diff body. For an image preview it's ` ▦ path/to/logo.png  1200×800 ` instead.
 fn diff_title(v: &DiffView) -> Line<'static> {
+    if let Some(img) = &v.image {
+        return Line::from(vec![
+            Span::raw(" ▦ "),
+            Span::styled(
+                v.path.clone(),
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  {}×{} ", img.dims.0, img.dims.1),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]);
+    }
     let mut spans = Vec::new();
     spans.push(Span::raw(" Δ "));
     spans.push(Span::styled(
@@ -237,6 +255,37 @@ fn render_diff(f: &mut Frame, area: Rect, v: &DiffView) {
     }
     let lines: Vec<Line> = v.lines.iter().map(diff_line).collect();
     f.render_widget(Paragraph::new(lines).scroll((v.scroll as u16, 0)), area);
+}
+
+/// Paint a decoded image into `area` as centred half-block cells (`▀`, top pixel as
+/// foreground, bottom as background), written straight into the buffer — the same
+/// technique as [`App::paint_selection`], so it needs no terminal graphics protocol and
+/// passes cleanly through the tmux jail. The grid is aspect-fit and may be smaller than
+/// `area`, so it's centred; leftover cells keep the pane background.
+fn render_image(f: &mut Frame, area: Rect, img: &mut PreviewImage) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let grid = img.grid(area.width, area.height);
+    let Some(first) = grid.first() else {
+        render_placeholder(f, area, "Could not render image.");
+        return;
+    };
+    let cols = first.len() as u16;
+    let rows = grid.len() as u16;
+    let pad_x = area.width.saturating_sub(cols) / 2;
+    let pad_y = area.height.saturating_sub(rows) / 2;
+    let buf = f.buffer_mut();
+    for (ry, line) in grid.iter().enumerate() {
+        let y = area.y + pad_y + ry as u16;
+        for (rx, cell) in line.iter().enumerate() {
+            if let Some(c) = buf.cell_mut((area.x + pad_x + rx as u16, y)) {
+                c.set_char('▀');
+                c.set_fg(Color::Rgb(cell.top.0, cell.top.1, cell.top.2));
+                c.set_bg(Color::Rgb(cell.bottom.0, cell.bottom.1, cell.bottom.2));
+            }
+        }
+    }
 }
 
 fn diff_line(l: &DiffLine) -> Line<'static> {

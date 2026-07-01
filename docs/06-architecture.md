@@ -187,6 +187,17 @@ its file stops being changed, its project is no longer active, or a session is s
 is `HEAD` vs the working tree (staged + unstaged together); an untracked file is diffed against
 `/dev/null` so it shows all-added.
 
+When the changed file is an image (`png`/`jpg`/`gif`/`webp`/`bmp`), `DiffView` carries a decoded
+`PreviewImage` instead of text lines, and the pane shows the picture. mmux draws its whole UI
+*through* the invisible tmux session, where terminal graphics protocols (Kitty/Sixel/iTerm2) are
+unreliable — so rather than emit a protocol, the image is rendered as **half-block coloured text**
+(`▀`, top pixel → foreground, bottom → background) written straight into the ratatui buffer by
+`view::pane::render_image`. It's just styled cells, so it survives tmux and needs no capability
+detection (truecolor degrades gracefully to 256-colour if the terminal lacks it). The source is
+decoded once (bounded by a file-size cap and `image::Limits`, since it runs on the UI thread) and
+re-rasterized only when the pane's cell size changes; `diff_upkeep` skips the throttled re-decode
+for images.
+
 ## Self-Update
 
 `update.rs` keeps a Homebrew-installed mmux current without interrupting your work, and

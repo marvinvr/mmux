@@ -169,6 +169,13 @@ Click the preview (or it's already in front in compact mode) to scroll it with `
 `PgUp`/`PgDn` / `Space`, `Ctrl-d`/`Ctrl-u`, and `g`/`G`. Close it with `Esc` (or `q` / `h`); it
 also clears the moment you select a session or switch projects.
 
+**Image files** (`png`, `jpg`/`jpeg`, `gif`, `webp`, `bmp`) preview as the picture itself rather
+than git's "Binary files differ" — decoded from the working tree and drawn with half-block
+characters, so it works in any terminal and through the tmux session without a graphics protocol
+(colours are truecolor where your terminal supports it). The header shows the file's pixel
+dimensions (` ▦ <path>  1200×800 `). It's a still preview — re-click the file to refresh it after
+a change — and very large files (or ones that fail to decode) fall back to the plain diff.
+
 ## The File Picker
 
 Press **`Ctrl+P`** from anywhere — including inside a focused pane — to open a fuzzy file picker

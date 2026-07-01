@@ -1,6 +1,6 @@
 [package]
 name = "mmux"
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 description = "A persistent terminal multiplexer for AI agents and dev processes"
 license = "GPL-3.0-or-later"
@@ -26,6 +26,11 @@ bytes = "1"
 # Ripgrep's file-walking engine, used in-process for the Ctrl+P file picker's listing
 # (gitignore/hidden/dir-prune handling) — so the picker needs no external `rg` on PATH.
 ignore = "0.4"
+# Decoding image files for the git panel's inline preview of a changed image. We render
+# them as half-block coloured text straight into the ratatui buffer (no terminal graphics
+# protocol), so it survives the tmux jail. Default features off + only the formats that
+# actually turn up in diffs, to keep build time and binary size in check.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 
 [profile.release]
 opt-level = 2

@@ -280,6 +280,9 @@ pub(crate) struct DiffView {
     pub lines: Vec<DiffLine>,
     /// First visible line (the pager scroll offset).
     pub scroll: usize,
+    /// A decoded image, when the changed file is a picture: the pane shows it instead
+    /// of a textual diff (and `lines` is empty). See [`PreviewImage`].
+    pub image: Option<PreviewImage>,
     /// When the body was last built, to throttle the live re-read.
     built_at: Instant,
 }
@@ -306,6 +309,23 @@ impl DiffView {
     /// `+++`/`---` file headers only appear *before* the first `@@`), so a simple
     /// in-hunk flag classifies every line without the header lines confusing it.
     fn build(project: usize, dir: &Path, file: &FileEntry) -> DiffView {
+        // An image file gets its picture shown instead of git's "Binary files differ".
+        // Falls through to the text path when it isn't a decodable format, is missing
+        // (a deletion), is too big, or fails to decode.
+        if is_image_path(&file.path) {
+            if let Some(image) = PreviewImage::load(dir, &file.path) {
+                return DiffView {
+                    project,
+                    path: file.path.clone(),
+                    added: 0,
+                    removed: 0,
+                    lines: Vec::new(),
+                    scroll: 0,
+                    image: Some(image),
+                    built_at: Instant::now(),
+                };
+            }
+        }
         let raw = git::diff(dir, &file.path, file.untracked);
         let mut lines = Vec::new();
         let (mut added, mut removed) = (0u32, 0u32);
@@ -341,9 +361,131 @@ impl DiffView {
             removed,
             lines,
             scroll: 0,
+            image: None,
             built_at: Instant::now(),
         }
     }
+}
+
+/// The image extensions we inline-preview — kept in step with the decoders enabled on
+/// the `image` crate in `Cargo.toml`. Matched case-insensitively.
+const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+
+/// Don't decode anything bigger than this on disk: the decode runs on the UI thread,
+/// so a stray giant asset shouldn't stall it. Decompression is separately bounded by
+/// the `image::Limits` in [`PreviewImage::load`] (against small-but-huge-when-decoded
+/// files).
+const MAX_IMAGE_BYTES: u64 = 24 * 1024 * 1024;
+
+/// Whether `path`'s extension is one of the [`IMAGE_EXTS`] we can preview.
+fn is_image_path(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .is_some_and(|e| IMAGE_EXTS.contains(&e.as_str()))
+}
+
+/// One rendered image cell, drawn as `▀` (upper-half block): its top half takes the
+/// foreground colour and its bottom half the background, so a single character carries
+/// two vertically-stacked pixels — doubling the effective vertical resolution.
+#[derive(Clone, Copy)]
+pub(crate) struct HalfCell {
+    pub top: (u8, u8, u8),
+    pub bottom: (u8, u8, u8),
+}
+
+/// A decoded image shown in the diff pane in place of a textual diff. It's rendered as
+/// half-block coloured text straight into the ratatui buffer (see [`super::view`]), so
+/// it needs no terminal graphics protocol
+/// (Kitty/Sixel/iTerm2) and survives the tmux jail mmux draws through — it's just
+/// styled cells like the rest of the UI. The source pixels are decoded once; the
+/// half-block grid is re-rasterized only when the pane's cell size changes (the draw
+/// loop repaints ~20×/s, so per-frame resizing would be wasteful).
+pub(crate) struct PreviewImage {
+    /// Decoded source pixels, resized on demand for the current pane size.
+    src: image::RgbaImage,
+    /// Natural pixel dimensions, shown in the pane title.
+    pub dims: (u32, u32),
+    /// Cached rasterization for the last `(cols, rows)` it was drawn at.
+    cache: Option<(u16, u16, Vec<Vec<HalfCell>>)>,
+}
+
+impl PreviewImage {
+    /// Decode the working-tree copy of `rel` under `dir`. Returns `None` (→ the text
+    /// diff path) when the file is missing, over [`MAX_IMAGE_BYTES`], or not a decodable
+    /// image. Both a byte cap and `image::Limits` bound the work, since it runs inline
+    /// on the UI thread.
+    fn load(dir: &Path, rel: &str) -> Option<PreviewImage> {
+        let path = dir.join(rel);
+        if std::fs::metadata(&path).ok()?.len() > MAX_IMAGE_BYTES {
+            return None;
+        }
+        let mut reader = image::ImageReader::open(&path).ok()?.with_guessed_format().ok()?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(20_000);
+        limits.max_image_height = Some(20_000);
+        limits.max_alloc = Some(512 * 1024 * 1024);
+        reader.limits(limits);
+        let src = reader.decode().ok()?.to_rgba8();
+        let dims = (src.width(), src.height());
+        if dims.0 == 0 || dims.1 == 0 {
+            return None;
+        }
+        Some(PreviewImage { src, dims, cache: None })
+    }
+
+    /// The half-block grid sized to fit `cols`×`rows` cells (aspect preserved),
+    /// re-rasterizing only when that size changed. Rows are equal width and the grid
+    /// may be smaller than the target area, so the caller centres it.
+    pub(crate) fn grid(&mut self, cols: u16, rows: u16) -> &[Vec<HalfCell>] {
+        if self.cache.as_ref().map(|(w, h, _)| (*w, *h)) != Some((cols, rows)) {
+            let cells = rasterize(&self.src, cols, rows);
+            self.cache = Some((cols, rows, cells));
+        }
+        &self.cache.as_ref().unwrap().2
+    }
+}
+
+/// Resize `src` to fit `cols`×`2·rows` pixels (aspect preserved — a terminal cell is
+/// ~1:2, so two stacked pixels read as square — smoothly downscaled, crisply upscaled)
+/// and fold each vertical pixel pair into one [`HalfCell`], compositing any alpha over
+/// black.
+fn rasterize(src: &image::RgbaImage, cols: u16, rows: u16) -> Vec<Vec<HalfCell>> {
+    let (max_w, max_h) = (cols as u32, rows as u32 * 2);
+    if max_w == 0 || max_h == 0 {
+        return Vec::new();
+    }
+    let (iw, ih) = (src.width() as f64, src.height() as f64);
+    let scale = (max_w as f64 / iw).min(max_h as f64 / ih);
+    let nw = ((iw * scale).round() as u32).max(1);
+    let nh = ((ih * scale).round() as u32).max(1);
+    let filter = if scale < 1.0 {
+        image::imageops::FilterType::Triangle
+    } else {
+        image::imageops::FilterType::Nearest
+    };
+    let img = image::imageops::resize(src, nw, nh, filter);
+    // Flatten alpha over black so half-transparent pixels don't render as opaque.
+    let over_black = |p: &image::Rgba<u8>| {
+        let a = p.0[3] as u32;
+        let c = |i: usize| ((p.0[i] as u32 * a) / 255) as u8;
+        (c(0), c(1), c(2))
+    };
+    (0..nh.div_ceil(2))
+        .map(|cy| {
+            (0..nw)
+                .map(|x| {
+                    let top = over_black(img.get_pixel(x, cy * 2));
+                    let by = cy * 2 + 1;
+                    // An odd height leaves the last cell's bottom pixel empty → black.
+                    let bottom =
+                        if by < nh { over_black(img.get_pixel(x, by)) } else { (0, 0, 0) };
+                    HalfCell { top, bottom }
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Clamp-step a cursor within `len` items.
@@ -659,14 +801,21 @@ impl App {
             self.diff = None;
             return;
         }
-        let (path, scroll, due) =
-            (view.path.clone(), view.scroll, view.built_at.elapsed() >= REFRESH_EVERY);
+        let (path, scroll, due, is_image) = (
+            view.path.clone(),
+            view.scroll,
+            view.built_at.elapsed() >= REFRESH_EVERY,
+            view.image.is_some(),
+        );
         let entry = self
             .active_git()
             .and_then(|g| g.files.iter().find(|f| f.path == path).cloned().map(|f| (g.dir.clone(), f)));
         match entry {
             None => self.diff = None, // committed or discarded — nothing left to show
-            Some((dir, f)) if due => {
+            // A text diff re-reads on the throttle so an agent's live edits show; an
+            // image is decoded once (re-click to refresh) — re-decoding it every 1.5s
+            // would be needless work on the UI thread for no real gain.
+            Some((dir, f)) if due && !is_image => {
                 let mut nv = DiffView::build(self.active, &dir, &f);
                 nv.scroll = scroll.min(nv.lines.len().saturating_sub(1));
                 self.diff = Some(nv);
