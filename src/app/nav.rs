@@ -63,6 +63,21 @@ impl App {
         self.build_nav().get(self.sel).copied()
     }
 
+    /// The [`Kind`] of the selected session row, or `None` on a launcher / panel row.
+    /// Drives the sidebar footer's action chips (processes get edit/delete, not close).
+    pub(crate) fn selected_kind(&self) -> Option<Kind> {
+        match self.current_nav() {
+            Some(Nav::Session(i)) => Some(self.sessions[i].kind),
+            _ => None,
+        }
+    }
+
+    /// Whether the selected session is running (false on a launcher / panel row) — lets
+    /// the footer show `x stop` only for a process that's actually up.
+    pub(crate) fn selected_running(&self) -> bool {
+        matches!(self.current_nav(), Some(Nav::Session(i)) if self.sessions[i].is_running())
+    }
+
     pub(crate) fn pane_at(&self, nav: Nav) -> Option<&Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_ref(),

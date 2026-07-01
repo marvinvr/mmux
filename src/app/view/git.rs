@@ -653,9 +653,11 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let w = area.width.saturating_sub(6).clamp(34, 72);
     let h = 12u16.min(area.height);
     let rect = centered(area, w, h);
+    // Same form for adding and editing; the title and the Review verb reflect which.
+    let editing = form.edit.is_some();
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" New process ")
+        .title(if editing { " Edit process " } else { " New process " })
         .border_style(Style::default().fg(Color::Magenta));
     let inner = block.inner(rect);
     f.render_widget(Clear, rect);
@@ -664,11 +666,16 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
         return;
     }
 
+    let review_hint = if editing {
+        "←→ autostart · ⏎ save · esc cancel"
+    } else {
+        "←→ autostart · ⏎ create · esc cancel"
+    };
     let (label, hint) = match form.step {
         Step::Name => ("Name", "⏎ next · esc cancel"),
         Step::Command => ("Command", "⏎ next · esc cancel"),
         Step::Cwd => ("Working dir", "⏎ next (blank ok) · esc cancel"),
-        Step::Review => ("Review", "←→ autostart · ⏎ create · esc cancel"),
+        Step::Review => ("Review", review_hint),
     };
 
     let mut lines: Vec<Line> = vec![

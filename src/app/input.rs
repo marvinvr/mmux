@@ -52,6 +52,10 @@ impl App {
             KeyCode::Char('x') => self.do_stop(),
             KeyCode::Char('r') => self.do_restart(),
             KeyCode::Char('R') => self.reload(),
+            // Process-only: edit reopens the guided form on the selected process; delete
+            // asks to confirm, then removes it from the config. No-ops on other rows.
+            KeyCode::Char('e') => self.edit_selected(),
+            KeyCode::Char('D') => self.delete_selected(),
             // Link another project directory into the workspace (also the button at the
             // bottom of the sidebar).
             KeyCode::Char('L') => self.open_link_browser(),
@@ -365,7 +369,12 @@ impl App {
                     form.error = Some("name can't be empty".into());
                     return;
                 }
-                if self.projects[form.project].cfg.processes.iter().any(|p| p.name == val) {
+                // A duplicate name is rejected — but when editing, the entry keeping its
+                // own name isn't a duplicate of itself.
+                let dup = self.projects[form.project].cfg.processes.iter().any(|p| {
+                    p.name == val && form.edit.as_deref() != Some(p.name.as_str())
+                });
+                if dup {
                     form.error = Some(format!("a process named “{val}” already exists"));
                     return;
                 }
@@ -549,6 +558,8 @@ impl App {
                 }
             }
             FooterAction::Restart => self.do_restart(),
+            FooterAction::EditProcess => self.edit_selected(),
+            FooterAction::DeleteProcess => self.delete_selected(),
             FooterAction::Reload => {
                 self.reload();
                 self.focus = Focus::Sidebar; // surface any newly added items

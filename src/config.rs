@@ -486,12 +486,57 @@ pub fn split_command(line: &str) -> (String, Vec<String>) {
     (cmd, parts.collect())
 }
 
+/// Join a stored `cmd` + `args` back into a single editable command line — the
+/// inverse of [`split_command`], used to pre-fill the process-edit form. Tokens
+/// containing whitespace (or empty ones) are double-quoted so a re-split round-trips.
+pub fn join_command(cmd: &str, args: &[String]) -> String {
+    let mut out = quote_token(cmd);
+    for a in args {
+        out.push(' ');
+        out.push_str(&quote_token(a));
+    }
+    out
+}
+
+/// Double-quote a command-line token when a bare word wouldn't survive [`shell_split`]
+/// (it holds whitespace, or is empty). No escaping — enough to round-trip typed input.
+fn quote_token(s: &str) -> String {
+    if s.is_empty() || s.contains(char::is_whitespace) {
+        format!("\"{s}\"")
+    } else {
+        s.to_string()
+    }
+}
+
 /// Append `p` to the `processes:` list in `path`, preserving the file's existing
 /// comments and layout — we edit the raw text rather than round-tripping through
 /// serde (which would strip every comment). Creates the file/block if absent.
 pub fn append_process(path: &Path, p: &ProcessDraft) -> Result<()> {
     let original = std::fs::read_to_string(path).unwrap_or_default();
     let updated = insert_process(&original, p)?;
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Replace the `processes:` item named `name` in `path` with `p`, preserving the
+/// file's surrounding comments and layout (the edited item is re-rendered, so any
+/// comments *inside* that one entry are dropped). Errors if the item can't be found —
+/// e.g. its `name:` is written in a shape the raw-text scan doesn't recognise.
+pub fn replace_process(path: &Path, name: &str, p: &ProcessDraft) -> Result<()> {
+    let original = std::fs::read_to_string(path)
+        .with_context(|| format!("reading {}", path.display()))?;
+    let updated = replace_named_item(&original, "processes", name, p)?;
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Remove the `processes:` item named `name` from `path`, preserving the file's other
+/// comments and layout. Errors if the item can't be found. Leaving `processes:` with
+/// no items is fine — it parses back to an empty list.
+pub fn remove_process(path: &Path, name: &str) -> Result<()> {
+    let original = std::fs::read_to_string(path)
+        .with_context(|| format!("reading {}", path.display()))?;
+    let updated = delete_named_item(&original, "processes", name)?;
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }
@@ -620,6 +665,117 @@ fn block_end(lines: &[&str], k: usize) -> usize {
         }
     }
     end
+}
+
+/// Replace the `block:` list item named `name` in `text` with a freshly rendered `p`,
+/// preserving the file's other comments and layout (kept pure for testing). Any blank
+/// separator lines trailing the old item are kept, so the spacing between entries
+/// survives. Errors if the named item can't be located.
+fn replace_named_item(text: &str, block: &str, name: &str, p: &ProcessDraft) -> Result<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let (start, mut end, indent) = named_item_span(&lines, block, name)
+        .ok_or_else(|| anyhow::anyhow!("couldn't find “{name}” under `{block}:` — edit it by hand"))?;
+    // Don't consume the blank line(s) between this item and the next — re-emit them.
+    while end > start + 1 && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+    let rendered = render_item(p, indent);
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == start {
+            out.push_str(&rendered);
+        }
+        if i >= start && i < end {
+            continue; // drop the old item's lines
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// Delete the `block:` list item named `name` from `text`, preserving the file's other
+/// comments and layout (kept pure for testing). Errors if it can't be located.
+fn delete_named_item(text: &str, block: &str, name: &str) -> Result<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let (start, end, _) = named_item_span(&lines, block, name)
+        .ok_or_else(|| anyhow::anyhow!("couldn't find “{name}” under `{block}:` — edit it by hand"))?;
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i >= start && i < end {
+            continue;
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// Locate the list item under top-level `block:` whose `name:` equals `name`, returning
+/// its `(start, end, item_indent)` — `start..end` is its line range (dash line through
+/// the line before the next sibling dash / next top-level key / EOF). The counterpart to
+/// [`splice_block_item`] for the in-place edit/delete forms; `None` if not found.
+fn named_item_span(lines: &[&str], block: &str, name: &str) -> Option<(usize, usize, usize)> {
+    let k = lines.iter().position(|l| top_level_key(l) == Some(block))?;
+    let indent = block_item_indent(lines, k)?;
+    // The block runs until the next top-level key (or EOF) — no comment back-up here.
+    let region_end = lines
+        .iter()
+        .enumerate()
+        .skip(k + 1)
+        .find(|(_, l)| top_level_key(l).is_some())
+        .map_or(lines.len(), |(i, _)| i);
+    // Each `- ` at exactly the item indent starts a new entry; deeper dashes (a nested
+    // block sequence like `args:`) belong to the current one.
+    let starts: Vec<usize> = (k + 1..region_end)
+        .filter(|&i| {
+            let t = lines[i].trim_start();
+            t.starts_with('-') && lines[i].len() - t.len() == indent
+        })
+        .collect();
+    for (n, &start) in starts.iter().enumerate() {
+        let end = starts.get(n + 1).copied().unwrap_or(region_end);
+        if item_name(&lines[start..end]) == Some(name.to_string()) {
+            return Some((start, end, indent));
+        }
+    }
+    None
+}
+
+/// The `name:` value declared inside one list item's lines — on the dash line
+/// (`- name: X`) or a following `name: X` line — unquoted, with an inline `# comment`
+/// on an unquoted value stripped. `None` if the item has no `name:`.
+fn item_name(item: &[&str]) -> Option<String> {
+    for (i, line) in item.iter().enumerate() {
+        // The dash line carries its first key after the `- `; later lines are plain keys.
+        let content = if i == 0 {
+            let t = line.trim_start();
+            t.strip_prefix('-').map_or(t, str::trim_start)
+        } else {
+            line.trim_start()
+        };
+        if let Some(rest) = content.strip_prefix("name:") {
+            let val = rest.trim();
+            // Drop a trailing `# comment` on a bare scalar (YAML needs a space before #).
+            let val = match val.starts_with(['"', '\'']) {
+                true => val,
+                false => val.find(" #").map_or(val, |j| val[..j].trim_end()),
+            };
+            return Some(unquote_scalar(val));
+        }
+    }
+    None
+}
+
+/// Strip matching surrounding single/double quotes from a YAML scalar (no escape
+/// processing — enough to read back a `name:` we or the user wrote).
+fn unquote_scalar(s: &str) -> String {
+    let b = s.as_bytes();
+    if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && *b.last().unwrap() == b[0] {
+        s[1..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 /// Render one `processes:` list item at the given indent, matching the hand-written
@@ -839,6 +995,68 @@ mod tests {
         assert!(!out.contains("args:"));
         assert!(out.contains("cwd: backend"));
         assert!(out.contains("autostart: true"));
+    }
+
+    #[test]
+    fn replaces_a_named_process_in_place_keeping_siblings_and_comments() {
+        let text = "# top\nprocesses:\n  - name: Check\n    cmd: cargo\n    args: [\"check\"]\n\n  - name: Dev server\n    cmd: old\n    autostart: false\n";
+        let mut d = draft();
+        d.cmd = "npm".into();
+        let out = replace_named_item(text, "processes", "Dev server", &d).unwrap();
+        // The other entry and the leading comment survive untouched…
+        assert!(out.contains("# top"));
+        assert!(out.contains("  - name: Check"));
+        // …and the edited one now carries the new command.
+        assert!(out.contains("    cmd: npm"));
+        assert!(!out.contains("cmd: old"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 2);
+        assert_eq!(cfg.processes[1].name, "Dev server");
+        assert_eq!(cfg.processes[1].cmd, "npm");
+    }
+
+    #[test]
+    fn replace_can_rename_the_matched_process() {
+        let text = "processes:\n  - name: Old\n    cmd: x\n";
+        let mut d = draft();
+        d.name = "New".into();
+        let out = replace_named_item(text, "processes", "Old", &d).unwrap();
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 1);
+        assert_eq!(cfg.processes[0].name, "New");
+    }
+
+    #[test]
+    fn removes_a_named_process_leaving_the_rest() {
+        let text = "processes:\n  - name: A\n    cmd: x\n  - name: B\n    cmd: y\n";
+        let out = delete_named_item(text, "processes", "A").unwrap();
+        assert!(!out.contains("name: A"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 1);
+        assert_eq!(cfg.processes[0].name, "B");
+    }
+
+    #[test]
+    fn removing_the_only_process_leaves_an_empty_block() {
+        let out = delete_named_item("name: demo\nprocesses:\n  - name: A\n    cmd: x\n", "processes", "A").unwrap();
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert!(cfg.processes.is_empty());
+        assert_eq!(cfg.name.as_deref(), Some("demo"));
+    }
+
+    #[test]
+    fn edit_and_delete_error_on_an_unknown_process() {
+        assert!(delete_named_item("processes:\n  - name: A\n    cmd: x\n", "processes", "Nope").is_err());
+        assert!(replace_named_item("processes:\n  - name: A\n    cmd: x\n", "processes", "Nope", &draft()).is_err());
+    }
+
+    #[test]
+    fn join_command_round_trips_through_split() {
+        assert_eq!(join_command("npm", &["run".into(), "dev".into()]), "npm run dev");
+        // A token with spaces is quoted so a re-split keeps it as one argument.
+        let joined = join_command("git", &["commit".into(), "-m".into(), "a b".into()]);
+        assert_eq!(joined, "git commit -m \"a b\"");
+        assert_eq!(split_command(&joined), ("git".into(), vec!["commit".into(), "-m".into(), "a b".into()]));
     }
 
     #[test]

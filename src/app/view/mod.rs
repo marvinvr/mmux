@@ -7,6 +7,7 @@ mod sidebar;
 pub(crate) mod theme;
 
 use super::git::Section;
+use super::session::Kind;
 use super::{App, Focus};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -54,6 +55,10 @@ pub(crate) enum FooterAction {
     Stop,
     Restart,
     Reload,
+    /// Edit the selected process (reopens the guided form pre-filled).
+    EditProcess,
+    /// Delete the selected process (asks to confirm, then rewrites `mmux.yaml`).
+    DeleteProcess,
     /// Open the "Link another project" directory browser.
     LinkProject,
     Detach,
@@ -343,15 +348,30 @@ impl App {
                 (vec![Seg::btn("✕", "close", CloseToMain)], vec![])
             }
             Focus::Sidebar => {
-                let mut v = vec![
-                    Seg::hint("↑↓ move"),
-                    Seg::btn("⏎", "open", Activate),
-                    Seg::btn("s", "start", Start),
-                    Seg::btn("x", "close", Stop),
-                    Seg::btn("r", "restart", Restart),
-                    Seg::btn("R", "reload", Reload),
-                    Seg::btn("L", "link", LinkProject),
-                ];
+                let mut v = vec![Seg::hint("↑↓ move"), Seg::btn("⏎", "open", Activate)];
+                // The action chips depend on what's selected. A process is a config entry:
+                // it's edited/deleted, never "closed", and `x`/stop only shows when it's
+                // actually running (so the key is never an advertised no-op). Everything
+                // else keeps the throwaway-instance chips (start / close / restart).
+                match self.selected_kind() {
+                    Some(Kind::Process) => {
+                        if self.selected_running() {
+                            v.push(Seg::btn("x", "stop", Stop));
+                        } else {
+                            v.push(Seg::btn("s", "start", Start));
+                        }
+                        v.push(Seg::btn("r", "restart", Restart));
+                        v.push(Seg::btn("e", "edit", EditProcess));
+                        v.push(Seg::btn("D", "delete", DeleteProcess));
+                    }
+                    _ => {
+                        v.push(Seg::btn("s", "start", Start));
+                        v.push(Seg::btn("x", "close", Stop));
+                        v.push(Seg::btn("r", "restart", Restart));
+                    }
+                }
+                v.push(Seg::btn("R", "reload", Reload));
+                v.push(Seg::btn("L", "link", LinkProject));
                 if self.projects.len() > 1 {
                     v.push(Seg::hint("[ ] project"));
                 }

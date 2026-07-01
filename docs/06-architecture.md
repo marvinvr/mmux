@@ -160,15 +160,16 @@ three boxes (Changes / Branches / Recent) and is driven by its own keymap.
 | Overlay | Raised by | Effect |
 | --- | --- | --- |
 | `Prompt` | `c` / `n` in the panel | Commit message / new-branch name |
-| `Confirm` | `d` in the panel | Yes/no guard before a destructive discard |
+| `Confirm` | `d` in the panel · `D` on a process · `q` | Yes/no guard: destructive discard · delete a process · quit |
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
-| `NewProcess` | `+ New Process` | [Guided form](03-usage.md#adding-a-process) → appends to `mmux.yaml` |
+| `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |
 | `LinkProject` | `+ Link another project` / `L` | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
 
 The picker (`picker.rs`) lists files via `rg --files` → `git ls-files` → a shallow walk, and
-fuzzy-ranks them. The new-process form (`procform.rs`) collects fields step-by-step, then
-`finish_new_process` splices the entry into `mmux.yaml` via `config::append_process` (raw-text
-editing, to preserve comments) and reloads. The link browser (`linkbrowse.rs`) walks the filesystem
+fuzzy-ranks them. The process form (`procform.rs`) collects fields step-by-step, then
+`finish_new_process` writes the entry into `mmux.yaml` via `config::append_process` (new) or
+`config::replace_process` (an edit, keyed by the original name) — both raw-text edits that preserve
+comments — and reloads; `D` deletes via `config::remove_process` behind a confirmation. The link browser (`linkbrowse.rs`) walks the filesystem
 with fork-free previews (repo-ness is a `.git` check, the branch is read from `.git/HEAD`), then
 `link_project` appends the path via `config::append_linked_project` (the same raw-text splicer) and
 **adds a new `Project` in place** — the one action that grows the project set after launch.

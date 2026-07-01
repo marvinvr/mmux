@@ -64,9 +64,12 @@ impl App {
         self.overlay = Some(Overlay::new_process(pi));
     }
 
-    /// Write a finished form's process to project `pi`'s `mmux.yaml`, then reload so
-    /// it shows up as a real row. On success the new row is selected (and started if
-    /// autostart was chosen); a write failure is flashed and nothing else changes.
+    /// Write a finished form's process to project `pi`'s `mmux.yaml` — appended for a
+    /// new process, spliced in place when editing (`form.edit`) — then reload so the
+    /// change shows up live. On success the row is selected (and, for a new autostart
+    /// process, started); a write failure is flashed and nothing else changes. An edit
+    /// whose command changed is picked up by [`reload`](Self::reload), which restarts a
+    /// running instance so the new command takes effect without a manual restart.
     pub(crate) fn finish_new_process(&mut self, form: &ProcForm) {
         let pi = form.project;
         let path = crate::config::project_config_path(&self.projects[pi].cfg.dir);
@@ -79,24 +82,84 @@ impl App {
             cwd: (!cwd.is_empty()).then(|| cwd.to_string()),
             autostart: form.autostart,
         };
-        if let Err(e) = crate::config::append_process(&path, &draft) {
-            self.flash = Some((format!("couldn't add process — {e}"), Instant::now()));
+        let res = match &form.edit {
+            Some(old) => crate::config::replace_process(&path, old, &draft),
+            None => crate::config::append_process(&path, &draft),
+        };
+        if let Err(e) = res {
+            self.flash = Some((format!("couldn't save process — {e}"), Instant::now()));
             return;
         }
-        // Pull the new entry into the live session list, then select it.
+        // Pull the edited/new entry into the live session list, then select it.
         self.reload();
-        self.flash = Some((format!("added process “{}”", draft.name), Instant::now()));
+        let verb = if form.edit.is_some() { "updated" } else { "added" };
+        self.flash = Some((format!("{verb} process “{}”", draft.name), Instant::now()));
         if let Some(i) = self.sessions.iter().position(|s| {
             s.project == pi && s.kind == Kind::Process && s.name == draft.name
         }) {
             self.select_session(i);
-            // "Start automatically" was just opted into — honour it now, not only on
-            // the next open. (`reload` adds it stopped; this brings it up.)
-            if draft.autostart && !self.sessions[i].is_running() {
+            // A brand-new "start automatically" process is brought up now, not only on
+            // the next open (`reload` adds it stopped). An edit leaves the run state be —
+            // reload already restarts it if the command changed.
+            if form.edit.is_none() && draft.autostart && !self.sessions[i].is_running() {
                 let (rows, cols) = self.last_inner;
                 self.sessions[i].spawn(rows, cols);
             }
         }
+        self.focus = Focus::Sidebar;
+    }
+
+    /// `e`: reopen the guided form on the selected process, pre-filled for editing. A
+    /// no-op on any non-process row (agents/terminals are throwaway instances, not
+    /// config entries). Finishing the form rewrites the entry via [`finish_new_process`].
+    pub(crate) fn edit_selected(&mut self) {
+        let Some(Nav::Session(i)) = self.current_nav() else { return };
+        if self.sessions[i].kind != Kind::Process {
+            return;
+        }
+        let (pi, name) = (self.sessions[i].project, self.sessions[i].name.clone());
+        if let Some(def) = self.projects[pi].cfg.processes.iter().find(|p| p.name == name) {
+            self.overlay = Some(super::git::Overlay::edit_process(pi, def));
+        }
+    }
+
+    /// `D`: ask to confirm, then delete the selected process from its `mmux.yaml`. A
+    /// no-op on any non-process row. The removal + reload happens in [`delete_process`]
+    /// once the confirmation is accepted.
+    pub(crate) fn delete_selected(&mut self) {
+        let Some(Nav::Session(i)) = self.current_nav() else { return };
+        if self.sessions[i].kind != Kind::Process {
+            return;
+        }
+        let (pi, name) = (self.sessions[i].project, self.sessions[i].name.clone());
+        self.overlay = Some(super::git::Overlay::confirm(
+            "Delete process",
+            format!("Remove “{name}” from mmux.yaml?"),
+            "y delete · n cancel",
+            super::git::Confirmed::DeleteProcess { project: pi, name },
+        ));
+    }
+
+    /// Delete process `name` from project `pi`: stop and drop any live instance, remove
+    /// it from the config (preserving surrounding comments), then reload so the row is
+    /// gone. A write failure is flashed and the (already-stopped) row simply reappears
+    /// on the reload. Called from the delete confirmation ([`overlay_confirm`](super::App::overlay_confirm)).
+    pub(crate) fn delete_process(&mut self, pi: usize, name: &str) {
+        // Kill the running instance first so reload sees it fully gone rather than
+        // keeping it as a running "orphan" of a dropped process.
+        if let Some(idx) = self.sessions.iter().position(|s| {
+            s.project == pi && s.kind == Kind::Process && s.name == name
+        }) {
+            self.sessions[idx].kill();
+            self.sessions.remove(idx);
+        }
+        let path = crate::config::project_config_path(&self.projects[pi].cfg.dir);
+        if let Err(e) = crate::config::remove_process(&path, name) {
+            self.flash = Some((format!("couldn't delete — {e}"), Instant::now()));
+            return;
+        }
+        self.reload();
+        self.flash = Some((format!("deleted “{name}”"), Instant::now()));
         self.focus = Focus::Sidebar;
     }
 
@@ -333,10 +396,11 @@ impl App {
     }
 
     /// Re-read every loaded project's `mmux.yaml` (+ the global config) in place and
-    /// merge changes into the live session without disturbing running panes: new
-    /// processes/agents appear, edited recipes are picked up on the next (re)start,
-    /// and a removed process that's still running is kept as an orphan rather than
-    /// killed. Bound to `R` / `Ctrl-b R`.
+    /// merge changes into the live session: new processes/agents appear, and a removed
+    /// process that's still running is kept as an orphan rather than killed. A running
+    /// process whose command (recipe) actually changed is **restarted** so the new
+    /// command takes effect immediately — you no longer have to stop/start it by hand.
+    /// Bound to `R` / `Ctrl-b R`.
     ///
     /// Reload only ever refreshes the *existing* projects, keyed by directory — it
     /// never adds or drops one. Growing the workspace is [`link_project`](Self::link_project)'s
@@ -367,8 +431,10 @@ impl App {
             .into_iter()
             .partition(|s| s.kind == Kind::Process);
 
+        let (rows, cols) = self.last_inner;
         let mut next_procs: Vec<Session> = Vec::new();
         let mut added = 0usize;
+        let mut restarted = 0usize;
         for (pi, ncfg) in new_cfgs.iter().enumerate() {
             let Some(ncfg) = ncfg else {
                 // Config failed to load: keep this project's processes untouched.
@@ -384,7 +450,16 @@ impl App {
                 match old_procs.iter().position(|it| it.project == pi && it.name == p.name) {
                     Some(pos) => {
                         let mut item = old_procs.remove(pos);
-                        item.recipe = recipe; // an edited command takes effect on next restart
+                        // Only touch a live pane when the command genuinely changed — then
+                        // respawn it so an edited command takes effect right away, instead
+                        // of lingering on the old one until a manual restart.
+                        if item.recipe != recipe {
+                            item.recipe = recipe;
+                            if item.is_running() {
+                                item.spawn(rows, cols);
+                                restarted += 1;
+                            }
+                        }
                         next_procs.push(item);
                     }
                     None => {
@@ -461,6 +536,9 @@ impl App {
         }
         if added_agents > 0 {
             parts.push(format!("+{added_agents} agent(s)"));
+        }
+        if restarted > 0 {
+            parts.push(format!("{restarted} restarted"));
         }
         if orphaned > 0 {
             parts.push(format!("{orphaned} orphaned"));

@@ -31,8 +31,10 @@ pub enum Status {
     Failed,
 }
 
-/// Everything needed to (re)spawn a pane identically.
-#[derive(Clone)]
+/// Everything needed to (re)spawn a pane identically. `PartialEq` lets a live
+/// [reload](super::App::reload) tell whether a process's command actually changed
+/// (and so needs restarting) rather than just matching it by name.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Recipe {
     pub cmd: String,
     pub args: Vec<String>,

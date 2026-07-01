@@ -72,8 +72,10 @@ region they apply to.
 | `g` · `G` | Jump to the first / last row |
 | `Enter` · `l` · `→` | Open the selected row (see below) |
 | `s` | Start: spawn a launcher, or start a stopped session |
-| `x` | Close: **removes** an agent/terminal row entirely; **stops** a process (row stays) |
+| `x` | Close: **removes** an agent/terminal row entirely; **stops** a running process (row stays) |
 | `r` | Restart the selected session (or spawn a launcher) |
+| `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
+| `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `L` | [Link another project](04-configuration.md#linked-projects) into the workspace (also the button at the bottom of the sidebar) |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
@@ -86,12 +88,15 @@ region they apply to.
 
 **Opening a row** with `Enter`/`l`/`→` does the right thing for its kind: a `+ New Agent`/
 `+ New Terminal` launcher spawns and jumps into a fresh pane; `+ New Process` opens the
-[guided form](#adding-a-process); a stopped session is (re)started and focused; the git-panel row
-(in narrow mode) focuses the panel.
+[guided form](#adding-editing-and-deleting-a-process); a stopped session is (re)started and
+focused; the git-panel row (in narrow mode) focuses the panel.
 
-> **`x` means "close".** For agents and terminals — which are throwaway instances — `x` kills the
-> pane and removes the row. For processes — which are defined in your config — `x` stops the
-> process but leaves the row so you can start it again. The footer labels this key `close`.
+> **Agents/terminals vs. processes.** Agents and terminals are throwaway instances, so `x` kills
+> the pane and removes the row outright. Processes are **config entries**, so they're managed
+> differently: `x` only *stops* a running one (the row stays, to start again), and to change or
+> remove a process you **edit** it (`e`, reopens the guided form) or **delete** it (`D`, with a
+> confirmation that rewrites `mmux.yaml`). The footer swaps its chips to match: on a process you see
+> `edit`/`delete` instead of `close`, and `stop` shows only while it's actually running.
 
 ## Pane Keys (a focused program)
 
@@ -176,8 +181,10 @@ for the active project. (This deliberately shadows a pane's own `Ctrl+P`.)
 | `Enter` | Open the highlighted file in your editor |
 | `Esc` | Cancel |
 
-The list includes hidden files, and — even though it otherwise honours `.gitignore` — it also
-surfaces gitignored env files (`.env`, `.env.local`, `.envrc`, …) so you can edit them. The chosen
+The list includes hidden files and does **not** honour `.gitignore`, so gitignored-but-edited
+files (`.env`, local notes, generated config) show up too; heavy build/artifact directories
+(`node_modules`, `target`, `dist`, `.venv`, …) are excluded so they don't flood the list. A
+project can still hide paths from the picker with a ripgrep `.ignore`/`.rgignore` file. The chosen
 file opens in `$VISUAL`/`$EDITOR` (else `micro`, else `nano`) as a temporary terminal row marked
 `✎ <file>`. That row disappears on its own when you quit the editor.
 
@@ -198,7 +205,7 @@ v…`, or `v… ready`. Where mmux can't update itself the check is hidden: a de
 auto-update disabled reads `self-update off for this build`, and a non-Homebrew install (e.g.
 `cargo install`) reads `self-update off (not a Homebrew install)` once the check confirms it.
 
-## Adding a Process
+## Adding, Editing, and Deleting a Process
 
 The `+ New Process` launcher opens a four-step guided form that writes a new process into the
 project's `mmux.yaml`:
@@ -212,6 +219,15 @@ project's `mmux.yaml`:
 (and `Space`/`Tab`/`←`/`→` toggle it). The entry is appended to `mmux.yaml` **preserving your existing
 comments and layout**, the config is reloaded, the new row is selected, and — if you chose
 autostart — it is started immediately.
+
+**Editing** — press `e` on a process to reopen the same form **pre-filled** with its current
+name, command, working dir, and autostart. Finishing (`⏎ save` on Review) splices the change back
+into the same `mmux.yaml` entry, again **preserving your surrounding comments and layout**, and
+reloads. If you edited the command of a process that's **currently running**, the reload restarts
+it so the new command takes effect right away — no manual stop/start.
+
+**Deleting** — press `D` on a process for a confirmation, then `y` removes it from `mmux.yaml`
+(stopping any running instance) and reloads so the row disappears. `n`/`Esc` cancels.
 
 > The form cannot set environment variables. For a process that needs `env`, edit `mmux.yaml`
 > directly and press `R` to reload.

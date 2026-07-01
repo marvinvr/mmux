@@ -225,10 +225,11 @@ Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the 
 **without losing running panes**:
 
 - newly added processes and agents appear;
-- edited commands take effect on the next start;
+- an edited process command takes effect immediately: a process that's **running** is restarted
+  onto the new command (a stopped one just picks it up on its next start);
 - a process whose definition you removed keeps running as an "orphan" rather than being killed;
 - the git panel is gained or lost if the directory's repo status changed;
-- a one-line footer flash summarizes what changed.
+- a one-line footer flash summarizes what changed (added / restarted / orphaned / unreadable).
 
 Reload refreshes each *already-loaded* project in place. It does **not** re-read the
 `linked-projects` list to *drop* a project — only [linking another project](#linked-projects) grows
@@ -236,10 +237,12 @@ the workspace live; removing one needs a reopen.
 
 ## Adding a Process From the TUI
 
-You don't have to hand-edit YAML to add a process. The `+ New Process` launcher opens a
-[guided form](03-usage.md#adding-a-process) that appends the entry to your `mmux.yaml`,
-preserving the file's existing comments and layout, then reloads. (It can't set `env`, though —
-that still needs a hand edit.)
+You don't have to hand-edit YAML to manage processes. The `+ New Process` launcher opens a
+[guided form](03-usage.md#adding-editing-and-deleting-a-process) that appends the entry to your
+`mmux.yaml`, preserving the file's existing comments and layout, then reloads. The same form
+**edits** an existing process (`e`), splicing the change back into its entry, and `D` **deletes**
+one (with a confirmation) — both comment-preserving, both followed by a reload. (The form can't set
+`env`, though — that still needs a hand edit.)
 
 Likewise, the `+ Link another project` button (or `L`) writes a new entry into the launch
 directory's `linked-projects:` — same comment-preserving append — and adds the project to the live

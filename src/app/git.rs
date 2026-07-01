@@ -396,6 +396,9 @@ pub(crate) enum Confirmed {
     /// Quit mmux. The inner tmux session ends with it, killing every running pane,
     /// so this is gated behind the modal whenever anything is still alive.
     Quit,
+    /// Delete the named process from project `project`'s `mmux.yaml` (and stop any live
+    /// instance), then reload. See [`App::delete_process`](super::App::delete_process).
+    DeleteProcess { project: usize, name: String },
 }
 
 impl Overlay {
@@ -441,6 +444,11 @@ impl Overlay {
 
     pub(crate) fn new_process(project: usize) -> Overlay {
         Overlay::NewProcess(super::procform::ProcForm::new(project))
+    }
+
+    /// The process form pre-filled to edit `def` (see [`super::procform::ProcForm::edit`]).
+    pub(crate) fn edit_process(project: usize, def: &crate::config::ProcessDef) -> Overlay {
+        Overlay::NewProcess(super::procform::ProcForm::edit(project, def))
     }
 }
 
@@ -585,6 +593,7 @@ impl App {
                 None => {}
             },
             Confirmed::Quit => self.should_quit = true,
+            Confirmed::DeleteProcess { project, name } => self.delete_process(project, &name),
         }
     }
 
