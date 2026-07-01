@@ -6,7 +6,7 @@ Orientation for AI agents (and humans) working on **mmux**. Read this first, the
 
 ## What mmux Is
 
-A persistent, per-directory terminal multiplexer for AI coding agents and dev processes: a single
+A persistent terminal multiplexer for AI coding agents and dev processes: a single
 Rust binary with a ratatui TUI (sidebar of agents/terminals/processes + a main pane + a native git
 panel) that runs inside an invisible, per-directory tmux session so it survives detach/disconnect.
 The user-facing story is in [`README.md`](README.md); the full picture is in [`docs/`](docs/).

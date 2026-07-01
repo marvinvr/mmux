@@ -4,11 +4,11 @@
 
 <img src="assets/logo.png" alt="mmux logo" width="72" align="right">
 
-**Persistent terminals for your AI coding agents.**
+**Persistent terminals for your AI coding agents**
 
 **[mmux.org](https://mmux.org)**
 
-A per-directory terminal multiplexer in a single Rust binary. Type `mmux` in a project and you
+A terminal multiplexer in a single Rust binary. Type `mmux` in a project and you
 get a TUI: a left sidebar of **Agents** (Claude, Codex, … you spawn on demand), **Terminals**,
 and **Processes** (dev servers, scripts you start/stop and watch), a main pane showing the
 focused program, and a built-in **git panel** on the right.

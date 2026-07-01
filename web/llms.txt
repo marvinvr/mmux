@@ -1,6 +1,6 @@
 # mmux
 
-> A persistent, per-directory terminal multiplexer for AI coding agents and dev processes. A single
+> A persistent terminal multiplexer for AI coding agents and dev processes. A single
 > Rust binary opens a TUI — a sidebar of agents, terminals and processes, a main pane, and a native
 > git panel — running inside an invisible per-directory tmux session, so every session survives
 > closing the terminal or dropping SSH.

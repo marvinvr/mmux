@@ -101,7 +101,7 @@ fn check() -> Result<()> {
 
 fn print_help() {
     println!(
-        r#"mmux — persistent, per-directory multiplexer for AI agents & dev processes
+        r#"mmux — persistent multiplexer for AI agents & dev processes
 https://mmux.org
 
 USAGE:
@@ -131,7 +131,7 @@ KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=cl
 /// know how to set up the project / global YAML without opening any other file.
 fn print_docs() {
     println!(
-        r##"mmux — persistent, per-directory multiplexer for AI agents & dev processes
+        r##"mmux — persistent multiplexer for AI agents & dev processes
 ===========================================================================
 
 Home & docs: https://mmux.org

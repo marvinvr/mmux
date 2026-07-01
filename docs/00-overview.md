@@ -1,6 +1,6 @@
 # mmux Documentation
 
-mmux is a persistent, per-directory terminal multiplexer for AI coding agents and dev
+mmux is a persistent terminal multiplexer for AI coding agents and dev
 processes. It is a single Rust binary that runs in any terminal — including over SSH — and
 gives you a TUI for spawning agents, watching processes, and tracking git, all scoped to the
 directory you launched it in.
