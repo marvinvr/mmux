@@ -165,8 +165,9 @@ three boxes (Changes / Branches / Recent) and is driven by its own keymap.
 | `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |
 | `LinkProject` | `+ Link another project` / `L` | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
 
-The picker (`picker.rs`) lists files via `rg --files` → `git ls-files` → a shallow walk, and
-fuzzy-ranks them. The process form (`procform.rs`) collects fields step-by-step, then
+The picker (`picker.rs`) lists files with the `ignore` crate (ripgrep's walking engine, in-process
+— so no external `rg` is needed; `.gitignore` is deliberately *not* honoured and heavy
+build/artifact dirs are pruned instead) and fuzzy-ranks them. The process form (`procform.rs`) collects fields step-by-step, then
 `finish_new_process` writes the entry into `mmux.yaml` via `config::append_process` (new) or
 `config::replace_process` (an edit, keyed by the original name) — both raw-text edits that preserve
 comments — and reloads; `D` deletes via `config::remove_process` behind a confirmation. The link browser (`linkbrowse.rs`) walks the filesystem

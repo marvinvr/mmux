@@ -1,13 +1,14 @@
 //! The Ctrl+P fuzzy file picker.
 //!
-//! A modal that lists the active project's files (via `rg --files`, falling back
-//! to `git ls-files` and then a shallow manual walk) and fuzzy-filters them as you
-//! type. Enter opens the highlighted file in an editor pane — mirroring the user's
-//! shell `fe` widget (`rg | fzf -> micro`). The picker is held in
+//! A modal that lists the active project's files (via the `ignore` crate — ripgrep's
+//! own file-walking engine, run in-process, so nothing external is required) and
+//! fuzzy-filters them as you type. Enter opens the highlighted file in an editor pane —
+//! mirroring the user's shell `fe` widget (`rg | fzf -> micro`), except both the listing
+//! and the fuzzy ranking are built in. The picker is held in
 //! [`Overlay::Picker`](super::git::Overlay) and rendered by `view::git::render_picker`.
 
+use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub(crate) struct Picker {
     /// Project index the picker searches and opens files in (the active project).
@@ -81,118 +82,35 @@ impl Picker {
     }
 }
 
-/// List the files under `dir`, mirroring the user's `fe` widget: ripgrep including
-/// hidden files with the usual noise directories excluded. Degrades to tracked
-/// files (`git ls-files`) and finally a manual walk if neither tool is present.
+/// List the files under `dir` with the `ignore` crate (ripgrep's walking engine, run
+/// in-process): include hidden files and **don't** honour `.gitignore`, so
+/// commonly-edited yet typically-ignored files (`.env`, local notes, generated config)
+/// show up too. The heavy build/artifact directories in [`EXCLUDED_DIRS`] are pruned so
+/// they can't flood the list now that gitignore isn't filtering them. `.ignore` /
+/// `.rgignore` files are still honoured, so a project can tune the picker with one.
 fn list_files(dir: &Path) -> Vec<String> {
-    let globs = [
-        "!.git/*",
-        "!node_modules/**",
-        "!dist/**",
-        "!build/**",
-        "!coverage/**",
-        "!.next/**",
-        "!.nuxt/**",
-        "!vendor/**",
-    ];
-    let mut cmd = Command::new("rg");
-    cmd.arg("--files").arg("--hidden");
-    for g in globs {
-        cmd.arg("--glob").arg(g);
-    }
-    cmd.current_dir(dir);
-    if let Ok(out) = cmd.output() {
-        if out.status.success() {
-            let mut files = lines(&out.stdout);
-            // `--hidden` surfaces dotfiles, but ripgrep still honours .gitignore, so
-            // commonly-edited yet typically-ignored config (.env, .env.local, .envrc, …)
-            // never shows up. A positive `--glob` overrides ignore logic, so a second
-            // whitelist pass adds those back; the dir excludes keep nested
-            // node_modules/.env and the like out.
-            merge_unique(&mut files, list_env_files(dir, &globs));
-            return files;
-        }
-    }
-    // ripgrep missing/failed → fall back to tracked files.
-    if let Ok(out) = Command::new("git").args(["ls-files"]).current_dir(dir).output() {
-        if out.status.success() {
-            let v = lines(&out.stdout);
-            if !v.is_empty() {
-                return v;
-            }
-        }
-    }
-    // Last resort: a shallow manual walk, skipping the same noise dirs.
-    let mut out = Vec::new();
-    walk(dir, dir, &mut out);
-    out
-}
-
-fn lines(bytes: &[u8]) -> Vec<String> {
-    String::from_utf8_lossy(bytes)
-        .lines()
-        .map(str::to_string)
+    WalkBuilder::new(dir)
+        .hidden(false) // include dotfiles
+        .git_ignore(false) // don't honour .gitignore …
+        .git_global(false) // … or the global gitignore …
+        .git_exclude(false) // … or .git/info/exclude
+        // Prune the noise dirs by name (depth 0 is the root itself — never prune that).
+        .filter_entry(|e| {
+            e.depth() == 0 || e.file_name().to_str().is_none_or(|n| !EXCLUDED_DIRS.contains(&n))
+        })
+        .build()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_some_and(|t| t.is_file()))
+        .filter_map(|e| e.path().strip_prefix(dir).ok().map(|p| p.to_string_lossy().into_owned()))
         .collect()
 }
 
-/// A whitelist pass for env-style config files (`.env`, `.env.local`, `.envrc`, …)
-/// the main listing skips because they're gitignored. The positive `.env*` glob
-/// overrides ripgrep's ignore logic; `excludes` are the same dir-noise globs the
-/// main pass uses, so nested `node_modules/.env` and friends stay out.
-fn list_env_files(dir: &Path, excludes: &[&str]) -> Vec<String> {
-    let mut cmd = Command::new("rg");
-    cmd.arg("--files").arg("--hidden").arg("--glob").arg(".env*");
-    for g in excludes {
-        cmd.arg("--glob").arg(g);
-    }
-    cmd.current_dir(dir);
-    match cmd.output() {
-        Ok(out) if out.status.success() => lines(&out.stdout),
-        _ => Vec::new(),
-    }
-}
-
-/// Append items from `extra` not already present in `into`, preserving order. The
-/// env pass returns a handful of paths, so the linear membership check is cheap.
-fn merge_unique(into: &mut Vec<String>, extra: Vec<String>) {
-    for item in extra {
-        if !into.contains(&item) {
-            into.push(item);
-        }
-    }
-}
-
+/// Directories pruned from the picker listing. Since we no longer honour `.gitignore`,
+/// this names the heavy build/artifact trees we don't want flooding the list.
 const EXCLUDED_DIRS: &[&str] = &[
     ".git", "node_modules", "dist", "build", "coverage", ".next", ".nuxt", "vendor",
+    "target", ".venv", "venv", "__pycache__",
 ];
-/// Cap the manual-walk fallback so a giant tree can't stall the picker.
-const WALK_CAP: usize = 5000;
-
-fn walk(root: &Path, cur: &Path, out: &mut Vec<String>) {
-    if out.len() >= WALK_CAP {
-        return;
-    }
-    let Ok(rd) = std::fs::read_dir(cur) else {
-        return;
-    };
-    for entry in rd.flatten() {
-        if out.len() >= WALK_CAP {
-            return;
-        }
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
-            if !EXCLUDED_DIRS.contains(&name.as_ref()) {
-                walk(root, &entry.path(), out);
-            }
-        } else if ft.is_file() {
-            if let Ok(rel) = entry.path().strip_prefix(root) {
-                out.push(rel.to_string_lossy().into_owned());
-            }
-        }
-    }
-}
 
 /// Fuzzy subsequence score, case-insensitive. `None` if `needle` is not a
 /// subsequence of `hay`. Higher is better: consecutive matches and matches right

@@ -1,6 +1,6 @@
 [package]
 name = "mmux"
-version = "0.5.9"
+version = "0.6.0"
 edition = "2021"
 description = "A persistent, per-directory terminal multiplexer for AI agents and dev processes"
 license = "GPL-3.0-or-later"
@@ -23,6 +23,9 @@ serde_yaml = "0.9"
 # Errors + byte buffers for the writer channel.
 anyhow = "1"
 bytes = "1"
+# Ripgrep's file-walking engine, used in-process for the Ctrl+P file picker's listing
+# (gitignore/hidden/dir-prune handling) — so the picker needs no external `rg` on PATH.
+ignore = "0.4"
 
 [profile.release]
 opt-level = 2

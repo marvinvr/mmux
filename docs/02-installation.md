@@ -6,8 +6,7 @@
 | --- | --- | --- |
 | **tmux** | Yes | mmux runs its TUI inside a per-directory tmux session. Without `tmux` on your `PATH`, `mmux` prints an error and exits. |
 | **git** | For the git panel | The built-in [git panel](03-usage.md#the-git-panel) shells out to the `git` CLI. It only appears when the directory is a git repository. |
-| **ripgrep** (`rg`) | Optional | The [Ctrl+P file picker](03-usage.md#the-file-picker) lists files with `rg --files`, falling back to `git ls-files` and then a shallow directory walk if `rg` is absent. |
-| an editor | Optional | The file picker opens the chosen file with `$VISUAL`/`$EDITOR`, falling back to `micro`, then `nano`. |
+| an editor | Optional | The [Ctrl+P file picker](03-usage.md#the-file-picker) opens the chosen file with `$VISUAL`/`$EDITOR`, falling back to `micro`, then `nano`. |
 
 The agents and processes you configure (`claude`, `codex`, `npm`, …) need to be installed
 separately — mmux just launches them.
