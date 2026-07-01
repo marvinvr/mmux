@@ -91,7 +91,7 @@ the keys it names (down to a single nested field) and leaving the rest intact.
 `mmux check` prints the effective merged config; `mmux docs` prints a self-contained setup guide.
 See [Configuration](docs/04-configuration.md) for the full schema, the merge rules,
 [local overrides](docs/04-configuration.md#local-overrides--mmuxlocalyml), and
-[linked projects](docs/04-configuration.md#linked-projects) (several clones in one sidebar).
+[linked projects](docs/04-configuration.md#linked-projects) (several projects in one sidebar).
 
 ## Documentation
 

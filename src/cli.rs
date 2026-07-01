@@ -119,7 +119,7 @@ again in the same directory to reattach to whatever was already running.
 Config: mmux.yaml in the directory, layered on top of an optional global
 ~/.mmux/config.yaml (project values override the global ones). A private
 mmux.local.yml deep-overrides the project file. See `mmux init`/`mmux docs`.
-Add `linked-projects` to show sibling clones in one sidebar (see `mmux docs`).
+Add `linked-projects` to show other projects in one sidebar (see `mmux docs`).
 
 KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · R reload config · ? about · d detach · q quit
 KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close R=reload b=send Ctrl-b"#
@@ -209,19 +209,20 @@ GLOBAL FILE — ~/.mmux/config.yaml
           cmd: codex
           args: ["--dangerously-bypass-approvals-and-sandbox"]
 
-LINKED PROJECTS — one sidebar for several clones
-    Working in multiple clones of a repo (./app, ../app2, ../app3)? List the
-    siblings under `linked-projects` and they all open in ONE mmux, each as its own
-    group in the sidebar. Switch between them with [ and ]; the git panel follows
-    whichever project you're on.
+LINKED PROJECTS — one sidebar for several projects
+    Want several projects open together? List them under `linked-projects` and they
+    all open in ONE mmux, each its own group in the sidebar — extra clones of a repo,
+    a related repo, a service, whatever you want side by side. Switch between them
+    with [ and ]; the git panel follows whichever project you're on.
 
       # in ./app/mmux.yaml
       linked-projects:
         - ../app2
-        - ../app3
+        - ../api
+        - ../docs
 
     It's loaded ONE level deep and de-duplicated by path, so you can drop the very
-    same config into every clone (even one that lists itself) and it will never
+    same config into every project (even one that lists itself) and it will never
     expand recursively — at most 8 projects load. Changing the list takes effect
     on the next `mmux` (a reopen), not on `R` reload.
 

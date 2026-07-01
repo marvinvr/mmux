@@ -160,7 +160,7 @@ fn ask_linked(dir: &Path) -> Result<Vec<String>> {
     header("Other projects");
     println!(
         "{}",
-        dim("Show sibling directories (e.g. extra clones) alongside this one — each its own sidebar group.")
+        dim("Show other projects alongside this one in the same workspace — extra clones, a related repo, anything; each its own sidebar group.")
     );
     let mut out: Vec<String> = Vec::new();
     if !confirm("Link another project directory now?", false)? {
@@ -200,7 +200,7 @@ fn build_global_yaml(agents: &[Agent]) -> String {
     s.push_str("# mmux global config (~/.mmux/config.yaml).\n");
     s.push_str("# Agents here are available in EVERY project. A project's mmux.yaml can\n");
     s.push_str("# override or add to them by name.\n");
-    s.push_str("# Full guide: run `mmux docs`.\n\n");
+    s.push_str("# Full guide: run `mmux docs`, or visit https://mmux.org.\n\n");
     s.push_str("agents:\n");
     s.push_str(&agent_items(agents));
     s.push_str("\n# A git panel is shown automatically in every git repo. To disable it:\n");
@@ -223,7 +223,7 @@ fn build_local_yaml(
     let mut s = String::new();
     s.push_str("# mmux workspace config.\n");
     s.push_str("# Run `mmux` in this directory to open (or reattach to) the session.\n");
-    s.push_str("# New here? Run `mmux docs` for the full guide to this file and how mmux works.\n\n");
+    s.push_str("# New here? Run `mmux docs` for the full guide, or visit https://mmux.org.\n\n");
     s.push_str(&format!("name: {}\n\n", yaml_scalar(name)));
 
     // Agents
@@ -255,8 +255,10 @@ fn build_local_yaml(
     }
 
     // Linked projects
-    s.push_str("# Linked projects: sibling dirs (e.g. extra clones) shown alongside this one,\n");
-    s.push_str("# each its own sidebar group. One level deep, de-duplicated by path.\n");
+    s.push_str("# Linked projects: other projects to show alongside this one in the same\n");
+    s.push_str("# workspace — any directories you want grouped together (extra clones, a\n");
+    s.push_str("# related repo, a service), each its own sidebar group. One level deep,\n");
+    s.push_str("# de-duplicated by path.\n");
     if linked.is_empty() {
         s.push_str("# linked-projects:\n");
         s.push_str("#   - ../myproject2\n");

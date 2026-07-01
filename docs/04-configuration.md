@@ -107,7 +107,7 @@ processes:
 | `git-panel` | map | [Git panel](#git-panel) settings. |
 | `notifications` | map | [Notification](05-notifications.md) settings. |
 | `auto-update` | map | [Self-update](#auto-update) settings (Homebrew installs only). |
-| `linked-projects` | list of paths | Sibling directories to open in one sidebar. Honored **only** in the launch directory's config. |
+| `linked-projects` | list of paths | Other project directories to open together in one sidebar — not just clones, any related project. Honored **only** in the launch directory's config. |
 
 ### Agent
 
@@ -191,27 +191,29 @@ single run with the `MMUX_NO_UPDATE` environment variable.
 
 ## Linked Projects
 
-Working in several clones of a repo at once (`./app`, `../app2`, `../app3` — the
-"clones instead of worktrees" setup)? List the siblings under `linked-projects` and they all open
-in **one** mmux, each as its own group in the sidebar:
+Linked projects are **any other projects you want open together** in one workspace — not just extra
+clones. Common cases: several clones of a repo (`./app`, `../app2` — the "clones instead of
+worktrees" setup), a related repo, a service you run alongside. List them under `linked-projects`
+and they all open in **one** mmux, each as its own group in the sidebar:
 
 ```yaml
 # in ./app/mmux.yaml
 linked-projects:
-  - ../app2
-  - ../app3
+  - ../app2      # another clone
+  - ../api       # a related repo
+  - ../docs      # anything you want side by side
 ```
 
 - Switch between projects with `[` and `]`. The git panel **follows the active project** — when
   you select a row in `app2`, the panel shows `app2`'s git — and each project's panel stays alive
   in the background, so switching back is instant.
 - Paths are resolved relative to the config file. Loading is **one level deep** and
-  **de-duplicated by canonical path**, so you can drop the *same* config into every clone (even
+  **de-duplicated by canonical path**, so you can drop the *same* config into every project (even
   one that lists itself) and it will never expand recursively.
 - At most **8 projects** load in total (the launch directory plus up to 7 links). A missing,
-  unreadable, or over-the-cap sibling is skipped with a warning; only the launch directory
+  unreadable, or over-the-cap link is skipped with a warning; only the launch directory
   failing to load aborts startup.
-- The launch directory is always the first group, so opening mmux from any clone keeps "where you
+- The launch directory is always the first group, so opening mmux from any project keeps "where you
   are" on top.
 - You can **add** a link without restarting: the `+ Link another project` button at the bottom of
   the sidebar (or `L`) opens a [browser](03-usage.md#linking-another-project) that writes the chosen

@@ -68,7 +68,7 @@ pub(crate) struct LinkBrowser {
 
 impl LinkBrowser {
     /// Open a browser for a workspace rooted at `root`, with `loaded` the canonical
-    /// dirs of every project already in it. Starts one level up so sibling clones (the
+    /// dirs of every project already in it. Starts one level up so nearby projects (the
     /// common `../proj2`) are visible immediately.
     pub(crate) fn new(root: PathBuf, loaded: Vec<PathBuf>) -> LinkBrowser {
         let root = config::canonical(&root);

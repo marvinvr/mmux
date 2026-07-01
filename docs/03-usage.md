@@ -235,10 +235,10 @@ it so the new command takes effect right away — no manual stop/start.
 ## Linking Another Project
 
 The **`+ Link another project`** button pinned inside the bottom of the sidebar box (or the `L` key)
-opens a small directory browser to add a [linked project](04-configuration.md#linked-projects)
-without leaving mmux:
+opens a small directory browser to add a [linked project](04-configuration.md#linked-projects) —
+any other project you want in the same workspace, not just another clone — without leaving mmux:
 
-- It opens one level **above** your launch directory, so sibling clones (the common `../proj2`) are
+- It opens one level **above** your launch directory, so nearby projects (the common `../proj2`) are
   right there.
 - **Type** to filter the current folder; `↑`/`↓` move; `→` (or `Tab`) descends into a directory and
   `←` goes back up.

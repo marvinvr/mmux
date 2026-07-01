@@ -30,11 +30,11 @@ pub struct Config {
     /// (enabled); see [`NotifyConfig`].
     #[serde(default)]
     pub notifications: Option<NotifyConfig>,
-    /// Sibling project directories to load alongside this one — e.g. extra clones
-    /// (`../myproject2`). Each becomes its own group in the sidebar. Paths are
-    /// relative to this config's dir. Honored only in the directory you launch mmux
-    /// in: a linked project's own `linked-projects` is ignored, so a config shared
-    /// across clones can never expand recursively. See [`Config::load_workspace`].
+    /// Other project directories to load alongside this one in the same workspace —
+    /// any related projects, not just extra clones (`../myproject2`). Each becomes its
+    /// own group in the sidebar. Paths are relative to this config's dir. Honored only
+    /// in the directory you launch mmux in: a linked project's own `linked-projects` is
+    /// ignored, so a shared config can never expand recursively. See [`Config::load_workspace`].
     #[serde(default, rename = "linked-projects")]
     pub linked_projects: Vec<String>,
     /// Background self-update (Homebrew installs only). `None`/unset ⇒ enabled; see
@@ -576,7 +576,7 @@ fn scaffold_project_file(processes: &str, linked: &str) -> String {
     let mut s = String::new();
     s.push_str("# mmux workspace config.\n");
     s.push_str("# Run `mmux` in this directory to open (or reattach to) the session.\n");
-    s.push_str("# New here? Run `mmux docs` for the full guide to this file and how mmux works.\n");
+    s.push_str("# New here? Run `mmux docs` for the full guide, or visit https://mmux.org.\n");
     s.push_str("# `name` is optional — it defaults to this directory's name.\n");
     s.push_str("# name: my-workspace\n\n");
 
@@ -594,8 +594,10 @@ fn scaffold_project_file(processes: &str, linked: &str) -> String {
         s.push('\n');
     }
 
-    s.push_str("# Linked projects: sibling dirs (e.g. extra clones) shown alongside this one,\n");
-    s.push_str("# each its own sidebar group. One level deep, de-duplicated by path.\n");
+    s.push_str("# Linked projects: other projects to show alongside this one in the same\n");
+    s.push_str("# workspace — any directories you want grouped together (extra clones, a\n");
+    s.push_str("# related repo, a service), each its own sidebar group. One level deep,\n");
+    s.push_str("# de-duplicated by path.\n");
     if linked.is_empty() {
         s.push_str("# linked-projects:\n");
         s.push_str("#   - ../myproject2\n");
@@ -935,7 +937,7 @@ pub fn write_starter(dir: &Path) -> Result<()> {
 
 const STARTER: &str = r#"# mmux workspace config.
 # Run `mmux` in this directory to open (or reattach to) the session.
-# New here? Run `mmux docs` for the full guide to this file and how mmux works.
+# New here? Run `mmux docs` for the full guide, or visit https://mmux.org.
 # `name` is optional — it defaults to this directory's name.
 # name: my-workspace
 
@@ -957,10 +959,11 @@ processes:
     args: ["run", "dev"]
     autostart: false
 
-# Linked projects: sibling dirs (e.g. extra clones) to show alongside this one.
+# Linked projects: other projects to show alongside this one in the same workspace —
+# any directories you want grouped together (extra clones, a related repo, a service).
 # Each gets its own group in the sidebar; switch with [ and ]. Listing is one level
-# deep and de-duplicated by path, so you can drop this same config into every clone
-# (even listing itself) without it ever expanding recursively.
+# deep and de-duplicated by path, so you can drop this same config into every project
+# (even one that lists itself) without it ever expanding recursively.
 # linked-projects:
 #   - ../myproject2
 #   - ../myproject3

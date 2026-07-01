@@ -41,7 +41,7 @@ single, persistent, per-directory surface:
 - start, stop, and tail your processes without leaving the multiplexer;
 - stage, commit, branch, and push from a native git panel — no separate tool;
 - get notified when an agent needs you, wherever your terminal is running;
-- group several clones of a repo into one sidebar with [linked projects](04-configuration.md#linked-projects).
+- group several projects — extra clones, a related repo, a service — into one sidebar with [linked projects](04-configuration.md#linked-projects).
 
 ## The Mental Model
 

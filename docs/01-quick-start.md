@@ -27,7 +27,7 @@ mmux init
 
 `mmux init` is an interactive wizard: it offers the Claude and Codex agent presets (each with an
 optional "danger" mode that skips permission prompts), asks for any start commands you want to
-watch, and lets you list sibling clones as [linked projects](04-configuration.md#linked-projects).
+watch, and lets you list other projects you want in the same workspace as [linked projects](04-configuration.md#linked-projects).
 On a machine with no global config yet, your agents are saved to `~/.mmux/config.yaml` so they
 are available in every project; the rest goes in this project's `mmux.yaml`.
 
