@@ -185,7 +185,7 @@ The list includes hidden files and does **not** honour `.gitignore`, so gitignor
 files (`.env`, local notes, generated config) show up too; heavy build/artifact directories
 (`node_modules`, `target`, `dist`, `.venv`, …) are excluded so they don't flood the list. A
 project can still hide paths from the picker with an `.ignore`/`.rgignore` file. The chosen
-file opens in `$VISUAL`/`$EDITOR` (else `micro`, else `nano`) as a temporary terminal row marked
+file opens in `$VISUAL`/`$EDITOR` (else the first of `micro`, `nano`, `vim`, `vi` on `PATH`) as a temporary terminal row marked
 `✎ <file>`. That row disappears on its own when you quit the editor.
 
 ## The About Card

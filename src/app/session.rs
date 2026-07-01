@@ -71,8 +71,8 @@ impl Recipe {
         }
     }
 
-    /// An editor opening `rel` (relative to `dir`): `$VISUAL`/`$EDITOR` if set,
-    /// else `micro`, else `nano`. Mirrors the user's Ctrl+P-opens-micro habit.
+    /// An editor opening `rel` (relative to `dir`): `$VISUAL`/`$EDITOR` if set, else the
+    /// first of `micro`/`nano`/`vim`/`vi` on `PATH`. Mirrors the user's Ctrl+P-opens-micro habit.
     pub fn editor(dir: &Path, rel: &str) -> Recipe {
         let (cmd, mut args) = editor_command();
         args.push(rel.to_string());
@@ -230,7 +230,8 @@ pub fn default_shell() -> String {
 }
 
 /// Resolve the editor command + any leading args: `$VISUAL` then `$EDITOR` (split
-/// on whitespace so `"code -w"` works), else `micro` if on `PATH`, else `nano`.
+/// on whitespace so `"code -w"` works), else the first of `micro`, `nano`, `vim`, `vi`
+/// found on `PATH` — falling back to `vi` (the near-universal last resort) if none are.
 fn editor_command() -> (String, Vec<String>) {
     for var in ["VISUAL", "EDITOR"] {
         if let Ok(v) = std::env::var(var) {
@@ -240,7 +241,7 @@ fn editor_command() -> (String, Vec<String>) {
             }
         }
     }
-    let cmd = if on_path("micro") { "micro" } else { "nano" };
+    let cmd = ["micro", "nano", "vim", "vi"].into_iter().find(|c| on_path(c)).unwrap_or("vi");
     (cmd.to_string(), Vec::new())
 }
 
