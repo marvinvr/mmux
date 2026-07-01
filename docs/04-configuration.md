@@ -239,7 +239,10 @@ the workspace live; removing one needs a reopen.
 
 You don't have to hand-edit YAML to manage processes. The `+ New Process` launcher opens a
 [guided form](03-usage.md#adding-editing-and-deleting-a-process) that appends the entry to your
-`mmux.yaml`, preserving the file's existing comments and layout, then reloads. The same form
+`mmux.yaml`, preserving the file's existing comments and layout, then reloads. If there's no
+`mmux.yaml` yet (or it's empty), the first add writes a fully documented file — the same header,
+`mmux docs` pointer, and commented example sections `mmux init` produces — rather than a bare
+`processes:` block. The same form
 **edits** an existing process (`e`), splicing the change back into its entry, and `D` **deletes**
 one (with a confirmation) — both comment-preserving, both followed by a reload. (The form can't set
 `env`, though — that still needs a hand edit.)

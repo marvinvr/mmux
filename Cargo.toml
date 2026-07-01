@@ -1,6 +1,6 @@
 [package]
 name = "mmux"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 description = "A persistent, per-directory terminal multiplexer for AI agents and dev processes"
 license = "GPL-3.0-or-later"

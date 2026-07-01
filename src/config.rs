@@ -513,7 +513,15 @@ fn quote_token(s: &str) -> String {
 /// serde (which would strip every comment). Creates the file/block if absent.
 pub fn append_process(path: &Path, p: &ProcessDraft) -> Result<()> {
     let original = std::fs::read_to_string(path).unwrap_or_default();
-    let updated = insert_process(&original, p)?;
+    let updated = if original.trim().is_empty() {
+        // Brand-new (or empty) file: don't leave it as a bare `processes:` block —
+        // write the documented scaffold (header, `mmux docs` pointer, commented example
+        // sections) with this process live, matching what `mmux init` produces. Existing
+        // files are spliced in place so their comments/layout survive.
+        scaffold_project_file(&render_item(p, 2), "")
+    } else {
+        insert_process(&original, p)?
+    };
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }
@@ -547,9 +555,55 @@ pub fn remove_process(path: &Path, name: &str) -> Result<()> {
 /// browser so a linked sibling survives the next reopen.
 pub fn append_linked_project(path: &Path, rel: &str) -> Result<()> {
     let original = std::fs::read_to_string(path).unwrap_or_default();
-    let updated = insert_linked_project(&original, rel)?;
+    let updated = if original.trim().is_empty() {
+        // Same as [`append_process`]: seed an empty/absent file with the documented
+        // scaffold rather than a bare `linked-projects:` block.
+        scaffold_project_file("", &format!("  - {}\n", yaml_scalar(rel)))
+    } else {
+        insert_linked_project(&original, rel)?
+    };
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
+}
+
+/// A fresh, self-documenting project file for a directory that has no config yet — the
+/// same header, `mmux docs` pointer, and section comments the `mmux init` starter uses,
+/// so a file born from the in-TUI "+ New Process" / "Link project" flows explains itself
+/// instead of starting life as a bare block. `processes`/`linked` hold the already-
+/// rendered live list items (indent 2) for whichever section triggered the creation; an
+/// empty string leaves that section as a commented example.
+fn scaffold_project_file(processes: &str, linked: &str) -> String {
+    let mut s = String::new();
+    s.push_str("# mmux workspace config.\n");
+    s.push_str("# Run `mmux` in this directory to open (or reattach to) the session.\n");
+    s.push_str("# New here? Run `mmux docs` for the full guide to this file and how mmux works.\n");
+    s.push_str("# `name` is optional — it defaults to this directory's name.\n");
+    s.push_str("# name: my-workspace\n\n");
+
+    s.push_str("# Agents: interactive programs you spawn on demand from the sidebar.\n");
+    s.push_str("# agents:\n");
+    s.push_str("#   - name: Claude\n#     cmd: claude\n#     args: [\"--dangerously-skip-permissions\"]\n\n");
+
+    s.push_str("# Processes: commands you start/stop and watch. cwd is relative to this file.\n");
+    if processes.is_empty() {
+        s.push_str("# processes:\n");
+        s.push_str("#   - name: Dev server\n#     cmd: npm\n#     args: [\"run\", \"dev\"]\n#     autostart: false\n\n");
+    } else {
+        s.push_str("processes:\n");
+        s.push_str(processes);
+        s.push('\n');
+    }
+
+    s.push_str("# Linked projects: sibling dirs (e.g. extra clones) shown alongside this one,\n");
+    s.push_str("# each its own sidebar group. One level deep, de-duplicated by path.\n");
+    if linked.is_empty() {
+        s.push_str("# linked-projects:\n");
+        s.push_str("#   - ../myproject2\n");
+    } else {
+        s.push_str("linked-projects:\n");
+        s.push_str(linked);
+    }
+    s
 }
 
 /// Splice a rendered process item into `text`'s top-level `processes:` block.
@@ -970,6 +1024,52 @@ mod tests {
         assert!(out.contains("\nprocesses:\n  - name: Dev server"));
         let cfg: Config = serde_yaml::from_str(&out).unwrap();
         assert_eq!(cfg.processes.len(), 1);
+    }
+
+    #[test]
+    fn scaffolds_a_documented_file_for_a_new_process() {
+        // A process added to a directory with no config gets the full documented
+        // scaffold (header + `mmux docs` pointer + commented example sections), not a
+        // bare `processes:` block — the live process sits in the processes section while
+        // agents/linked-projects stay as commented examples.
+        let out = scaffold_project_file(&render_item(&draft(), 2), "");
+        assert!(out.starts_with("# mmux workspace config."));
+        assert!(out.contains("mmux docs"));
+        assert!(out.contains("# agents:"));
+        assert!(out.contains("processes:\n  - name: Dev server"));
+        assert!(out.contains("# linked-projects:"));
+        // The commented processes example is gone (the real block took its place) and
+        // the whole thing parses back to exactly the one process.
+        assert!(!out.contains("# processes:"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes.len(), 1);
+        assert_eq!(cfg.processes[0].name, "Dev server");
+        assert!(cfg.linked_projects.is_empty());
+    }
+
+    #[test]
+    fn scaffolds_a_documented_file_for_a_linked_project() {
+        let out = scaffold_project_file("", "  - ../sibling\n");
+        assert!(out.contains("mmux docs"));
+        assert!(out.contains("linked-projects:\n  - ../sibling"));
+        // Processes stays a commented example when only a link was added.
+        assert!(out.contains("# processes:"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert!(cfg.processes.is_empty());
+        assert_eq!(cfg.linked_projects, vec!["../sibling"]);
+    }
+
+    #[test]
+    fn append_process_scaffolds_a_missing_file() {
+        let dir = std::env::temp_dir().join(format!("mmux-scaffold-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mmux.yaml");
+        let _ = std::fs::remove_file(&path);
+        append_process(&path, &draft()).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("mmux docs"));
+        assert!(written.contains("processes:\n  - name: Dev server"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
