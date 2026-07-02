@@ -172,6 +172,11 @@ Click the preview (or it's already in front in compact mode) to scroll it with `
 `PgUp`/`PgDn` / `Space`, `Ctrl-d`/`Ctrl-u`, and `g`/`G`. Close it with `Esc` (or `q` / `h`); it
 also clears the moment you select a session or switch projects.
 
+**Drag to select and copy.** Press and drag across the diff to select text — releasing copies it to
+the clipboard (OSC 52 + the local helper). The selection covers only the **code**: the line-number
+gutter and the `+`/`-` sign column are never included, so a copied hunk pastes as plain source, not
+a diff. Dragging past the top or bottom edge auto-scrolls to extend the selection beyond one screen.
+
 **Image files** (`png`, `jpg`/`jpeg`, `gif`, `webp`, `bmp`) preview as the picture itself rather
 than git's "Binary files differ", decoded from the working tree. On a **sixel-capable terminal**
 you get a real, legible picture (mmux draws through tmux, and tmux renders the sixel natively for

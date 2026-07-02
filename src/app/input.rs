@@ -527,10 +527,12 @@ impl App {
             return;
         }
         if hit(self.regions.main, c, r) {
-            // A diff preview owns the pane: clicking focuses it for keyboard scrolling,
-            // but there's no vt100 grid to drag-select.
+            // A diff preview owns the pane: focus it for keyboard scrolling, and arm a
+            // drag-to-copy over its text (the pager isn't a vt100 grid, so it has its
+            // own cell mapping that skips the gutter + sign columns).
             if self.diff.is_some() {
                 self.focus = Focus::Terminal;
+                self.arm_diff_selection(c, r);
                 return;
             }
             if let Some(nav) = self.current_nav() {
@@ -603,13 +605,18 @@ impl App {
         self.drag_scroll = if inner.height == 0 || self.drag.is_none() {
             0
         } else if r <= inner.y {
-            1 // top edge → reveal older history
+            1 // top edge → reveal earlier lines
         } else if r + 1 >= inner.y + inner.height {
-            -1 // bottom edge → back toward the present
+            -1 // bottom edge → reveal later lines
         } else {
             0
         };
-        self.update_drag_head(inner, c, r);
+        // The diff pager scrolls its own offset; a live pane scrolls its scrollback.
+        if self.diff.is_some() {
+            self.update_diff_head(inner, c, r);
+        } else {
+            self.update_drag_head(inner, c, r);
+        }
     }
 
     /// Release: a real drag copies its contents; a plain click just clears.
@@ -617,7 +624,10 @@ impl App {
         self.drag_scroll = 0;
         if let Some(sel) = self.drag.take() {
             if sel.moved {
-                self.copy_selection(sel);
+                match sel.target {
+                    SelTarget::Main => self.copy_selection(sel),
+                    SelTarget::Diff => self.copy_diff_selection(sel),
+                }
             }
         }
     }
@@ -653,6 +663,78 @@ impl App {
         }
     }
 
+    /// Anchor a diff selection at `(c, r)`. Endpoints are `(line index, content column)`
+    /// — see [`diff_cell`](Self::diff_cell).
+    fn arm_diff_selection(&mut self, c: u16, r: u16) {
+        let Some(inner) = self.regions.main_inner else { return };
+        self.drag_scroll = 0;
+        let cell = self.diff_cell(inner, c, r);
+        self.drag = Some(Selection { target: SelTarget::Diff, anchor: cell, head: cell, moved: false });
+    }
+
+    /// Move the diff drag head to the cell under `(c, r)`.
+    fn update_diff_head(&mut self, inner: Rect, c: u16, r: u16) {
+        let cell = self.diff_cell(inner, c, r);
+        if let Some(sel) = self.drag.as_mut() {
+            if cell != sel.anchor {
+                sel.moved = true;
+            }
+            sel.head = cell;
+        }
+    }
+
+    /// Map an absolute mouse position to a diff cell `(line index, content column)`. The
+    /// row resolves to a line in the body (accounting for the pager scroll) and the
+    /// column is measured from where the code starts — past the `gutter`-wide number and
+    /// the sign — and clamped into that line's content, so the gutter and `+`/`-` are
+    /// never part of a selection.
+    fn diff_cell(&self, inner: Rect, c: u16, r: u16) -> (i32, u16) {
+        let Some(v) = self.diff.as_ref() else { return (0, 0) };
+        if v.lines.is_empty() {
+            return (0, 0);
+        }
+        let ir = r.clamp(inner.y, inner.y + inner.height.saturating_sub(1)) - inner.y;
+        let i = (ir as i32 + v.scroll as i32).clamp(0, v.lines.len() as i32 - 1);
+        let start = inner.x + v.gutter as u16 + 2; // number + separating space + sign
+        let len = v.lines[i as usize].content().chars().count() as u16;
+        let cx = c.clamp(inner.x, inner.x + inner.width.saturating_sub(1));
+        let col = cx.saturating_sub(start).min(len.saturating_sub(1));
+        (i, col)
+    }
+
+    /// Extract the selected diff text — each line's code only (gutter number and sign
+    /// stripped, see [`DiffLine::content`](crate::app::git::DiffLine::content)) — and put
+    /// it on the clipboard.
+    fn copy_diff_selection(&mut self, sel: Selection) {
+        let Some(v) = self.diff.as_ref() else { return };
+        let (lo, sc, hi, ec) = sel.ordered();
+        let mut out: Vec<String> = Vec::new();
+        for i in lo..=hi {
+            let Some(line) = v.lines.get(i as usize) else { continue };
+            let chars: Vec<char> = line.content().chars().collect();
+            // Column span per line: full-line for the middle, open-ended at the edges.
+            let (a, b) = if lo == hi {
+                (sc, ec)
+            } else if i == lo {
+                (sc, u16::MAX)
+            } else if i == hi {
+                (0, ec)
+            } else {
+                (0, u16::MAX)
+            };
+            let start = (a as usize).min(chars.len());
+            let end = (b as usize).saturating_add(1).min(chars.len()); // inclusive → exclusive
+            out.push(chars[start..end.max(start)].iter().collect());
+        }
+        let text = trim_block(&out.join("\n"));
+        if text.is_empty() {
+            return;
+        }
+        let n = text.chars().count();
+        crate::clipboard::copy(&text);
+        self.flash = Some((format!("copied {n} chars"), std::time::Instant::now()));
+    }
+
     /// One auto-scroll step in the armed direction, re-pinning the drag head to the
     /// edge it's held against. Called from `tick`, so it repeats on its own while
     /// the cursor sits at a pane edge. A no-op unless a drag is held at an edge; the
@@ -663,6 +745,22 @@ impl App {
             return;
         }
         let Some(inner) = self.regions.main_inner else { return };
+        // The diff pager scrolls its own offset and re-pins the head to the edge line;
+        // dir 1 (top edge) reveals earlier lines, so its scroll delta is negative.
+        if matches!(self.drag, Some(sel) if sel.target == SelTarget::Diff) {
+            self.diff_scroll(-dir * DRAG_SCROLL_STEP);
+            let Some(v) = self.diff.as_ref() else { return };
+            let line = if dir > 0 {
+                v.scroll
+            } else {
+                (v.scroll + inner.height.saturating_sub(1) as usize).min(v.lines.len().saturating_sub(1))
+            } as i32;
+            if let Some(sel) = self.drag.as_mut() {
+                sel.moved = true;
+                sel.head.0 = line;
+            }
+            return;
+        }
         if let Some(p) = self.current_nav().and_then(|n| self.pane_at(n)) {
             p.scroll(dir * DRAG_SCROLL_STEP);
         }
@@ -682,6 +780,7 @@ impl App {
         let (lo, sc, hi, ec) = sel.ordered();
         let pane = match sel.target {
             SelTarget::Main => self.current_nav().and_then(|n| self.pane_at(n)),
+            SelTarget::Diff => return, // handled by `copy_diff_selection`
         };
         let Some(pane) = pane else { return };
         // `contents_block` takes an exclusive end column; +1 to include the cell
@@ -914,11 +1013,16 @@ fn button_code(b: MouseButton) -> u8 {
     }
 }
 
-/// Which pane a drag-to-copy selection is happening over. Only the main pane is
-/// selectable — the git panel is native text, not a vt100 grid.
+/// What a drag-to-copy selection is happening over. The live main pane (a vt100 grid)
+/// and the diff pager are selectable; the git panel is native text and isn't.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SelTarget {
+    /// The live vt100 pane — endpoints are pane buffer cells.
     Main,
+    /// The diff pager — endpoints are `(line index, content column)`, where the column
+    /// is measured from where the code starts (past the gutter number + sign), so the
+    /// gutter and the `+`/`-` never fall inside the selection.
+    Diff,
 }
 
 /// An in-progress (or just-released) mouse drag selection over a pane. Endpoints

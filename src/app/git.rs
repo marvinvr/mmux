@@ -307,6 +307,19 @@ pub(crate) struct DiffLine {
     pub spans: Vec<(Color, String)>,
 }
 
+impl DiffLine {
+    /// The selectable / copyable text of the line: the code with the leading `+`/`-`/
+    /// space sign stripped (a hunk header keeps its full `@@ … @@` text). This is what a
+    /// drag-select yields and highlights, deliberately excluding the gutter line number
+    /// and the sign column so a copied diff pastes as plain code.
+    pub(crate) fn content(&self) -> &str {
+        match self.kind {
+            DiffKind::Hunk => &self.text,
+            _ => self.text.get(1..).unwrap_or(""),
+        }
+    }
+}
+
 /// The visible diff line kinds (the noisy `diff --git`/`index`/`+++`/`---` headers
 /// are dropped at build time, so they need no variant).
 #[derive(Clone, Copy)]

@@ -45,11 +45,16 @@ impl App {
         }
         self.regions.main_inner = Some(inner);
 
-        // The diff preview takes over the pane as a read-only pager — no PTY resize,
-        // no drag-to-copy (it isn't a vt100 grid). An image file shows its picture
-        // instead of a textual diff.
-        if let Some(v) = self.diff.as_mut() {
-            if let Some(img) = v.image.as_mut() {
+        // The diff preview takes over the pane as a read-only pager — no PTY resize. A
+        // text diff supports its own gutter-aware drag-to-copy; an image file shows its
+        // picture instead of a textual diff.
+        if self.diff.is_some() {
+            // Only an image diff needs `&mut` (its sixel/half-block cache); the text
+            // pager is read-only, which also lets us paint the selection over it after.
+            let is_image = self.diff.as_ref().is_some_and(|v| v.image.is_some());
+            if is_image {
+                let v = self.diff.as_mut().unwrap();
+                let img = v.image.as_mut().unwrap();
                 // Real pixels via sixel where the terminal supports it (the encoded
                 // picture is stashed and painted on top of this frame in `run_loop`);
                 // otherwise the half-block fallback drawn straight into the buffer.
@@ -62,7 +67,8 @@ impl App {
                     render_image(f, inner, img);
                 }
             } else {
-                render_diff(f, inner, v);
+                render_diff(f, inner, self.diff.as_ref().unwrap());
+                self.paint_diff_selection(f, inner);
             }
             return;
         }
@@ -137,6 +143,56 @@ impl App {
             };
             for col in c0..=c1.min(last) {
                 if let Some(cell) = buf.cell_mut((inner.x + col, inner.y + row)) {
+                    cell.set_style(style);
+                }
+            }
+        }
+    }
+
+    /// Paint the active diff selection as a reverse-video overlay, one line at a time,
+    /// covering only each line's **content** columns — from where the code starts (past
+    /// the gutter number + sign) to the end of the selected span — so the gutter and the
+    /// `+`/`-` are never highlighted. Endpoints are `(line index, content column)`;
+    /// project each onto a viewport row via the pager scroll and skip what's off-screen.
+    fn paint_diff_selection(&self, f: &mut Frame, inner: Rect) {
+        let Some(sel) = self.drag else { return };
+        if !sel.moved || sel.target != SelTarget::Diff {
+            return;
+        }
+        let Some(v) = self.diff.as_ref() else { return };
+        let start = v.gutter as u16 + 2; // content start, inner-relative (number + space + sign)
+        let (lo, sc, hi, ec) = sel.ordered();
+        let scroll = v.scroll as i32;
+        let style = Style::default().add_modifier(Modifier::REVERSED);
+        let buf = f.buffer_mut();
+        for i in lo..=hi {
+            let sr = i - scroll; // viewport row of this diff line
+            if sr < 0 || sr >= inner.height as i32 {
+                continue;
+            }
+            let Some(line) = v.lines.get(i as usize) else { continue };
+            let len = line.content().chars().count() as u16;
+            if len == 0 {
+                continue;
+            }
+            // Column span on this line: full content for the middle, open at the edges.
+            let (a, b) = if lo == hi {
+                (sc, ec)
+            } else if i == lo {
+                (sc, len - 1)
+            } else if i == hi {
+                (0, ec)
+            } else {
+                (0, len - 1)
+            };
+            let (a, b) = (a.min(len - 1), b.min(len - 1));
+            let row = inner.y + sr as u16;
+            for k in a..=b {
+                let x = inner.x + start + k;
+                if x >= inner.x + inner.width {
+                    break;
+                }
+                if let Some(cell) = buf.cell_mut((x, row)) {
                     cell.set_style(style);
                 }
             }
