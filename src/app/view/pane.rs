@@ -3,7 +3,7 @@
 //! [`render_screen`]/[`render_placeholder`]; the wrappers only differ in which
 //! recipe/rect/resize target they touch.
 
-use super::theme::status_label;
+use super::theme::{self, status_label};
 use crate::app::git::{DiffKind, DiffLine, DiffView, PreviewImage};
 use crate::app::input::SelTarget;
 use crate::app::nav::Nav;
@@ -256,14 +256,19 @@ fn diff_title(v: &DiffView) -> Line<'static> {
     Line::from(spans)
 }
 
-/// Render the diff body as a scrolled, colour-coded pager: additions green,
-/// deletions red, `@@` hunk headers cyan, context grey.
+/// Render the diff body as a scrolled pager: a dim line-number gutter, the `+`/`-` sign,
+/// then syntax-highlighted code — with a subtle full-row tint on added/removed lines
+/// (see [`diff_line`]). `@@` hunk headers read as quiet blue dividers.
 fn render_diff(f: &mut Frame, area: Rect, v: &DiffView) {
     if v.lines.is_empty() {
         render_placeholder(f, area, "No textual diff — new, empty, or binary file.");
         return;
     }
-    let lines: Vec<Line> = v.lines.iter().map(diff_line).collect();
+    let lines: Vec<Line> = v
+        .lines
+        .iter()
+        .map(|l| diff_line(l, area.width, v.gutter))
+        .collect();
     f.render_widget(Paragraph::new(lines).scroll((v.scroll as u16, 0)), area);
 }
 
@@ -298,14 +303,48 @@ fn render_image(f: &mut Frame, area: Rect, img: &mut PreviewImage) {
     }
 }
 
-fn diff_line(l: &DiffLine) -> Line<'static> {
-    let color = match l.kind {
-        DiffKind::Add => Color::Green,
-        DiffKind::Del => Color::Red,
-        DiffKind::Hunk => Color::Cyan,
-        DiffKind::Context => Color::Gray,
+/// One diff row: `[right-aligned line no.] [sign] [highlighted code]`, with added and
+/// removed lines carrying a full-width background tint. `gutter` is the number column's
+/// digit width (from [`DiffView::gutter`]); `width` is the pane width, so a tinted row
+/// pads out to fill it rather than stopping at the end of the text.
+fn diff_line(l: &DiffLine, width: u16, gutter: usize) -> Line<'static> {
+    // Hunk header: a quiet blue divider, indented to line up with the code column
+    // (number + separating space + sign), no gutter number of its own.
+    if matches!(l.kind, DiffKind::Hunk) {
+        return Line::from(vec![
+            Span::raw(" ".repeat(gutter + 2)),
+            Span::styled(l.text.clone(), Style::default().fg(theme::DIFF_HUNK)),
+        ]);
+    }
+
+    let (bg, sign_fg) = match l.kind {
+        DiffKind::Add => (Some(theme::DIFF_ADD_BG), theme::DIFF_ADD_SIGN),
+        DiffKind::Del => (Some(theme::DIFF_DEL_BG), theme::DIFF_DEL_SIGN),
+        // Context is untinted; its space "sign" is invisible anyway.
+        _ => (None, theme::DIFF_GUTTER),
     };
-    Line::from(Span::styled(l.text.clone(), Style::default().fg(color)))
+    let num = match l.new_no {
+        Some(n) => format!("{n:>gutter$}"),
+        None => " ".repeat(gutter),
+    };
+    let mut spans = vec![
+        Span::styled(format!("{num} "), Style::default().fg(theme::DIFF_GUTTER)),
+        Span::styled(l.sign.to_string(), Style::default().fg(sign_fg)),
+    ];
+    for (color, text) in &l.spans {
+        spans.push(Span::styled(text.clone(), Style::default().fg(*color)));
+    }
+    let mut line = Line::from(spans);
+    if let Some(bg) = bg {
+        // Pad to the full pane width so the tint spans the whole row (a `Line`'s
+        // background otherwise stops at the last character), matching the sidebar bars.
+        let pad = (width as usize).saturating_sub(line.width());
+        if pad > 0 {
+            line.spans.push(Span::raw(" ".repeat(pad)));
+        }
+        line.style = Style::default().bg(bg);
+    }
+    line
 }
 
 fn render_placeholder(f: &mut Frame, area: Rect, msg: &str) {

@@ -1,6 +1,6 @@
 [package]
 name = "mmux"
-version = "0.6.6"
+version = "0.7.0"
 edition = "2021"
 description = "A persistent terminal multiplexer for AI agents and dev processes"
 license = "GPL-3.0-or-later"
@@ -35,6 +35,10 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # supports it we get an actually-legible picture; elsewhere we fall back to half-blocks.
 # A standalone encoder — lighter than pulling the whole ratatui-image widget stack.
 icy_sixel = "0.5"
+# Syntax highlighting for the git diff preview. `default-fancy` selects the pure-Rust
+# `fancy-regex` backend (no oniguruma C dep) so the release cross-builds stay simple; it
+# still bundles the default syntax + theme sets we load lazily on the first diff.
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 
 [profile.release]
 opt-level = 2

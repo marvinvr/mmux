@@ -10,6 +10,17 @@ use ratatui::text::{Line, Span};
 /// Red stays for genuine errors.
 pub(crate) const ATTN: Color = Color::Green;
 
+/// The git diff pager's palette. Added/removed lines carry a subtle full-row **tint**
+/// (dark enough that the syntax-highlit foreground stays legible on top) rather than
+/// flat green/red text, with the `+`/`-` kept as a saturated sign in the gutter — the
+/// modern GitHub/editor look. The line-number gutter and `@@` hunk headers are quiet.
+pub(crate) const DIFF_ADD_BG: Color = Color::Rgb(16, 42, 28);
+pub(crate) const DIFF_DEL_BG: Color = Color::Rgb(52, 22, 26);
+pub(crate) const DIFF_ADD_SIGN: Color = Color::Rgb(63, 185, 80);
+pub(crate) const DIFF_DEL_SIGN: Color = Color::Rgb(248, 81, 73);
+pub(crate) const DIFF_GUTTER: Color = Color::Rgb(110, 118, 129);
+pub(crate) const DIFF_HUNK: Color = Color::Rgb(88, 166, 255);
+
 pub(crate) fn status_style(s: Status) -> Style {
     match s {
         Status::Running => Style::default().fg(Color::Green),

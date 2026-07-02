@@ -9,6 +9,7 @@
 //! - [`view`] — all rendering (layout, sidebar, panes, footer).
 
 mod git;
+mod highlight;
 mod input;
 mod keymap;
 mod lifecycle;

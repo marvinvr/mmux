@@ -159,8 +159,11 @@ an agent makes in the main pane show up on their own.
 ### The Diff Preview
 
 Single-click a changed file (or press `v`) to show its diff in the **main pane** — where an agent
-usually lives — as a read-only, colour-coded pager (additions green, deletions red, `@@` hunks
-cyan). It is a *live preview*: as you move the Changes cursor it follows along, and it re-reads
+usually lives — as a read-only, syntax-highlighted pager: a dim line-number gutter, the `+`/`-`
+sign, then the code coloured by language, with added and removed lines carrying a subtle full-row
+green/red **tint** (rather than flat coloured text) and `@@` hunk headers reading as quiet blue
+dividers. Highlighting is per-line (the pager never sees the whole file), and is skipped for very
+large diffs. It is a *live preview*: as you move the Changes cursor it follows along, and it re-reads
 the file on the same throttle as the panel, so an agent's edits to the shown file appear as they
 happen. The header reads `Δ <path>  +added −removed`; the diff is `HEAD` vs the working tree, so
 staged and unstaged edits show together (a brand-new file shows as all-added).

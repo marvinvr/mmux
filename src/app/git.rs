@@ -14,11 +14,13 @@
 //! panel is visible and immediately after any mutating action.
 
 use crate::git::{self, Branch, Commit, FileEntry, Stage, TreeRow};
+use ratatui::style::Color;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::highlight::Highlighter;
 use super::App;
 
 /// How often the visible panel re-reads git state (picks up commits an agent makes
@@ -278,6 +280,9 @@ pub(crate) struct DiffView {
     pub removed: u32,
     /// The classified, header-stripped diff body.
     pub lines: Vec<DiffLine>,
+    /// Width (in digits) of the new-file line-number gutter — the largest number shown,
+    /// so the renderer can right-align the column. 0 when there are no numbered lines.
+    pub gutter: usize,
     /// First visible line (the pager scroll offset).
     pub scroll: usize,
     /// A decoded image, when the changed file is a picture: the pane shows it instead
@@ -287,10 +292,19 @@ pub(crate) struct DiffView {
     built_at: Instant,
 }
 
-/// One diff body line plus how to colour it.
+/// One diff body line: its change kind, the raw text (kept for the hunk header and
+/// width), the new-file line number for the gutter, and the syntax-highlighted code
+/// (the leading `+`/`-`/space sign stripped off — the renderer draws that itself).
 pub(crate) struct DiffLine {
     pub text: String,
     pub kind: DiffKind,
+    /// The leading diff sign — `+`, `-`, or a space for context (unused for a hunk).
+    pub sign: char,
+    /// New-file line number for the gutter; `None` for a deletion or a hunk header.
+    pub new_no: Option<u32>,
+    /// Highlighted code segments (foreground colour + text), sign already stripped.
+    /// Empty for a hunk header (drawn from `text`).
+    pub spans: Vec<(Color, String)>,
 }
 
 /// The visible diff line kinds (the noisy `diff --git`/`index`/`+++`/`---` headers
@@ -320,6 +334,7 @@ impl DiffView {
                     added: 0,
                     removed: 0,
                     lines: Vec::new(),
+                    gutter: 0,
                     scroll: 0,
                     image: Some(image),
                     built_at: Instant::now(),
@@ -327,30 +342,75 @@ impl DiffView {
             }
         }
         let raw = git::diff(dir, &file.path, file.untracked);
+        // Highlight by file type — but not for a giant diff, where lighting every line
+        // costs more than it's worth (the pager is a preview, not a full read).
+        let hl = if raw.len() <= MAX_HIGHLIGHT_BYTES {
+            Highlighter::for_path(&file.path)
+        } else {
+            Highlighter::plain()
+        };
         let mut lines = Vec::new();
         let (mut added, mut removed) = (0u32, 0u32);
         let mut in_hunk = false;
+        let mut new_no: u32 = 0; // next new-file line number within the current hunk
+        let mut max_no: u32 = 0; // widest number shown → the gutter width
         for l in raw.lines() {
             if l.starts_with("diff ") {
                 in_hunk = false; // a new file section — back to header noise
             } else if l.starts_with("@@") {
                 in_hunk = true;
-                lines.push(DiffLine { text: l.to_string(), kind: DiffKind::Hunk });
+                // Pick up the new-file start line so the gutter can number the hunk.
+                new_no = hunk_new_start(l).unwrap_or(new_no);
+                lines.push(DiffLine {
+                    text: l.to_string(),
+                    kind: DiffKind::Hunk,
+                    sign: ' ',
+                    new_no: None,
+                    spans: Vec::new(),
+                });
             } else if l.starts_with("Binary files") {
-                lines.push(DiffLine { text: l.to_string(), kind: DiffKind::Context });
+                lines.push(DiffLine {
+                    text: l.to_string(),
+                    kind: DiffKind::Context,
+                    sign: ' ',
+                    new_no: None,
+                    spans: hl.line(l),
+                });
             } else if in_hunk {
-                let kind = match l.as_bytes().first() {
+                // Inside a hunk a leading `+`/`-` is unambiguously an addition/deletion
+                // (the `+++`/`---` file headers only appear *before* the first `@@`).
+                let sign = l.as_bytes().first().copied();
+                let code = l.get(1..).unwrap_or(""); // the line minus its sign column
+                let (kind, no) = match sign {
                     Some(b'+') => {
                         added += 1;
-                        DiffKind::Add
+                        let n = new_no;
+                        new_no += 1;
+                        (DiffKind::Add, Some(n))
                     }
                     Some(b'-') => {
                         removed += 1;
-                        DiffKind::Del
+                        (DiffKind::Del, None) // a deletion has no new-file line
                     }
-                    _ => DiffKind::Context,
+                    // git's "\ No newline at end of file" note: a marker, not a real
+                    // line — show it but don't number it or advance the counter.
+                    Some(b'\\') => (DiffKind::Context, None),
+                    _ => {
+                        let n = new_no;
+                        new_no += 1;
+                        (DiffKind::Context, Some(n))
+                    }
                 };
-                lines.push(DiffLine { text: l.to_string(), kind });
+                if let Some(n) = no {
+                    max_no = max_no.max(n);
+                }
+                lines.push(DiffLine {
+                    text: l.to_string(),
+                    kind,
+                    sign: sign.map(|b| b as char).unwrap_or(' '),
+                    new_no: no,
+                    spans: hl.line(code),
+                });
             }
             // else: header lines before the first hunk — hidden for a clean read.
         }
@@ -360,11 +420,34 @@ impl DiffView {
             added,
             removed,
             lines,
+            gutter: digits(max_no),
             scroll: 0,
             image: None,
             built_at: Instant::now(),
         }
     }
+}
+
+/// Don't syntax-highlight a diff whose raw text exceeds this — lighting thousands of
+/// lines (each parsed on its own, see [`highlight`](super::highlight)) isn't worth it
+/// for a preview pane, so past the cap the pager falls back to plain text.
+const MAX_HIGHLIGHT_BYTES: usize = 512 * 1024;
+
+/// The new-file starting line of a hunk header — the `+c` in `@@ -a,b +c,d @@`.
+fn hunk_new_start(header: &str) -> Option<u32> {
+    let plus = header.split_whitespace().find(|t| t.starts_with('+'))?;
+    plus.trim_start_matches('+').split(',').next()?.parse().ok()
+}
+
+/// The number of decimal digits in `n` (so `0` and `9` are one wide, `10` two).
+fn digits(n: u32) -> usize {
+    let mut n = n / 10;
+    let mut d = 1;
+    while n > 0 {
+        n /= 10;
+        d += 1;
+    }
+    d
 }
 
 /// The image extensions we inline-preview — kept in step with the decoders enabled on
