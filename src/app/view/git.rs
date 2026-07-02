@@ -248,7 +248,7 @@ fn checkbox(staged: Stage) -> (&'static str, Style) {
 /// The filename colour encoding the change type (staging is shown by the checkbox).
 fn change_color(file: &FileEntry) -> Color {
     if file.untracked {
-        return Color::Red;
+        return Color::Green; // brand-new file = an addition
     }
     match file.glyph {
         'A' => Color::Green,            // added

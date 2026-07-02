@@ -126,8 +126,8 @@ It has three boxes:
 - **Changes** — a compressed tree of changed files with staging checkboxes:
   `[✓]` (green) fully staged · `[~]` (yellow) partially staged · `[ ]` (gray) unstaged. The tree
   starts at the repo's top-level files and folders — there is no whole-repo row taking up the first
-  line (stage everything with `a`). The filename color encodes the change: red
-  (untracked/deleted/unmerged), green (added), cyan (renamed/copied), yellow (modified). The box
+  line (stage everything with `a`). The filename color encodes the change: green
+  (added/untracked), red (deleted/unmerged), cyan (renamed/copied), yellow (modified). The box
   title shows the branch with `↑ahead`/`↓behind` counts and a `pulling…`/`pushing…` note during
   network operations.
 - **Branches** — local branches, current one marked, with upstream tracking notes.
