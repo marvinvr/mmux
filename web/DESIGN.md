@@ -4,7 +4,8 @@ Single source of truth for the static site in `web/`. v4 is the current look: **
 terminal-honest**, in the product's own colors — tmux-green over neutral terminal greys — with the
 **pixel identity** carried by the green brand tile and a pixel display face. No gradients, no
 glows, minimal radius. (v2's blue→magenta gradient system is dead; v3 stripped it back to the
-green; v4 adds the pixel identity, the spec sheet, the try-it framing, and two more demo scenes.)
+green; v4 adds the pixel identity, the spec sheet, the try-it framing, a linked-projects scene
+and the reconnect closer.)
 
 The centerpiece is unchanged in spirit since v2: ONE thing on the page looks like a terminal — a
 single high-fidelity **macOS Terminal window hosting the mmux TUI** — and inside it you watch the
@@ -32,8 +33,7 @@ here and nowhere else.
   `banner.txt`, which is literally a text file for curl.
 - **Panes show REAL, legible content.** The Claude scene is the real Claude Code welcome + session
   shape; Codex the real boxed banner; the shell a real zsh + cargo run; vite the real banner; the
-  git panel mirrors `src/app/view/git.rs`; the image preview mirrors the diff pane's block-glyph
-  fallback (`src/app/view/pane.rs`). No placeholder/abstract content, ever (§8).
+  git panel mirrors `src/app/view/git.rs`. No placeholder/abstract content, ever (§8).
 - **Install is ONE command:** `brew install marvinvr/mmux/mmux`. No cargo, no from-source.
 - **`prefers-reduced-motion`** fully honored (no scrub/typing/streaming; land on finished states).
 - **Accessible:** landmarks, heading order, keyboard operable, visible focus, AA contrast,
@@ -48,8 +48,8 @@ Two roles, both quiet:
 1. **Brand** = tmux green over neutral dark greys. A muted sage (`--green`) for accents — the
    status bar, active-row edge, links, kickers, the cursor — plus the brand tile's brighter pixel
    greens (`#86efac / #4ade80 / #16a34a`) reserved for the *mark itself* (nav, hero, favicon,
-   toast icon) and the image-preview pixels. No gradients, no glows, radius ≤ 4px outside the mac
-   window. The user explicitly rejected gradient branding: **do not reintroduce it.**
+   toast icon). No gradients, no glows, radius ≤ 4px outside the mac window. The user explicitly
+   rejected gradient branding: **do not reintroduce it.**
 2. **Terminal semantics** = de-neoned ANSI-ish colors, INSIDE the window only: green running/add,
    red attention/del, amber warn, blue info, magenta focus/ai, cyan section heads.
 
@@ -99,8 +99,8 @@ browser* first — no install." linking `#how` — three chips, and the scroll c
 the demo window's title bar peeks above the fold on a ~900px-tall viewport.
 
 ### 4.3 `<section id="demo">` — the centerpiece
-A tall scroll track (`min-height: 1040vh`); a sticky stage pins the terminal window while captions
-cross-fade beside it. **Eleven scenes** (§7), weighted.
+A tall scroll track (`min-height: 950vh`); a sticky stage pins the terminal window while captions
+cross-fade beside it. **Ten scenes** (§7), weighted.
 
 ### 4.4 `<section id="features">` — the spec sheet
 kicker `// what you get`, h2 **everything in one place.** NOT cards: a flat, man-page-style
@@ -108,8 +108,8 @@ kicker `// what you get`, h2 **everything in one place.** NOT cards: a flat, man
 **`.yaml-card`** — a little "file" (name-tab chip `mmux.yaml` + hand-tokenized code) showing the
 real per-project config: `name`, a `processes` entry (`cmd`/`args`/`autostart`), and
 `linked-projects`, exactly per `docs/04-configuration.md`. `.spec-note` under it says agents live
-globally in `~/.mmux/config.yaml` and links the schema docs. Seven spec rows: persistent · agents
-on demand · processes · native git · linked projects · notifications · one binary.
+globally in `~/.mmux/config.yaml` and links the schema docs. Five spec rows: persistent ·
+processes · native git · notifications · one binary.
 
 ### 4.5 `<section id="how">` — try it (the live sandbox)
 kicker `// try it`, h2 **go on, type into it.** The lede tells the visitor it's live. Then
@@ -222,10 +222,9 @@ state = {
 
 `Line` is `"plain string"` | `{ text, cls? }` | `{ tokens:[{t,c}], cls? }`; git tree rows carry
 `gitNode` for the sandbox's clickable staging. Tones (`c`): `kw fn str num comment type path op
-add del ok warn info ai dim prompt brand`, plus `claude` (warm-orange logo), `codex` (teal), and
-**`px1 px2 px3`** — the brand tile's real pixel greens (`#86efac / #4ade80 / #16a34a`), used only
-by the image-preview scene's block art. Line `cls`:
-- `art` — banner/box/pixel rows: tight 1.05 leading, `white-space: pre`, **clips with an
+add del ok warn info ai dim prompt brand`, plus `claude` (warm-orange logo) and `codex` (teal).
+Line `cls`:
+- `art` — banner/box rows: tight 1.05 leading, `white-space: pre`, **clips with an
   ellipsis** when the pane is too narrow (one clean fold, not a scrollbar).
 - `ln-add` / `ln-del` — diff wash + colored gutter; **never wraps** (`pre` + ellipsis — a wrapped
   wash reads as a glitch). `ln-cmd`, `ln-dim` as before.
@@ -239,8 +238,8 @@ by the image-preview scene's block art. Line `cls`:
 ### 6.1 Scroll driver
 rAF-throttled scroll→progress over `#demo`, weighted bands per scene (`buildBounds`),
 IntersectionObserver-gated; captions cross-fade. Reveals:
-- **Bare reveal** (scene 0): `typeIntoBare` types `mmux` char-by-char into the `term`'s last line,
-  **preserving the lines above it** as scrollback, and rests (the takeover happens next scene).
+- **Bare reveal** (scene 0): `typeIntoBare` types `mmux` char-by-char into the `term`'s last line
+  (any lines above it are kept as scrollback) and rests — the takeover happens next scene.
 - **Boot pop** (`boot:true`): replays `.tw--boot`.
 - **Streaming**: Claude/Codex scenes reveal `main.lines` progressively (≤ ~900ms).
 - **Reconnect** (`type:{reconnect:true}`, the closer): paints the scene's state under an amber
@@ -261,13 +260,13 @@ folders stage/unstage on click; `assets/logo.png` is in it). Single project — 
 
 ---
 
-## 7. scenes.js contract — the 11 scenes
+## 7. scenes.js contract — the 10 scenes
 
 `window.MMUX_SCENES`, pure data. Captions terse, lowercase, confident (verbatim):
 
 - 0 — `weight 1.7` — **it starts with one command.** / open any ordinary terminal, in any
-  directory, and type mmux. one binary — nothing else to set up. *(bare shell with a `git pull`
-  already in scrollback; the reveal types `mmux` and rests)*
+  directory, and type mmux. one binary — nothing else to set up. *(a bare shell; the reveal
+  types `mmux` and rests)*
 - 1 — `weight 1.3, boot` — **everything in one window.** / agents you spawn, terminals you open,
   processes you watch — each a row; the focused one fills the pane.
 - 2 — **spawn an agent.** / pick "+ New Claude" and the real Claude Code goes to work in its own
@@ -282,18 +281,12 @@ folders stage/unstage on click; `assets/logo.png` is in it). Single project — 
   and tail them all here, just like your agents. *(vite banner; PROCESSES rows)*
 - 6 — **a git panel, pinned.** / a native git panel right where you work — changes, branches and
   history, following whichever project is active. *(the three boxes, cursor on a staged file)*
-- 7 — **image diffs, in a terminal.** / click a changed png and it previews as the picture
-  itself — pixel-sharp sixels where the terminal can, chunky blocks anywhere else. *(main pane
-  title ` ▦ assets/logo.png  512×512 ` — the real image-preview pane title from
-  `src/app/view/pane.rs` — and the mmux tile painted as `px1/px2/px3` block runs via
-  `pixelArt(LOGO_GRID)`; the Changes cursor sits on `logo.png`; Recent nods to the real
-  `d38ce58`/`e223f92` commits)*
-- 8 — **your whole workspace, one window.** / link related projects and flip between them — the
+- 7 — **your whole workspace, one window.** / link related projects and flip between them — the
   sidebar, the git panel and the pane all follow whichever one is active. *(`multiProject`: `app`
   + `api`, pager at the sidebar bottom, api's Claude working in `~/dev/api`)*
-- 9 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification.
+- 8 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification.
   even over ssh. *(attention bell + the macOS toast + Claude's real edit-approval prompt)*
-- 10 — `weight 1.4, type:{reconnect:true}` — **it survives you.** / the whole thing lives in a
+- 9 — `weight 1.4, type:{reconnect:true}` — **it survives you.** / the whole thing lives in a
   per-directory tmux session. close the terminal, drop ssh, come back — everything's still
   running. *(two beats: amber `ssh disconnected — session kept alive`, then the authored state:
   green `reattached — nothing lost`, sessions intact — the payoff frame)*
@@ -304,10 +297,8 @@ The bottom bar shows a per-scene hint (`state.status`) — the scroll demo isn't
 
 A visitor scrolling the demo sees **recognizable software**. Agent banners are captured from the
 real `claude` / `codex` binaries — don't invent them (trimming a too-wide line is allowed;
-inventing content is not). The git panel, diff pane titles, selection colors and sidebar order
-mirror the actual source files named above. The image preview is the real feature
-(docs/03-usage.md): sixels on capable terminals, half-block glyphs elsewhere — the demo paints
-the block fallback. Reviewers reject abstract/placeholder content.
+inventing content is not). The git panel, selection colors and sidebar order mirror the actual
+source files named above. Reviewers reject abstract/placeholder content.
 
 ## 9. Motion
 
@@ -327,7 +318,7 @@ web/
   styles.css    # the whole v4 system: @font-face (Departure Mono), tokens, every
                 #   class in §4/§5. No remote url()/@import.
   scenes.js     # window.MMUX_SCENES (§7) — pure data + tiny builders (codexBox,
-                #   pixelArt/LOGO_GRID, gitSections/gitSectionsImg).
+                #   gitSections).
   tui.js        # renderTUI/renderLine + scroll & sandbox drivers + copy + nav.
   fonts/        # DepartureMono-Regular.woff2 + its OFL LICENSE + README.
   banner.txt    # the plain-text card nginx serves to curl/wget/httpie on `/`.
@@ -354,10 +345,10 @@ web/
       the pixel tile + Departure Mono carrying the identity. NO gradients, NO glows, no
       box-drawing as site structure.
 - [ ] The terminal is a mac window hosting a faithful ratatui TUI; every pane shows real,
-      syntax-colored content per §8 — including the image-preview and linked-projects scenes.
+      syntax-colored content per §8 — including the linked-projects scene.
 - [ ] Install shows ONLY the brew line (hero + install). The hero also offers the sandbox
       ("try it in your browser").
-- [ ] Scroll demo scrubs 11 scenes; scene 0 keeps its scrollback while typing; the closer plays
+- [ ] Scroll demo scrubs 10 scenes; the closer plays
       disconnect → reattach and rests on the green frame.
 - [ ] Sandbox is click/keyboard-playable, focus-trapped only while engaged, escapable, announced
       to AT via the live region.

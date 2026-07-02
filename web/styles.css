@@ -405,8 +405,8 @@ section {
 #demo {
   /* CRITICAL: the track must be much taller than the 100vh sticky stage,
    * otherwise progress is always 0 and the walkthrough never scrubs.
-   * Sized for 11 weighted scenes (~85vh of travel each). */
-  min-height: 1040vh;
+   * Sized for 10 weighted scenes (~85vh of travel each). */
+  min-height: 950vh;
   padding: 0 1.5rem;
   max-width: 1240px;          /* the demo is the star — a touch wider than the rest */
   margin: 0 auto;
@@ -1076,12 +1076,6 @@ section {
 /* agent brand marks: Claude's warm orange logo, Codex's teal >_ */
 .tok-claude  { color: #cc8a63; }
 .tok-codex   { color: var(--cyan); }
-/* image-preview pixels (the git diff's block-glyph fallback, scene "even images
- * diff"): the brand tile's real colors — deliberately brighter than the muted
- * ANSI text tones, because these glyphs are a picture, not prose. */
-.tok-px1     { color: #86efac; }
-.tok-px2     { color: #4ade80; }
-.tok-px3     { color: #16a34a; }
 
 /* ============================================================================
  * what you get — a flat spec sheet (man-page vibe, not SaaS cards) beside the
@@ -1270,7 +1264,7 @@ section {
   .how-points { grid-template-columns: 1fr; gap: 1.1rem; }
 
   /* demo: window over stacked captions */
-  #demo { min-height: 1040vh; }
+  #demo { min-height: 950vh; }
   .demo-grid { grid-template-columns: 1fr; gap: 1.75rem; }
   .demo-caption { min-height: 9rem; }
 

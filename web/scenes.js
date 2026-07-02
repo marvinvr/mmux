@@ -174,81 +174,6 @@
     ];
   }
 
-  // The image-scene variant: the cursor sits on a changed png in assets/.
-  function gitSectionsImg() {
-    return [
-      {
-        title: "Changes · main",
-        active: true,
-        lines: [
-          { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " assets/", c: "info" }] },
-          { tokens: [{ t: "▌", c: "ai" }, { t: "  [✓]", c: "ok" }, { t: " logo.png", c: "warn" }], cls: "git-sel" },
-          { tokens: [{ t: " " }, { t: "  [ ]", c: "dim" }, { t: " og-image.png", c: "warn" }] },
-          { tokens: [{ t: " " }, { t: "[~]", c: "warn" }, { t: " src/", c: "info" }] },
-          { tokens: [{ t: " " }, { t: "[ ]", c: "dim" }, { t: " Cargo.toml", c: "warn" }] },
-        ],
-      },
-      {
-        title: "Branches",
-        lines: [
-          { tokens: [{ t: " ● ", c: "ok" }, { t: "main", c: "ok" }, { t: "   origin/main", c: "dim" }] },
-          { tokens: [{ t: "   feat/tokens" }] },
-        ],
-      },
-      {
-        title: "Recent",
-        lines: [
-          { tokens: [{ t: "d38ce58 ", c: "dim" }, { t: "sixel image diffs" }] },
-          { tokens: [{ t: "e223f92 ", c: "dim" }, { t: "inline image previews" }] },
-          { tokens: [{ t: "e2e6087 ", c: "dim" }, { t: "add token service" }] },
-        ],
-      },
-    ];
-  }
-
-  /* ----- the image diff preview (scene "even images diff") -----------------
-   * The git panel previews a changed image as the picture itself (docs/03-usage:
-   * sixel where the terminal can, half-block glyphs anywhere else). The demo
-   * paints the block-glyph fallback: each pixel of the mmux logo tile becomes a
-   * "██" run, tone-mapped to the tile's real colors (px1 light bevel, px2 face,
-   * px3 dark bevel; the knocked-out m stays terminal background). */
-  var LOGO_GRID = [
-    "LLLLLLLLLLLLLLLD",
-    "LFFFFFFFFFFFFFFD",
-    "LFFFFFFFFFFFFFFD",
-    "LFFFFFFFFFFFFFFD",
-    "LFF          FFD",
-    "LFF          FFD",
-    "LFF  FF  FF  FFD",
-    "LFF  FF  FF  FFD",
-    "LFF  FF  FF  FFD",
-    "LFF  FF  FF  FFD",
-    "LFF  FF  FF  FFD",
-    "LFF  FF  FF  FFD",
-    "LFFFFFFFFFFFFFFD",
-    "LFFFFFFFFFFFFFFD",
-    "LFFFFFFFFFFFFFFD",
-    "DDDDDDDDDDDDDDDD",
-  ];
-  function pixelArt(grid) {
-    var TONE = { L: "px1", F: "px2", D: "px3" };
-    return grid.map(function (row) {
-      var toks = [];
-      var i = 0;
-      while (i < row.length) {
-        var ch = row[i];
-        var j = i;
-        while (j < row.length && row[j] === ch) j++;
-        if (ch === " ") toks.push({ t: "  ".repeat(j - i) });
-        else toks.push({ t: "██".repeat(j - i), c: TONE[ch] });
-        i = j;
-      }
-      return { tokens: toks, cls: "art" };
-    });
-  }
-  // a breath of padding above the picture; the pane title carries the ▦ header
-  var IMG_LINES = [""].concat(pixelArt(LOGO_GRID));
-
   // A second project's Claude session (the linked-projects scene): same real
   // Claude Code shape, but running in ~/dev/api.
   var CLAUDE_API_LINES = [
@@ -318,13 +243,7 @@
         main: {
           program: "zsh",
           title: " zsh ",
-          // a lived-in shell: the last line is the live prompt `mmux` types into;
-          // everything above it is committed scrollback (typeIntoBare keeps it).
-          lines: [
-            { tokens: [{ t: "❯ ", c: "prompt" }, { t: "git pull" }] },
-            { tokens: [{ t: "Already up to date.", c: "dim" }] },
-            { tokens: [{ t: "❯ ", c: "prompt" }, { t: "" }] },
-          ],
+          lines: [{ tokens: [{ t: "❯ ", c: "prompt" }, { t: "" }] }],
           placeholder: null,
           cursor: true,
         },
@@ -344,11 +263,7 @@
         main: {
           program: "zsh",
           title: " zsh ",
-          lines: [
-            { tokens: [{ t: "❯ ", c: "prompt" }, { t: "git pull" }] },
-            { tokens: [{ t: "Already up to date.", c: "dim" }] },
-            { tokens: [{ t: "❯ ", c: "prompt" }, { t: "mmux" }] },
-          ],
+          lines: [{ tokens: [{ t: "❯ ", c: "prompt" }, { t: "mmux" }] }],
           placeholder: null,
           cursor: true,
         },
@@ -599,54 +514,9 @@
       },
     },
 
-    /* 7 — even images diff. (the ▦ preview: the picture, as blocks) ------- */
+    /* 7 — linked projects. (the sidebar pager: one window, many projects) -- */
     {
       id: 7,
-      caption: {
-        kicker: "// even images",
-        title: "image diffs, in a terminal.",
-        body: "click a changed png and it previews as the picture itself — pixel-sharp sixels where the terminal can, chunky blocks anywhere else.",
-      },
-      state: {
-        title: "~/dev/app",
-        status: "a changed image, previewed right in the pane",
-        multiProject: false,
-        projects: [{ name: "app", active: true }],
-        sidebar: [
-          {
-            kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running", active: true }), codex({ status: "running" })],
-          },
-          {
-            kind: "TERMINAL",
-            rows: [L_TERMINAL, { id: "zsh", name: "zsh", status: "running" }],
-          },
-          {
-            kind: "PROCESSES",
-            rows: [
-              L_PROCESS,
-              { id: "dev-server", name: "dev server", sub: "vite · :5173", status: "running" },
-            ],
-          },
-        ],
-        main: {
-          program: "diff",
-          // the real image-preview pane title (src/app/view/pane.rs): ▦ path W×H
-          title: " ▦ assets/logo.png  512×512 ",
-          lines: IMG_LINES,
-          placeholder: null,
-          cursor: false,
-        },
-        panel: { visible: true, branch: "main", sections: gitSectionsImg() },
-        focus: "panel",
-        toast: null,
-        overlay: null,
-      },
-    },
-
-    /* 8 — linked projects. (the sidebar pager: one window, many projects) -- */
-    {
-      id: 8,
       caption: {
         kicker: "// linked projects",
         title: "your whole workspace, one window.",
@@ -698,9 +568,9 @@
       },
     },
 
-    /* 9 — it taps you on the shoulder. (attention + toast) ---------------- */
+    /* 8 — it taps you on the shoulder. (attention + toast) ---------------- */
     {
-      id: 9,
+      id: 8,
       caption: {
         kicker: "// attention",
         title: "it taps you on the shoulder.",
@@ -751,11 +621,11 @@
       },
     },
 
-    /* 10 — it survives you. The closer, in two beats: the amber "ssh
+    /* 9 — it survives you. The closer, in two beats: the amber "ssh
      * disconnected" scrim first, then — the payoff — the green "reattached"
      * frame with every session still running (tui.js runReconnect). --------- */
     {
-      id: 10,
+      id: 9,
       weight: 1.4,
       type: { reconnect: true },
       caption: {
