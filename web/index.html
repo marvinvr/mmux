@@ -35,6 +35,8 @@
   <!-- inline data: favicon — the mmux mark (green tile, beveled, m knocked out), no remote fetch -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <!-- display face for headings (self-hosted, OFL) — preloaded to avoid a flash -->
+  <link rel="preload" href="fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
 
   <!-- Structured data (schema.org). A non-executable application/ld+json data block:
@@ -81,11 +83,10 @@
       </a>
       <nav class="nav-links" aria-label="primary">
         <a href="#demo">the demo</a>
-        <!-- features link hidden while the #features section is hidden -->
-        <span class="nav-sep" aria-hidden="true" hidden>·</span>
-        <a href="#features" hidden>features</a>
         <span class="nav-sep" aria-hidden="true">·</span>
-        <a href="#how">how it works</a>
+        <a href="#features">what you get</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="#how">try it</a>
         <span class="nav-sep" aria-hidden="true">·</span>
         <a href="https://github.com/marvinvr/mmux">github</a>
       </nav>
@@ -97,6 +98,8 @@
     <!-- §4.2 hero — text + glow, no terminal-frame art                      -->
     <!-- =================================================================== -->
     <section id="hero">
+      <!-- the mark, at hero scale: the same green pixel tile as the favicon/nav -->
+      <svg class="hero-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
       <p class="hero-kicker">a terminal multiplexer for AI agents</p>
       <h1 class="hero-wordmark">mmux<span class="hero-caret" aria-hidden="true">▮</span></h1>
       <p class="hero-tagline">persistent terminals for your coding agents.</p>
@@ -107,6 +110,8 @@
         <code class="hero-install-cmd">brew install marvinvr/mmux/mmux</code>
         <button type="button" class="copy" data-copy="brew install marvinvr/mmux/mmux">copy</button>
       </div>
+
+      <p class="hero-try">or <a href="#how">try it in your browser</a> first — no install.</p>
 
       <ul class="hero-meta">
         <li class="hero-chip">runs in any terminal</li>
@@ -172,88 +177,71 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- §4.4 features — real card grid, inline SVG line icons                -->
+    <!-- §4.4 what you get — a flat, man-page-style spec sheet + the config   -->
     <!-- =================================================================== -->
-    <!-- temporarily hidden (not deleted): remove `hidden` to bring it back -->
-    <section id="features" hidden>
+    <section id="features">
       <p class="kicker">// what you get</p>
       <h2 class="section-h2">everything in <span class="grad">one place.</span></h2>
 
-      <div class="feature-grid">
-        <article class="feature">
-          <span class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            </svg>
-          </span>
-          <h3 class="feature-title">per-directory &amp; persistent</h3>
-          <p class="feature-desc">one mmux per directory, kept alive inside a tmux session. close the terminal or drop ssh, reattach, and it's exactly where you left it.</p>
-        </article>
+      <div class="spec-grid">
+        <dl class="spec">
+          <div class="spec-row">
+            <dt>persistent</dt>
+            <dd>one mmux per directory, alive inside a hidden tmux session. close the terminal or drop ssh — nothing dies.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>agents on demand</dt>
+            <dd>claude and codex come configured; any command-line agent is one line of yaml away.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>processes</dt>
+            <dd>your dev server, tests and watchers — started, stopped and tailed from the sidebar, with autostart if you want it.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>native git</dt>
+            <dd>stage by file or folder, branch, commit, push — and diffs preview right in the pane. even images.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>linked projects</dt>
+            <dd>related projects share one window; the sidebar, git panel and title follow whichever is active.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>notifications</dt>
+            <dd>a bell or a notification escape becomes a sidebar dot and a real desktop notification — even over ssh.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>one binary</dt>
+            <dd>a single rust binary, no daemon to babysit. it runs anywhere a terminal does.</dd>
+          </div>
+        </dl>
 
-        <article class="feature">
-          <span class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path>
-              <path d="M19 14l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"></path>
-            </svg>
-          </span>
-          <h3 class="feature-title">agents on demand</h3>
-          <p class="feature-desc">spawn claude, codex, or any agent. each runs in its own pane, started and restarted right from the sidebar.</p>
-        </article>
+        <div class="spec-side">
+          <figure class="yaml-card">
+            <figcaption class="yaml-card-name">mmux.yaml</figcaption>
+            <pre class="yaml-card-code"><code><span class="tok-comment"># ./mmux.yaml — this project's half</span>
+name: <span class="tok-str">app</span>
 
-        <article class="feature">
-          <span class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 12h4l2.5 6 4-13 2.5 7H21"></path>
-            </svg>
-          </span>
-          <h3 class="feature-title">processes you watch</h3>
-          <p class="feature-desc">start, stop and tail your dev server, tests and tasks without ever leaving the multiplexer.</p>
-        </article>
+processes:
+  - name: <span class="tok-str">dev server</span>
+    cmd: <span class="tok-str">npm</span>
+    args: <span class="tok-str">["run", "dev"]</span>
+    autostart: <span class="tok-num">true</span>
 
-        <article class="feature">
-          <span class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
-              <path d="M13.7 21a2 2 0 0 1-3.4 0"></path>
-            </svg>
-          </span>
-          <h3 class="feature-title">attention, caught</h3>
-          <p class="feature-desc">a bell or a notification escape becomes a sidebar dot and a real desktop notification. even over ssh.</p>
-        </article>
-
-        <article class="feature">
-          <span class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3l9 5-9 5-9-5z"></path>
-              <path d="M3 13l9 5 9-5"></path>
-            </svg>
-          </span>
-          <h3 class="feature-title">linked projects</h3>
-          <p class="feature-desc">group sibling clones into one sidebar, each its own section; the panel follows whichever project is active.</p>
-        </article>
-
-        <article class="feature">
-          <span class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-              <path d="M7 9l3 3-3 3"></path>
-              <path d="M13 15h4"></path>
-            </svg>
-          </span>
-          <h3 class="feature-title">one binary, any terminal</h3>
-          <p class="feature-desc">a single rust binary with no daemon to babysit. it runs anywhere a terminal does.</p>
-        </article>
+linked-projects:
+  - <span class="tok-path">../api</span></code></pre>
+          </figure>
+          <p class="spec-note">that's the whole project config. agents are defined once, globally, in <code>~/.mmux/config.yaml</code> — the init wizard scaffolds claude and codex for you. <a href="https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md">the full schema →</a></p>
+        </div>
       </div>
     </section>
 
     <!-- =================================================================== -->
-    <!-- how it works — plain language: it all lives in one terminal           -->
+    <!-- try it — the live, typeable sandbox                                  -->
     <!-- =================================================================== -->
     <section id="how">
-      <p class="kicker">// the gist</p>
-      <h2 class="section-h2">it all lives in <span class="grad">one terminal.</span></h2>
-      <p class="how-lede">agents, shells, dev servers and git — side by side in a single window. and this one's live: <strong>spawn a Claude, a Codex or a shell</strong> from a + New row, then <strong>type right into it</strong>.</p>
+      <p class="kicker">// try it</p>
+      <h2 class="section-h2">go on, <span class="grad">type into it.</span></h2>
+      <p class="how-lede">this one's live. <strong>spawn a Claude, a Codex or a shell</strong> from a + New row and <strong>type right into it</strong> — prompt the agent, run a command, stage a file in the git panel.</p>
 
       <!-- the standalone, always-playable terminal. Same skeleton as #tw above;
            tui.js's sandbox driver owns this one (#tw-how) and upgrades it from a
@@ -313,6 +301,7 @@
 
       <div class="install-actions">
         <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux">view on github</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
       </div>
     </section>
   </main>
@@ -326,6 +315,8 @@
     <span class="footer-license">GPLv3</span>
     <span class="footer-sep" aria-hidden="true">·</span>
     <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
     <span class="footer-sep" aria-hidden="true">·</span>
     <a href="https://marvinvr.ch">built by marvinvr</a>
   </footer>

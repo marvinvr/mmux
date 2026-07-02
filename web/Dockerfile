@@ -8,8 +8,9 @@ COPY fonts/ /usr/share/nginx/html/fonts/
 COPY assets/ /usr/share/nginx/html/assets/
 
 # Agent/SEO files served from the root with stable (un-fingerprinted) URLs:
-# robots.txt + sitemap.xml for crawlers, llms.txt as an LLM-readable guide.
-COPY robots.txt sitemap.xml llms.txt /usr/share/nginx/html/
+# robots.txt + sitemap.xml for crawlers, llms.txt as an LLM-readable guide,
+# banner.txt as the plain-text answer nginx serves to curl/wget on `/`.
+COPY robots.txt sitemap.xml llms.txt banner.txt /usr/share/nginx/html/
 
 # Fingerprint the assets: rename each to <name>.<contenthash>.<ext> and rewrite
 # the quoted references in index.html to match. This is what makes the 1y

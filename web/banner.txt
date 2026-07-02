@@ -1,0 +1,13 @@
+
+  ████████████████
+  ████████████████     mmux — persistent terminals for your coding agents
+  ███          ███
+  ███  ██  ██  ███     agents, terminals, processes and a native git panel,
+  ███  ██  ██  ███     side by side in one window that survives closed
+  ███  ██  ██  ███     terminals and dropped ssh. one rust binary.
+  ████████████████
+  ████████████████     install:   brew install marvinvr/mmux/mmux
+                       then:      mmux        (in any project directory)
+
+  https://mmux.org  ·  https://github.com/marvinvr/mmux  ·  GPLv3
+

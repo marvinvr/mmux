@@ -103,7 +103,7 @@
       title: " Claude — ready ",
       lines: [
         { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
-        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) with xhigh effort · Claude Max", c: "dim" }], cls: "art" },
+        { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) · Claude Max", c: "dim" }], cls: "art" },
         { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
         "",
         { tokens: [{ t: "  Ask Claude to do something — type a prompt and press enter.", c: "dim" }] },
@@ -725,11 +725,16 @@
     }
 
     /* Reveal hint dispatch. Scene 0 carries a bare `term`: type `mmux` into it and
-     * rest there (no takeover — the layout boots in on the next scene). Otherwise:
+     * rest there (no takeover — the layout boots in on the next scene). A
+     * `reconnect` scene plays its two-beat drop/reattach sequence. Otherwise:
      * typing reveal, then a line-stream fallback. */
     function runReveal(sc) {
       var base = sc.state || {};
       var reveal = sc.type || {};
+      if (reveal.reconnect) {
+        runReconnect(sc);
+        return;
+      }
       if (sc.term && reveal.target === "main" && reveal.text) {
         typeIntoBare(sc.term, reveal.text);
         return;
@@ -741,6 +746,21 @@
       streamLines(base);
     }
 
+    // The closer, in two beats: paint the scene under the amber "ssh disconnected"
+    // scrim first, then flip to its real state — the green "reattached" frame with
+    // every session intact. Reduced-motion (and scrolling past) lands straight on
+    // the reattached state, which is the scene's authored `state`.
+    function runReconnect(sc) {
+      var base = sc.state || {};
+      var drop = cloneState(base);
+      drop.overlay = "disconnected";
+      drop.status = "ssh dropped — mmux keeps every session alive";
+      renderTUI(drop);
+      revealTimer = setTimeout(function () {
+        renderTUI(base);
+      }, 1600);
+    }
+
     // Scene 0: type `text` into the bare terminal, char by char, and stay there. The
     // mmux UI does NOT take over here — scene 1 boots the layout in. Resting on the
     // plain terminal is what keeps this step visible while scrolling down (not just
@@ -748,15 +768,19 @@
     function typeIntoBare(term, full) {
       var chars = full.split("");
       var step = Math.max(75, Math.floor(560 / chars.length));
+      // The scene's LAST line is the live prompt `full` types into; anything above
+      // it is committed scrollback (a prior `git pull`, say) that stays put.
+      var lines = (term.main && term.main.lines) || [];
+      var history = lines.slice(0, Math.max(0, lines.length - 1));
       var prompt = "❯ ";
-      var l0 = term.main && term.main.lines && term.main.lines[0];
-      if (l0 && l0.tokens && l0.tokens[0] && l0.tokens[0].t) prompt = l0.tokens[0].t;
+      var last = lines[lines.length - 1];
+      if (last && last.tokens && last.tokens[0] && last.tokens[0].t) prompt = last.tokens[0].t;
 
       function paint(n) {
         var s = cloneState(term);
         s.main = s.main || {};
         s.main.placeholder = null;
-        s.main.lines = [{ tokens: [{ t: prompt, c: "prompt" }, { t: full.slice(0, n) }] }];
+        s.main.lines = history.concat([{ tokens: [{ t: prompt, c: "prompt" }, { t: full.slice(0, n) }] }]);
         s.main.cursor = true;
         renderTUI(s);
       }
@@ -1670,6 +1694,9 @@
             { id: "src/token.rs", name: "token.rs", kind: "file", change: "modified", staged: false },
             { id: "src/lib.rs", name: "lib.rs", kind: "file", change: "added", staged: true },
           ] },
+          { id: "assets", name: "assets/", kind: "dir", children: [
+            { id: "assets/logo.png", name: "logo.png", kind: "file", change: "modified", staged: false },
+          ] },
           { id: "Cargo.toml", name: "Cargo.toml", kind: "file", change: "modified", staged: false },
         ],
         cursor: "src/auth.rs",
@@ -1764,7 +1791,7 @@
   function claudeBanner() {
     return [
       { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
-      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) with xhigh effort · Claude Max", c: "dim" }], cls: "art" },
+      { tokens: [{ t: "▝▜█████▛▘ ", c: "claude" }, { t: "Opus 4.8 (1M context) · Claude Max", c: "dim" }], cls: "art" },
       { tokens: [{ t: "  ▘▘ ▝▝   ", c: "claude" }, { t: "~/dev/app", c: "path" }], cls: "art" },
     ];
   }

@@ -73,12 +73,26 @@
   --radius:    4px;
   --radius-sm: 3px;
 
-  /* type — system mono stack only, no remote fonts */
+  /* type — system mono for everything, plus one self-hosted pixel display face
+   * (Departure Mono, OFL — see fonts/) for the wordmark and headings only. The
+   * terminal window NEVER uses the display face: real terminals are system mono. */
   --font: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+  --font-display: "Departure Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* scale */
   --page-max: 1120px;
   --measure: 60ch;
+}
+
+/* the display face — a pixel mono that matches the squared-off brand mark.
+ * Single weight (400): pixel fonts have no true bold, so headings set in it
+ * must not ask for one (faux-bold smears the pixels). */
+@font-face {
+  font-family: "Departure Mono";
+  src: url("fonts/DepartureMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
 /* ============================================================================
@@ -151,6 +165,7 @@ section {
   color: var(--green);
   margin: 0 0 1rem;
 }
+.hero-kicker { margin-bottom: .7rem; }
 
 /* accent text fragment — a solid green word inside a heading */
 .grad {
@@ -163,10 +178,11 @@ section {
 }
 
 .section-h2 {
+  font-family: var(--font-display);
   font-size: clamp(1.6rem, 3.6vw, 2.3rem);
-  font-weight: 700;
-  letter-spacing: -.015em;
-  line-height: 1.15;
+  font-weight: 400;            /* the pixel face is single-weight — no faux bold */
+  letter-spacing: 0;
+  line-height: 1.2;
   color: var(--text);
   margin: 0 0 2.5rem;
 }
@@ -254,9 +270,10 @@ section {
   display: inline-flex;
   align-items: center;
   gap: .5rem;
+  font-family: var(--font-display);
   font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -.02em;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 .brand-mark {
   display: block;
@@ -281,15 +298,23 @@ section {
  * ========================================================================== */
 #hero {
   text-align: center;
-  padding-top: 5rem;
+  padding-top: 2.5rem;    /* compact — the demo terminal should peek above the fold */
   padding-bottom: 1rem;
 }
+/* the brand tile at hero scale — crisp pixels, no smoothing */
+.hero-mark {
+  display: block;
+  width: clamp(60px, 8.5vw, 92px);
+  height: auto;
+  margin: 0 auto 1.2rem;
+}
 .hero-wordmark {
-  font-size: clamp(2.6rem, 7vw, 4.4rem);
-  font-weight: 700;
-  letter-spacing: -.03em;
+  font-family: var(--font-display);
+  font-size: clamp(2.7rem, 7.2vw, 4.6rem);
+  font-weight: 400;
+  letter-spacing: 0;
   line-height: 1;
-  margin: 0 0 1.3rem;
+  margin: 0 0 1.2rem;
 }
 .hero-caret {
   color: var(--green);
@@ -310,7 +335,7 @@ section {
   line-height: 1.7;
   color: var(--text-2);
   max-width: 56ch;
-  margin: 0 auto 2.2rem;
+  margin: 0 auto 1.9rem;
 }
 
 /* the single install row — flat bordered box, no glow */
@@ -332,6 +357,19 @@ section {
   overflow-x: auto;
 }
 
+/* the second door: the playable sandbox, for people who won't scroll the tour */
+.hero-try {
+  margin: .9rem 0 0;
+  font-size: .86rem;
+  color: var(--muted);
+}
+.hero-try a {
+  color: var(--green-bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hero-try a:hover { color: var(--text); }
+
 .hero-meta {
   display: flex;
   flex-wrap: wrap;
@@ -349,7 +387,7 @@ section {
 }
 
 .scroll-cue {
-  margin: 1.25rem 0 0;
+  margin: .9rem 0 0;
   font-size: .82rem;
   color: var(--muted);
   animation: cue-bob 2s ease-in-out infinite;
@@ -366,8 +404,9 @@ section {
  * ========================================================================== */
 #demo {
   /* CRITICAL: the track must be much taller than the 100vh sticky stage,
-   * otherwise progress is always 0 and the walkthrough never scrubs. */
-  min-height: 860vh;
+   * otherwise progress is always 0 and the walkthrough never scrubs.
+   * Sized for 11 weighted scenes (~85vh of travel each). */
+  min-height: 1040vh;
   padding: 0 1.5rem;
   max-width: 1240px;          /* the demo is the star — a touch wider than the rest */
   margin: 0 auto;
@@ -410,10 +449,11 @@ section {
   pointer-events: auto;
 }
 .caption-title {
-  font-size: clamp(1.4rem, 3vw, 2.1rem);
-  font-weight: 700;
-  letter-spacing: -.02em;
-  line-height: 1.18;
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.8vw, 1.9rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.22;
   color: var(--text);
   margin-bottom: .8rem;
 }
@@ -616,7 +656,7 @@ section {
   width: .3rem;
   height: .3rem;
   border-radius: 50%;
-  background: var(--surface-3);
+  background: var(--border-2);   /* visible against the sidebar, unlike surface-3 */
 }
 .sb-switch-dot--on { background: var(--green); }
 
@@ -742,10 +782,14 @@ section {
 }
 /* block / box-drawing art (the Claude & Codex welcome banners): the screen's 1.7
  * leading tears the glyph rows apart into blank gaps — tile them tight so the logo
- * and the Codex frame read as one continuous mark. */
+ * and the Codex frame read as one continuous mark. A row that's wider than the
+ * pane clips with an ellipsis (one clean fold line) instead of spilling or
+ * forcing a horizontal scrollbar. */
 .screen-line.art {
   line-height: 1.05;
   white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .screen-placeholder {
   color: var(--muted);
@@ -765,7 +809,15 @@ section {
   animation: caret-blink 1.1s steps(1) infinite;
 }
 
-/* line-level tints: a faint colored wash + a colored gutter bar */
+/* line-level tints: a faint colored wash + a colored gutter bar. Diff lines
+ * never wrap — a wrapped continuation paints the wash from column 0 and reads
+ * as a rendering glitch — they clip with an ellipsis like a real narrow pane. */
+.ln-add,
+.ln-del {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .ln-add {
   background: rgba(110, 158, 114, .1);
   color: var(--add);
@@ -959,7 +1011,8 @@ section {
   margin-top: .04rem;
 }
 
-/* overlay (scene 4) — ssh disconnect / reattach scrim */
+/* overlay (the closer) — ssh disconnect / reattach scrim. This is the whole
+ * pitch in one frame, so the line is set big, in the display face. */
 .tw-overlay {
   position: absolute;
   inset: 0;
@@ -969,7 +1022,9 @@ section {
   justify-content: center;
   text-align: center;
   padding: 1.5rem;
-  font-size: .92rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  line-height: 1.5;
   color: var(--text);
   background: rgba(13, 14, 16, .82);
 }
@@ -1021,48 +1076,85 @@ section {
 /* agent brand marks: Claude's warm orange logo, Codex's teal >_ */
 .tok-claude  { color: #cc8a63; }
 .tok-codex   { color: var(--cyan); }
+/* image-preview pixels (the git diff's block-glyph fallback, scene "even images
+ * diff"): the brand tile's real colors — deliberately brighter than the muted
+ * ANSI text tones, because these glyphs are a picture, not prose. */
+.tok-px1     { color: #86efac; }
+.tok-px2     { color: #4ade80; }
+.tok-px3     { color: #16a34a; }
 
 /* ============================================================================
- * features — flat list-cards, green-stroke icons, no glow/lift
+ * what you get — a flat spec sheet (man-page vibe, not SaaS cards) beside the
+ * real project config: a small mmux.yaml "file" card.
  * ========================================================================== */
-.feature-grid {
+.spec-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+  gap: 3rem;
+  align-items: start;
+}
+.spec {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.spec-row {
+  display: grid;
+  grid-template-columns: 11.5rem minmax(0, 1fr);
   gap: 1rem;
+  padding: .85rem 0;
+  border-bottom: 1px solid var(--border);
 }
-.feature {
-  padding: 1.4rem;
+.spec-row dt {
+  color: var(--green-bright);
+  font-size: .92rem;
+  font-weight: 600;
+}
+.spec-row dd {
+  margin: 0;
+  font-size: .92rem;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+
+/* the config, shown as the file it is: a name-tab chip on a bordered card */
+.yaml-card {
+  margin: 0;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   border-radius: var(--radius);
-  transition: border-color .15s ease;
+  overflow: hidden;
 }
-.feature:hover { border-color: var(--border-2); }
-.feature-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.3rem;
-  height: 2.3rem;
-  margin-bottom: 1rem;
-  color: var(--green);
-  background: var(--accent-soft);
+.yaml-card-name {
+  padding: .45rem .9rem;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--green-bright);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.yaml-card-code {
+  margin: 0;
+  padding: 1rem 1.1rem 1.1rem;
+  font-size: .84rem;
+  line-height: 1.6;
+  color: var(--text-2);
+  overflow-x: auto;
+}
+.spec-note {
+  margin: 1rem 0 0;
+  font-size: .84rem;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.spec-note code {
+  padding: .06rem .35rem;
+  color: var(--text-2);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.feature-icon svg { width: 1.2rem; height: 1.2rem; }
-.feature-title {
-  font-size: 1.02rem;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0 0 .5rem;
-}
-.feature-desc {
-  font-size: .9rem;
-  line-height: 1.65;
-  color: var(--text-2);
-  margin: 0;
-}
+.spec-note a { color: var(--green-bright); }
+.spec-note a:hover { color: var(--text); }
 
 /* ============================================================================
  * how it works — plain language + a live, standalone terminal (#tw-how) the
@@ -1174,11 +1266,11 @@ section {
  * ========================================================================== */
 @media (max-width: 900px) {
   section { padding: 4.5rem 1.25rem; }
-  .feature-grid { grid-template-columns: repeat(2, 1fr); }
+  .spec-grid { grid-template-columns: 1fr; gap: 2rem; }
   .how-points { grid-template-columns: 1fr; gap: 1.1rem; }
 
-  /* demo: window over stacked captions; shorter track so it isn't endless */
-  #demo { min-height: 860vh; }
+  /* demo: window over stacked captions */
+  #demo { min-height: 1040vh; }
   .demo-grid { grid-template-columns: 1fr; gap: 1.75rem; }
   .demo-caption { min-height: 9rem; }
 
@@ -1191,7 +1283,7 @@ section {
 @media (max-width: 640px) {
   body { font-size: 15px; }
   section { padding: 3.75rem 1rem; }
-  .feature-grid { grid-template-columns: 1fr; }
+  .spec-row { grid-template-columns: 1fr; gap: .2rem; }
 
   .tw { height: 28rem; font-size: .82rem; }
   .tw-region--sidebar { width: 146px; }

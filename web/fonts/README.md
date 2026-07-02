@@ -1,27 +1,25 @@
 # fonts/
 
-The site ships **no font binaries**. It uses the system monospace stack so it makes
-**zero external calls** and renders fully offline / over `file://` (DESIGN.md §0).
+One self-hosted face ships here: **Departure Mono** (`DepartureMono-Regular.woff2`,
+~22 KB), the pixel monospace used for the wordmark, headings, caption titles and the
+demo's overlay line — the display voice that matches the squared-off brand tile. It is
+licensed under the SIL Open Font License 1.1 (see `LICENSE`; © Helena Zhang,
+https://departuremono.com). Single weight: pixel fonts have no true bold, so nothing
+set in it may ask for one (faux-bold smears the pixels — `font-weight: 400` only).
 
-If you want a consistent monospace face across machines (notably Linux, which has no
-guaranteed good system mono), self-host one here:
+Everything else — body copy and *all* terminal content — stays on the **system
+monospace stack** (`--font` in `styles.css`): real terminals render in the system
+mono, so the simulated one must too.
 
-1. Drop a `woff2` into this folder, e.g. `fonts/jetbrains-mono.woff2`
-   (JetBrains Mono or Geist Mono both fit the aesthetic).
-2. Add an `@font-face` block to `styles.css` (example below) and point it at the file.
+Fonts must be local — never an `@import` or a remote `url()` (that would break
+DESIGN.md's no-external-origins rule and the strict CSP). The `@font-face` lives at
+the top of `styles.css`; `index.html` preloads the woff2 to avoid a flash. To swap or
+add a face:
 
-The font must be local — never an `@import` or a remote `url()` (that would break §0 and
-the strict CSP). Ready-to-paste example:
+1. Drop the `woff2` in this folder.
+2. Add / edit the `@font-face` block in `styles.css` and the `--font-display`
+   (or `--font`) stack.
+3. Keep the preload `<link>` in `index.html` in sync.
 
-```css
-@font-face {
-  font-family: "MMUX Mono";
-  src: url("fonts/jetbrains-mono.woff2") format("woff2");
-  font-weight: 100 800;       /* drop if not a variable font */
-  font-style: normal;
-  font-display: swap;
-}
-```
-
-Then prepend `"MMUX Mono"` to the `--font` stack in `styles.css`. This stays within
-the CSP (`style-src 'self'` covers the stylesheet; the `woff2` is same-origin).
+This stays within the CSP (`style-src 'self'` covers the stylesheet; the `woff2` is
+same-origin, covered by `default-src 'self'`).
