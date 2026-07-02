@@ -357,19 +357,6 @@ section {
   overflow-x: auto;
 }
 
-/* the second door: the playable sandbox, for people who won't scroll the tour */
-.hero-try {
-  margin: .9rem 0 0;
-  font-size: .86rem;
-  color: var(--muted);
-}
-.hero-try a {
-  color: var(--green-bright);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.hero-try a:hover { color: var(--text); }
-
 .hero-meta {
   display: flex;
   flex-wrap: wrap;

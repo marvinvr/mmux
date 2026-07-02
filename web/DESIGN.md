@@ -94,9 +94,8 @@ Phones keep only the brand + github.
 The **`.hero-mark`** — the brand tile SVG at `clamp(60px, 8.5vw, 92px)`, `crispEdges` — then
 kicker `a terminal multiplexer for AI agents`, the wordmark **mmux** (display face) + blinking
 block caret, tagline **persistent terminals for your coding agents.**, the sub line, the single
-install row (`$ brew install marvinvr/mmux/mmux` + copy), **`.hero-try`** — "or *try it in your
-browser* first — no install." linking `#how` — three chips, and the scroll cue. Kept compact so
-the demo window's title bar peeks above the fold on a ~900px-tall viewport.
+install row (`$ brew install marvinvr/mmux/mmux` + copy), three chips, and the scroll cue. Kept
+compact so the demo window's title bar peeks above the fold on a ~900px-tall viewport.
 
 ### 4.3 `<section id="demo">` — the centerpiece
 A tall scroll track (`min-height: 950vh`); a sticky stage pins the terminal window while captions
@@ -346,8 +345,7 @@ web/
       box-drawing as site structure.
 - [ ] The terminal is a mac window hosting a faithful ratatui TUI; every pane shows real,
       syntax-colored content per §8 — including the linked-projects scene.
-- [ ] Install shows ONLY the brew line (hero + install). The hero also offers the sandbox
-      ("try it in your browser").
+- [ ] Install shows ONLY the brew line (hero + install).
 - [ ] Scroll demo scrubs 10 scenes; the closer plays
       disconnect → reattach and rests on the green frame.
 - [ ] Sandbox is click/keyboard-playable, focus-trapped only while engaged, escapable, announced
