@@ -664,7 +664,11 @@ pub(crate) enum Overlay {
 
 #[derive(Clone, Copy)]
 pub(crate) enum PromptKind {
-    Commit,
+    /// A commit-message prompt. `push` carries whether submitting should also kick off a
+    /// background push: the plain `c` prompt starts `false` (⏎ commits, `Ctrl+⏎` upgrades
+    /// to commit-&-push), while the dedicated `C` / `[c&push]` prompt starts `true` so a
+    /// plain ⏎ commits *and* pushes.
+    Commit { push: bool },
     NewBranch,
 }
 
@@ -686,7 +690,17 @@ impl Overlay {
         Overlay::Prompt {
             title: "Commit message",
             buf: String::new(),
-            kind: PromptKind::Commit,
+            kind: PromptKind::Commit { push: false },
+        }
+    }
+
+    /// The commit-&-push prompt: same message entry, but a plain ⏎ commits *and* kicks
+    /// off a background push. Opened by `C` / the `[c&push]` footer button.
+    pub(crate) fn commit_push() -> Overlay {
+        Overlay::Prompt {
+            title: "Commit & push",
+            buf: String::new(),
+            kind: PromptKind::Commit { push: true },
         }
     }
 
@@ -840,6 +854,10 @@ impl App {
         self.overlay = Some(Overlay::commit());
     }
 
+    pub(crate) fn git_commit_push_prompt(&mut self) {
+        self.overlay = Some(Overlay::commit_push());
+    }
+
     pub(crate) fn git_newbranch_prompt(&mut self) {
         self.overlay = Some(Overlay::new_branch(String::new()));
     }
@@ -851,7 +869,13 @@ impl App {
             return;
         }
         match kind {
-            PromptKind::Commit => match self.active_git_mut().map(|g| g.commit(&buf)) {
+            PromptKind::Commit { push } => match self.active_git_mut().map(|g| g.commit(&buf)) {
+                Some(Ok(s)) if push => {
+                    // Commit landed — chain a background push (its result overwrites this
+                    // flash from `tick` when the network op returns).
+                    self.git_start("push");
+                    self.flash_git(format!("{} · pushing…", first_line(&s)));
+                }
                 Some(Ok(s)) => self.flash_git(first_line(&s)),
                 Some(Err(e)) => self.flash_git(first_line(&e)),
                 _ => {}

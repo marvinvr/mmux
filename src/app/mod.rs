@@ -36,7 +36,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event,
+        Event, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -528,6 +528,17 @@ pub fn run(ws: Workspace) -> Result<()> {
     enable_raw_mode()?;
     let mut out = stdout();
     execute!(out, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste)?;
+    // Best-effort: ask the terminal to disambiguate escape codes (the kitty keyboard
+    // protocol) so distinct chords — notably `Ctrl+⏎` in the commit prompt — arrive with
+    // their modifier instead of collapsing to a bare ⏎. Only the mildest flag: no
+    // release/repeat events, so inner-pane key forwarding (`encode_key`) is unchanged.
+    // A terminal that doesn't support it ignores the CSI (and, over the tmux jail, so
+    // does a client without extended-keys passthrough) — there `Ctrl+⏎` just falls back
+    // to a plain ⏎, with the `C` / `[c&push]` path always available. Popped on teardown.
+    let _ = execute!(
+        out,
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+    );
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
 
     let res = run_loop(&mut terminal, &mut app);
@@ -539,6 +550,8 @@ pub fn run(ws: Workspace) -> Result<()> {
     }
 
     disable_raw_mode()?;
+    // Undo the keyboard-protocol request (best-effort — a no-op where it was ignored).
+    let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,

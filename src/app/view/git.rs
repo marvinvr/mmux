@@ -880,7 +880,8 @@ fn render_prompt(f: &mut Frame, area: Rect, title: &str, buf: &str, kind: Prompt
         return;
     }
     let hint = match kind {
-        PromptKind::Commit => "⏎ commit · esc cancel",
+        PromptKind::Commit { push: false } => "⏎ commit · ^⏎ commit & push · esc cancel",
+        PromptKind::Commit { push: true } => "⏎ commit & push · esc cancel",
         PromptKind::NewBranch => "⏎ create & switch · esc cancel",
     };
     let lines = vec![

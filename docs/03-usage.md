@@ -142,7 +142,8 @@ Focus the panel with `Tab` (or click it), then:
 | `Enter` · `Space` | Stage/unstage the file or directory under the cursor — or, in Branches, switch to the branch |
 | `v` | Preview the selected file's diff in the main pane (press again to close) |
 | `a` | Stage all changes (press again to unstage all) |
-| `c` | Commit (opens a message prompt) |
+| `c` | Commit (opens a message prompt; `Ctrl+⏎` there commits **and** pushes) |
+| `C` | Commit & push (same prompt, but a plain `⏎` commits and pushes) |
 | `n` | New branch (opens a name prompt; creates and switches) |
 | `d` | Discard the selected path (destructive — asks for confirmation) |
 | `s` | Stash (`git stash push -u`, includes untracked; recover with `git stash pop`) |
@@ -152,9 +153,11 @@ Focus the panel with `Tab` (or click it), then:
 | `h` · `←` · `Esc` | Close the diff preview if open, else back to the sidebar |
 
 Staging is whole-file or whole-directory (or `a` for the whole repo) — there is no hunk staging.
-Committing with nothing staged stages everything first. Pull and push never block the UI; a second
-press while one is in flight is ignored. The panel re-reads git state on a short throttle, so commits
-an agent makes in the main pane show up on their own.
+Committing with nothing staged stages everything first. Commit & push (`C`, or `Ctrl+⏎` from the
+commit prompt) commits and then kicks off the same background push as `P` — the push result is
+flashed when it returns. Pull and push never block the UI; a second press while one is in flight is
+ignored. The panel re-reads git state on a short throttle, so commits an agent makes in the main
+pane show up on their own.
 
 ### The Diff Preview
 
