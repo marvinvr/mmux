@@ -337,7 +337,7 @@ impl App {
         };
         match form.step {
             // Text steps: type to edit, ⏎ advances (after validation), Esc cancels.
-            Step::Name | Step::Command | Step::Cwd => match k.code {
+            Step::Name | Step::Command | Step::Cwd | Step::Stop => match k.code {
                 KeyCode::Esc => return, // cancelled — leave overlay cleared
                 KeyCode::Enter => self.procform_advance(&mut form),
                 KeyCode::Backspace => {
@@ -403,6 +403,11 @@ impl App {
             }
             Step::Cwd => {
                 form.cwd = val; // optional — blank means the project root
+                form.step = Step::Stop;
+                form.buf = form.stop.clone();
+            }
+            Step::Stop => {
+                form.stop = val; // optional — blank means no teardown command
                 form.step = Step::Review;
                 form.buf.clear();
             }

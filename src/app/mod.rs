@@ -188,12 +188,14 @@ impl App {
                 if p.autostart && pi == 0 {
                     auto.push(sessions.len());
                 }
-                sessions.push(Session::new(
+                let mut s = Session::new(
                     p.name.clone(),
                     Kind::Process,
                     Recipe::process(p, &proj.cfg.dir),
                     pi,
-                ));
+                );
+                s.stop = p.stop.clone();
+                sessions.push(s);
             }
         }
 
@@ -559,6 +561,14 @@ pub fn run(ws: Workspace) -> Result<()> {
         DisableBracketedPaste
     )?;
     terminal.show_cursor()?;
+
+    // On a real quit (never a self-update restart, where the processes come straight
+    // back), run any process `stop:` teardown commands and wait for them — so something
+    // like `docker compose down` finishes before mmux, and its tmux session, go away.
+    // The panes are already ending; this is the last thing before the process exits.
+    if app.should_quit {
+        app.run_stop_commands_on_quit();
+    }
     res?;
 
     // The user applied a staged self-update: with the terminal restored, re-exec the

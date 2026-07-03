@@ -72,7 +72,7 @@ region they apply to.
 | `g` · `G` | Jump to the first / last row |
 | `Enter` · `l` · `→` | Open the selected row (see below) |
 | `s` | Start: spawn a launcher, or start a stopped session |
-| `x` | Close: **removes** an agent/terminal row entirely; **stops** a running process (row stays) |
+| `x` | Close: **removes** an agent/terminal row entirely; **stops** a running process (row stays; runs its `stop:` teardown if it has one) |
 | `r` | Restart the selected session (or spawn a launcher) |
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
@@ -96,7 +96,9 @@ focused; the git-panel row (in narrow mode) focuses the panel.
 > differently: `x` only *stops* a running one (the row stays, to start again), and to change or
 > remove a process you **edit** it (`e`, reopens the guided form) or **delete** it (`D`, with a
 > confirmation that rewrites `mmux.yaml`). The footer swaps its chips to match: on a process you see
-> `edit`/`delete` instead of `close`, and `stop` shows only while it's actually running.
+> `edit`/`delete` instead of `close`, and `stop` shows only while it's actually running. A process
+> can also carry an optional [`stop:` teardown command](04-configuration.md#process) that mmux runs
+> in its directory when it stops (on `x` or on quit) — e.g. `docker compose down`.
 
 ## Pane Keys (a focused program)
 
@@ -228,13 +230,15 @@ auto-update disabled reads `self-update off for this build`, and a non-Homebrew 
 
 ## Adding, Editing, and Deleting a Process
 
-The `+ New Process` launcher opens a four-step guided form that writes a new process into the
+The `+ New Process` launcher opens a five-step guided form that writes a new process into the
 project's `mmux.yaml`:
 
 1. **Name** — must be non-empty and not duplicate an existing process.
 2. **Command** — the shell command line (quote-aware).
 3. **Working dir** — optional; blank means the project root.
-4. **Review** — toggle autostart, then create.
+4. **Stop command** — optional; a shell line run in the working dir **after the process stops**
+   (on `x` and on quit), blank for none. Handy for a teardown like `docker compose down`.
+5. **Review** — toggle autostart, then create.
 
 `Enter` advances (and validates); `Esc` cancels; on the Review step `y`/`n` set autostart on/off
 (and `Space`/`Tab`/`←`/`→` toggle it). The entry is appended to `mmux.yaml` **preserving your existing
@@ -242,10 +246,11 @@ comments and layout**, the config is reloaded, the new row is selected, and — 
 autostart — it is started immediately.
 
 **Editing** — press `e` on a process to reopen the same form **pre-filled** with its current
-name, command, working dir, and autostart. Finishing (`⏎ save` on Review) splices the change back
-into the same `mmux.yaml` entry, again **preserving your surrounding comments and layout**, and
-reloads. If you edited the command of a process that's **currently running**, the reload restarts
-it so the new command takes effect right away — no manual stop/start.
+name, command, working dir, stop command, and autostart. Finishing (`⏎ save` on Review) splices the
+change back into the same `mmux.yaml` entry, again **preserving your surrounding comments and
+layout**, and reloads. If you edited the command of a process that's **currently running**, the
+reload restarts it so the new command takes effect right away — no manual stop/start. (Editing just
+the stop command never restarts it — the teardown only ever runs when the process actually stops.)
 
 **Deleting** — press `D` on a process for a confirmation, then `y` removes it from `mmux.yaml`
 (stopping any running instance) and reloads so the row disappears. `n`/`Esc` cancels.
@@ -338,7 +343,9 @@ the sidebar.
 - `q` (or `Ctrl-b q`) **quits**, ending the inner tmux session and killing every agent,
   terminal, and process. Because that's destructive, mmux asks you to confirm whenever
   anything is still running — and the confirmation offers `d` to detach instead. With
-  nothing running, `q` quits immediately.
+  nothing running, `q` quits immediately. Any still-running process that defines a
+  [`stop:` command](04-configuration.md#process) has it run (and waited for) as mmux exits,
+  so a `docker compose up` gets its `docker compose down` on the way out.
 - Run `mmux` again in the same directory to reattach.
 - **Your session comes back.** Even after a `q` (or a crash, or a restart-to-update), reopening a
   directory **restores the agents and terminals** you had open: **Claude and Codex agents resume

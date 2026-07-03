@@ -93,7 +93,17 @@ processes:
     args: ["run", "dev"]
     cwd: .            # relative to this file
     autostart: false  # start automatically when mmux opens?
+    # stop: docker compose down   # optional: run in cwd when stopped or on quit
 ```
+
+The optional **`stop`** is a teardown for a process that leaves something running behind
+it — a Docker stack, a tunnel, a background daemon. mmux runs it (via `sh -c`, in the
+process's `cwd`) **after the process stops**: when you press `x` on a running one, and for
+every still-running process when you quit mmux (so a `docker compose up` gets its
+`docker compose down`). It does **not** run on a [restart](03-usage.md#the-sidebar) (`r`)
+— the process is coming right back — nor for a process that was already stopped. On a
+manual stop it runs in the background; on quit mmux waits for it to finish before the tmux
+session goes away.
 
 ## Field Reference
 
@@ -126,6 +136,7 @@ Same as [Agent](#agent), plus:
 | Field | Type | Notes |
 | --- | --- | --- |
 | `autostart` | bool | Start automatically when mmux first opens. Defaults to `false`. Honored only in the launch directory (linked projects' processes start stopped). |
+| `stop` | string | Optional teardown command run in the process's `cwd` **after it stops** — when you stop it (`x`) and when you quit mmux, but **not** on a restart. A shell line (run via `sh -c`), so `docker compose down` and friends work. Unset ⇒ nothing runs. |
 
 ### Git panel
 

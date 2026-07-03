@@ -98,6 +98,13 @@ struct Session {
     and restart**; callers decide *when*.
   - `stop()` kills the process but keeps the now-exited pane (so it reads as `Status::Exited`).
   - `kill()` kills and drops the pane entirely (back to `Status::Stopped`).
+- A config-defined **process** may carry an optional `stop:` **teardown** command
+  (`Session.stop`, e.g. `docker compose down`) — a shell line run in its directory *after it
+  stops*: on a manual `x` and, for every still-running process, at quit (`run_stop_commands_on_quit`
+  in [`lifecycle.rs`](07-module-map.md), called from `run()`). It never runs on a restart (the
+  process is coming right back). A manual stop backgrounds it; quit waits for it, so the teardown
+  finishes before the inner tmux session — and mmux — go away. This is teardown *around* the
+  lifecycle, not a fourth lifecycle method.
 - `Status` (`Stopped`/`Running`/`Exited`/`Failed`) is derived from the `Option<Pane>` and whether
   the process is alive — it is not stored. `Failed` means it exited non-zero *on its own* (a
   deliberate `stop()`/`kill()` is flagged on the pane so it stays `Exited`, not `Failed`); it

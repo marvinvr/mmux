@@ -101,6 +101,13 @@ pub struct ProcessDef {
     /// Start this process automatically when mmux first opens.
     #[serde(default)]
     pub autostart: bool,
+    /// Optional teardown command run in the process's directory after it stops — when
+    /// you stop it (`x`) and when you quit mmux, but not on a restart. A shell line
+    /// (run via `sh -c`), so `docker compose down` and the like work. `None`/unset ⇒
+    /// nothing runs. Carried onto the live [`Session`](crate::app::Session) and executed
+    /// there; see [`crate::app::Session::stop_command`].
+    #[serde(default)]
+    pub stop: Option<String>,
 }
 
 /// How a desktop notification is delivered to the user's terminal.
@@ -476,6 +483,8 @@ pub struct ProcessDraft {
     pub args: Vec<String>,
     pub cwd: Option<String>,
     pub autostart: bool,
+    /// Optional teardown shell line (see [`ProcessDef::stop`]); emitted only when set.
+    pub stop: Option<String>,
 }
 
 /// Split a typed command line ("npm run dev") into `(cmd, args)`, honouring simple
@@ -585,9 +594,11 @@ fn scaffold_project_file(processes: &str, linked: &str) -> String {
     s.push_str("#   - name: Claude\n#     cmd: claude\n#     args: [\"--dangerously-skip-permissions\"]\n\n");
 
     s.push_str("# Processes: commands you start/stop and watch. cwd is relative to this file.\n");
+    s.push_str("# An optional `stop:` shell line (e.g. docker compose down) runs in that dir when\n");
+    s.push_str("# the process is stopped or mmux quits — handy for tearing down what it started.\n");
     if processes.is_empty() {
         s.push_str("# processes:\n");
-        s.push_str("#   - name: Dev server\n#     cmd: npm\n#     args: [\"run\", \"dev\"]\n#     autostart: false\n\n");
+        s.push_str("#   - name: Dev server\n#     cmd: npm\n#     args: [\"run\", \"dev\"]\n#     autostart: false\n#     # stop: docker compose down\n\n");
     } else {
         s.push_str("processes:\n");
         s.push_str(processes);
@@ -848,6 +859,9 @@ fn render_item(p: &ProcessDraft, indent: usize) -> String {
     if let Some(cwd) = &p.cwd {
         s.push_str(&format!("{sub}cwd: {}\n", yaml_scalar(cwd)));
     }
+    if let Some(stop) = &p.stop {
+        s.push_str(&format!("{sub}stop: {}\n", yaml_scalar(stop)));
+    }
     s.push_str(&format!("{sub}autostart: {}\n", p.autostart));
     s
 }
@@ -953,11 +967,14 @@ agents:
     args: ["--dangerously-bypass-approvals-and-sandbox"]
 
 # Processes: defined commands you start/stop and watch. cwd is relative to this file.
+# An optional `stop:` shell line (e.g. docker compose down) runs in that dir when the
+# process is stopped or mmux quits — handy for tearing down what it started.
 processes:
   - name: Dev server
     cmd: npm
     args: ["run", "dev"]
     autostart: false
+    # stop: docker compose down
 
 # Linked projects: other projects to show alongside this one in the same workspace —
 # any directories you want grouped together (extra clones, a related repo, a service).
@@ -991,6 +1008,7 @@ mod tests {
             args: vec!["run".into(), "dev".into()],
             cwd: None,
             autostart: false,
+            stop: None,
         }
     }
 
@@ -1093,11 +1111,25 @@ mod tests {
         let mut d = draft();
         d.args.clear();
         d.cwd = Some("backend".into());
+        d.stop = Some("docker compose down".into());
         d.autostart = true;
         let out = insert_process("", &d).unwrap();
         assert!(!out.contains("args:"));
         assert!(out.contains("cwd: backend"));
+        assert!(out.contains("stop: docker compose down"));
         assert!(out.contains("autostart: true"));
+        // The stop line round-trips back to the parsed config.
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.processes[0].stop.as_deref(), Some("docker compose down"));
+    }
+
+    #[test]
+    fn stop_is_omitted_when_unset() {
+        // A bare draft (no stop) writes no `stop:` line.
+        let out = insert_process("", &draft()).unwrap();
+        assert!(!out.contains("stop:"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert!(cfg.processes[0].stop.is_none());
     }
 
     #[test]

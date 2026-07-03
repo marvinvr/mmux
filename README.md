@@ -83,6 +83,7 @@ processes:
     cmd: npm
     args: ["run", "dev"]
     autostart: false
+    # stop: docker compose down   # optional: run in cwd when stopped or on quit
 ```
 
 A private, git-ignored `./mmux.local.yml` can **deep-override** the project file — overriding just

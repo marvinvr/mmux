@@ -651,7 +651,7 @@ fn preview_lines(p: Option<&Preview>) -> Vec<Line<'static>> {
 /// validation warning, and a key hint pinned to the bottom row.
 fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let w = area.width.saturating_sub(6).clamp(34, 72);
-    let h = 12u16.min(area.height);
+    let h = 13u16.min(area.height);
     let rect = centered(area, w, h);
     // Same form for adding and editing; the title and the Review verb reflect which.
     let editing = form.edit.is_some();
@@ -675,6 +675,7 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
         Step::Name => ("Name", "⏎ next · esc cancel"),
         Step::Command => ("Command", "⏎ next · esc cancel"),
         Step::Cwd => ("Working dir", "⏎ next (blank ok) · esc cancel"),
+        Step::Stop => ("Stop command", "⏎ next (blank ok) · esc cancel"),
         Step::Review => ("Review", review_hint),
     };
 
@@ -694,6 +695,8 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
             lines.push(field_line("Command", &form.command));
             let cwd = if form.cwd.trim().is_empty() { "(project root)" } else { form.cwd.trim() };
             lines.push(field_line("Working dir", cwd));
+            let stop = if form.stop.trim().is_empty() { "(none)" } else { form.stop.trim() };
+            lines.push(field_line("Stop cmd", stop));
             let mark = if form.autostart { " yes " } else { " no " };
             lines.push(Line::from(vec![
                 Span::styled("Autostart    ", Style::default().fg(Color::Gray)),
@@ -708,13 +711,18 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
             if step != Step::Name {
                 lines.push(field_line("Name", &form.name));
             }
-            if step == Step::Cwd {
+            if matches!(step, Step::Cwd | Step::Stop) {
                 lines.push(field_line("Command", &form.command));
+            }
+            if step == Step::Stop {
+                let cwd = if form.cwd.trim().is_empty() { "(project root)" } else { form.cwd.trim() };
+                lines.push(field_line("Working dir", cwd));
             }
             let prompt = match step {
                 Step::Name => "A label for the sidebar, e.g. Dev server",
                 Step::Command => "The command to run, e.g. npm run dev",
                 Step::Cwd => "Directory relative to the project (blank = project root)",
+                Step::Stop => "Optional teardown run in the dir, e.g. docker compose down",
                 Step::Review => "",
             };
             lines.push(Line::from(Span::styled(prompt, Style::default().fg(Color::DarkGray))));

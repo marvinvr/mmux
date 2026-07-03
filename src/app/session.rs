@@ -9,6 +9,7 @@ use crate::config::{AgentDef, ProcessDef};
 use crate::pane::{Notify, Pane};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 /// Which sidebar bucket a session belongs to. Drives ordering, the badge, and
@@ -99,6 +100,11 @@ pub struct Session {
     /// processes, and any agent that isn't one of the two we support. See
     /// [`crate::agent`] and [`crate::restore`].
     pub agent: Option<crate::agent::Resume>,
+    /// Optional teardown command (a shell line) run in `recipe.cwd` after this session's
+    /// process stops — on an explicit stop and on quit, but not on a restart. Carried
+    /// from a config-defined process's [`stop:`](crate::config::ProcessDef::stop); `None`
+    /// for agents, terminals, and processes without one. See [`Session::stop_command`].
+    pub stop: Option<String>,
 }
 
 impl Session {
@@ -111,7 +117,28 @@ impl Session {
             recipe,
             project,
             agent: None,
+            stop: None,
         }
+    }
+
+    /// The teardown command for this session, if it declares a [`stop`](Self::stop) — a
+    /// `sh -c` invocation of it in the recipe's `cwd`, carrying the recipe's env, with
+    /// stdio silenced. Returns a ready-to-run [`Command`] (never spawned here) so the
+    /// caller decides how to run it: fire-and-forget on a stop, or waited-on at quit.
+    /// `None` for agents/terminals and any process without a (non-blank) `stop:`.
+    pub fn stop_command(&self) -> Option<Command> {
+        let stop = self.stop.as_deref().map(str::trim).filter(|s| !s.is_empty())?;
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg(stop)
+            .current_dir(&self.recipe.cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        for (k, v) in &self.recipe.env {
+            cmd.env(k, v);
+        }
+        Some(cmd)
     }
 
     pub fn status(&self) -> Status {

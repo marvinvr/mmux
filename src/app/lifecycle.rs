@@ -10,7 +10,13 @@ use super::session::{Kind, Recipe, Session, Status};
 use super::{App, Focus, Project};
 use crate::config::{self, Config};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// How long [`run_stop_commands_on_quit`](App::run_stop_commands_on_quit) waits for
+/// process teardown commands to finish before giving up, so a misbehaving `stop:` can't
+/// wedge quit indefinitely. Generous enough for a real `docker compose down`.
+const STOP_QUIT_WAIT: Duration = Duration::from_secs(30);
 
 impl App {
     /// True when any agent, terminal, or process still has a live pane — i.e. quitting
@@ -75,12 +81,14 @@ impl App {
         let path = crate::config::project_config_path(&self.projects[pi].cfg.dir);
         let (cmd, args) = crate::config::split_command(&form.command);
         let cwd = form.cwd.trim();
+        let stop = form.stop.trim();
         let draft = crate::config::ProcessDraft {
             name: form.name.clone(),
             cmd,
             args,
             cwd: (!cwd.is_empty()).then(|| cwd.to_string()),
             autostart: form.autostart,
+            stop: (!stop.is_empty()).then(|| stop.to_string()),
         };
         let res = match &form.edit {
             Some(old) => crate::config::replace_process(&path, old, &draft),
@@ -238,7 +246,9 @@ impl App {
         let proj = Project::new(cfg);
         for p in &proj.cfg.processes {
             let recipe = Recipe::process(p, &proj.cfg.dir);
-            self.sessions.push(Session::new(p.name.clone(), Kind::Process, recipe, pi));
+            let mut s = Session::new(p.name.clone(), Kind::Process, recipe, pi);
+            s.stop = p.stop.clone();
+            self.sessions.push(s);
         }
         self.projects.push(proj);
         self.last_proj_sel.push(None);
@@ -327,9 +337,70 @@ impl App {
                 // it for good rather than leaving an exited husk in the sidebar.
                 Kind::Agent | Kind::Terminal => self.close_session(i),
                 // Processes are config-defined entries: stop but keep the row so it
-                // can be started again in place.
-                _ => self.sessions[i].stop(),
+                // can be started again in place. A running one that declares a `stop:`
+                // fires its teardown command — but only when it was actually running
+                // (stopping an already-stopped process has nothing to tear down).
+                _ => {
+                    let was_running = self.sessions[i].is_running();
+                    self.sessions[i].stop();
+                    if was_running {
+                        self.run_stop_command(i);
+                    }
+                }
             }
+        }
+    }
+
+    /// Fire process `i`'s teardown command (its [`stop:`](crate::config::ProcessDef::stop))
+    /// in the background, if it declares one. It runs detached on a throwaway thread that
+    /// waits on the child (so it's reaped) while the UI stays responsive — a
+    /// `docker compose down` can take a moment. The quit path
+    /// ([`run_stop_commands_on_quit`](Self::run_stop_commands_on_quit)) waits instead, so
+    /// the teardown finishes before mmux (and its tmux session) goes away.
+    fn run_stop_command(&mut self, i: usize) {
+        let Some(mut cmd) = self.sessions[i].stop_command() else {
+            return;
+        };
+        let name = self.sessions[i].name.clone();
+        thread::spawn(move || {
+            let _ = cmd.status();
+        });
+        self.flash = Some((format!("running stop command for “{name}”"), Instant::now()));
+    }
+
+    /// On quit, run every still-running process's teardown command and **wait** for them,
+    /// so something like `docker compose down` completes before mmux — and its tmux
+    /// session — disappear. Each process's pane is killed first (it has stopped), then the
+    /// commands run in parallel and we poll until they all finish or [`STOP_QUIT_WAIT`]
+    /// elapses — a bounded wait so a misbehaving teardown can't wedge quit (Ctrl-C still
+    /// escapes, and any straggler is orphaned like a plain kill would leave it). Called
+    /// from [`run`](super::run) on a real quit only, never a self-update restart (where the
+    /// processes come straight back).
+    pub(crate) fn run_stop_commands_on_quit(&mut self) {
+        let mut children = Vec::new();
+        for s in self.sessions.iter_mut() {
+            if s.kind == Kind::Process && s.is_running() {
+                if let Some(mut cmd) = s.stop_command() {
+                    if let Ok(child) = cmd.spawn() {
+                        children.push(child);
+                    }
+                }
+                s.stop();
+            }
+        }
+        if children.is_empty() {
+            return;
+        }
+        // The terminal is already restored here, so a plain line explains the brief pause.
+        eprintln!("mmux: running {} process stop command(s)…", children.len());
+        let deadline = Instant::now() + STOP_QUIT_WAIT;
+        while !children.is_empty() && Instant::now() < deadline {
+            // Keep only the ones still running (drop exited / un-waitable children).
+            children.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+            if children.is_empty() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
         }
     }
 
@@ -460,10 +531,15 @@ impl App {
                                 restarted += 1;
                             }
                         }
+                        // The teardown command isn't part of the recipe (editing it must
+                        // not restart a running process), so refresh it unconditionally.
+                        item.stop = p.stop.clone();
                         next_procs.push(item);
                     }
                     None => {
-                        next_procs.push(Session::new(p.name.clone(), Kind::Process, recipe, pi));
+                        let mut item = Session::new(p.name.clone(), Kind::Process, recipe, pi);
+                        item.stop = p.stop.clone();
+                        next_procs.push(item);
                         added += 1;
                     }
                 }

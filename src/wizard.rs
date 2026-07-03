@@ -66,6 +66,8 @@ struct Process {
     cmd: String,
     args: Vec<String>,
     cwd: String,
+    /// Optional teardown shell line run when the process stops or mmux quits; blank = none.
+    stop: String,
     autostart: bool,
 }
 
@@ -147,8 +149,9 @@ fn ask_processes() -> Result<Vec<Process>> {
         let default_name = if out.is_empty() { "Dev server".to_string() } else { capitalize(&cmd) };
         let name = ask("  Name for this step", Some(&default_name))?;
         let cwd = ask("  Working directory (relative to the project)", Some("."))?;
+        let stop = ask("  Stop command — runs in that dir on stop/quit (e.g. docker compose down), blank for none", None)?;
         let autostart = confirm("  Start it automatically when mmux opens?", false)?;
-        out.push(Process { name, cmd, args, cwd, autostart });
+        out.push(Process { name, cmd, args, cwd, stop, autostart });
         if !confirm("Add another start command?", false)? {
             break;
         }
@@ -245,9 +248,11 @@ fn build_local_yaml(
 
     // Processes
     s.push_str("# Processes: commands you start/stop and watch. cwd is relative to this file.\n");
+    s.push_str("# An optional `stop:` shell line (e.g. docker compose down) runs in that dir when\n");
+    s.push_str("# the process is stopped or mmux quits — handy for tearing down what it started.\n");
     if procs.is_empty() {
         s.push_str("# processes:\n");
-        s.push_str("#   - name: Dev server\n#     cmd: npm\n#     args: [\"run\", \"dev\"]\n#     autostart: false\n\n");
+        s.push_str("#   - name: Dev server\n#     cmd: npm\n#     args: [\"run\", \"dev\"]\n#     autostart: false\n#     # stop: docker compose down\n\n");
     } else {
         s.push_str("processes:\n");
         s.push_str(&process_items(procs));
@@ -291,6 +296,9 @@ fn process_items(procs: &[Process]) -> String {
         s.push_str(&format!("    cmd: {}\n", yaml_scalar(&p.cmd)));
         s.push_str(&format!("    args: {}\n", yaml_args(&p.args)));
         s.push_str(&format!("    cwd: {}\n", yaml_scalar(&p.cwd)));
+        if !p.stop.trim().is_empty() {
+            s.push_str(&format!("    stop: {}\n", yaml_scalar(&p.stop)));
+        }
         s.push_str(&format!("    autostart: {}\n", p.autostart));
     }
     s
@@ -480,6 +488,7 @@ mod tests {
             cmd: "npm".into(),
             args: vec!["run".into(), "dev".into()],
             cwd: ".".into(),
+            stop: "docker compose down".into(),
             autostart: true,
         }];
         let yaml = build_local_yaml("myproj", &[], true, &procs, &["../other".to_string()]);
@@ -489,6 +498,7 @@ mod tests {
         assert_eq!(cfg.processes.len(), 1);
         assert_eq!(cfg.processes[0].name, "Dev server");
         assert!(cfg.processes[0].autostart);
+        assert_eq!(cfg.processes[0].stop.as_deref(), Some("docker compose down"));
         assert_eq!(cfg.linked_projects, vec!["../other".to_string()]);
     }
 

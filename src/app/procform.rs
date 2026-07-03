@@ -1,7 +1,7 @@
 //! State for the process guided form — the modal wizard raised from the PROCESSES
 //! section, used both to **add** a new process (`+ New Process`) and to **edit** an
 //! existing one (`e`). It walks one field per screen (name → command → working dir →
-//! review), then the collected values are written to the project's `mmux.yaml` by
+//! stop command → review), then the collected values are written to the project's `mmux.yaml` by
 //! [`App::finish_new_process`](super::App) — appended for a new process, spliced in
 //! place for an edit (see [`ProcForm::edit`]). Keys are driven in
 //! [`App::procform_key`](super::input) and it's drawn in
@@ -14,11 +14,12 @@ pub(crate) enum Step {
     Name,
     Command,
     Cwd,
+    Stop,
     Review,
 }
 
-/// Total steps, for the "Step N of 4" header.
-pub(crate) const STEPS: usize = 4;
+/// Total steps, for the "Step N of 5" header.
+pub(crate) const STEPS: usize = 5;
 
 pub(crate) struct ProcForm {
     /// The project whose config the process is written to.
@@ -27,6 +28,8 @@ pub(crate) struct ProcForm {
     pub name: String,
     pub command: String,
     pub cwd: String,
+    /// Optional teardown shell line run when the process stops or mmux quits; blank = none.
+    pub stop: String,
     pub autostart: bool,
     /// The edit buffer for the active text step; committed into the matching field
     /// when advancing (see [`super::input`]).
@@ -48,6 +51,7 @@ impl ProcForm {
             name: String::new(),
             command: String::new(),
             cwd: String::new(),
+            stop: String::new(),
             autostart: false,
             buf: String::new(),
             error: None,
@@ -65,6 +69,7 @@ impl ProcForm {
             name: def.name.clone(),
             command: crate::config::join_command(&def.cmd, &def.args),
             cwd: def.cwd.clone().unwrap_or_default(),
+            stop: def.stop.clone().unwrap_or_default(),
             autostart: def.autostart,
             buf: def.name.clone(), // the Name step opens on the existing value
             error: None,
@@ -78,7 +83,8 @@ impl ProcForm {
             Step::Name => 1,
             Step::Command => 2,
             Step::Cwd => 3,
-            Step::Review => 4,
+            Step::Stop => 4,
+            Step::Review => 5,
         }
     }
 }

@@ -72,13 +72,15 @@ fn check() -> Result<()> {
             println!("  agent   {:<16} {} {:?}", a.name, a.cmd, a.args);
         }
         for p in &cfg.processes {
+            let stop = p.stop.as_deref().map(|s| format!(", stop: {s}")).unwrap_or_default();
             println!(
-                "  process {:<16} {} {:?}  (cwd: {}, autostart: {})",
+                "  process {:<16} {} {:?}  (cwd: {}, autostart: {}{})",
                 p.name,
                 p.cmd,
                 p.args,
                 p.cwd.as_deref().unwrap_or("."),
-                p.autostart
+                p.autostart,
+                stop
             );
         }
         if cfg.git_panel_enabled() {
@@ -181,6 +183,7 @@ PROJECT FILE — ./mmux.yaml
           args: ["run", "dev"]
           cwd: .                       # optional, relative to this file
           autostart: false             # start automatically when mmux opens?
+          # stop: docker compose down  # optional shell line, run in the dir on stop/quit
           # env: {{ NODE_ENV: development }}
 
       # The git panel appears automatically when this dir is a git repo.
@@ -232,6 +235,7 @@ FIELD REFERENCE
                 · linked-projects[] (paths, root config only)
     agent       name* · cmd* · args[] · cwd · env{{}}
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
+                · stop (shell line run in the dir when stopped/quit, not on restart)
     git-panel   enabled (bool, default true; the panel is automatic for git repos)
     auto-update enabled (bool, default true; Homebrew installs only — checks on start
                 and every 6 hours, installs in the background, shows a "restart to
