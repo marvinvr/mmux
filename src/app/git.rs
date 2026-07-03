@@ -683,6 +683,10 @@ pub(crate) enum Confirmed {
     /// Delete the named process from project `project`'s `mmux.yaml` (and stop any live
     /// instance), then reload. See [`App::delete_process`](super::App::delete_process).
     DeleteProcess { project: usize, name: String },
+    /// Close the still-running agent/terminal named `name` in project `project` — kills
+    /// its pane and drops the row. Identified by name (not index) so it survives a prune
+    /// while the modal is open. See [`App::close_named_session`](super::App::close_named_session).
+    CloseSession { project: usize, name: String },
 }
 
 impl Overlay {
@@ -898,6 +902,7 @@ impl App {
             },
             Confirmed::Quit => self.should_quit = true,
             Confirmed::DeleteProcess { project, name } => self.delete_process(project, &name),
+            Confirmed::CloseSession { project, name } => self.close_named_session(project, &name),
         }
     }
 

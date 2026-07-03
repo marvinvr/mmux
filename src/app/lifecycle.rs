@@ -334,7 +334,25 @@ impl App {
         if let Some(Nav::Session(i)) = self.current_nav() {
             match self.sessions[i].kind {
                 // Agents and terminals are throwaway instances: closing one removes
-                // it for good rather than leaving an exited husk in the sidebar.
+                // it for good rather than leaving an exited husk in the sidebar. A
+                // *running* one still has live work and — unlike quit — isn't
+                // restored on reopen, so we confirm first (mirroring the quit modal).
+                Kind::Agent | Kind::Terminal if self.sessions[i].is_running() => {
+                    let name = self.sessions[i].name.clone();
+                    let (title, noun) = match self.sessions[i].kind {
+                        Kind::Terminal => ("Close terminal?", "terminal"),
+                        _ => ("Close agent?", "agent"),
+                    };
+                    self.overlay = Some(Overlay::confirm(
+                        title,
+                        format!("“{name}” is still running. Closing it stops the {noun} and drops it."),
+                        "y close · n cancel",
+                        super::git::Confirmed::CloseSession {
+                            project: self.sessions[i].project,
+                            name,
+                        },
+                    ));
+                }
                 Kind::Agent | Kind::Terminal => self.close_session(i),
                 // Processes are config-defined entries: stop but keep the row so it
                 // can be started again in place. A running one that declares a `stop:`
@@ -406,13 +424,31 @@ impl App {
 
     /// Kill an agent/terminal session and drop it from the sidebar entirely.
     fn close_session(&mut self, i: usize) {
+        // Where the closed row sits *now*, so we can land on the row before it.
+        // Selection is positional: leaving `sel` put would slide the cursor onto
+        // whatever row slips into the freed slot (the *next* one), so step back to
+        // the *previous* row — closing a tab jumps back, not forward. Derived from
+        // the closed row's own position (not `sel`) so it's right whoever calls us.
+        let pos = self.build_nav().iter().position(|n| *n == Nav::Session(i));
         self.sessions[i].kill();
         self.sessions.remove(i);
-        // Selection is positional; the nav list just shrank. Keep the cursor in
-        // range and hand focus back to the sidebar (its pane is gone).
         let navlen = self.build_nav().len();
-        self.sel = self.sel.min(navlen.saturating_sub(1));
+        let target = pos.unwrap_or(self.sel).saturating_sub(1);
+        self.sel = target.min(navlen.saturating_sub(1));
+        // Hand focus back to the sidebar (the closed row's pane is gone).
         self.focus = Focus::Sidebar;
+    }
+
+    /// Close the agent/terminal identified by (`project`, `name`) — the deferred half of
+    /// the [`do_stop`](Self::do_stop) confirmation. Resolved by name at accept time (not a
+    /// stashed index) so a prune between opening the modal and confirming can't close the
+    /// wrong row. Called from the confirmation ([`overlay_confirm`](super::App::overlay_confirm)).
+    pub(crate) fn close_named_session(&mut self, project: usize, name: &str) {
+        if let Some(i) = self.sessions.iter().position(|s| {
+            s.project == project && s.name == name && matches!(s.kind, Kind::Agent | Kind::Terminal)
+        }) {
+            self.close_session(i);
+        }
     }
 
     /// Drop any agent or terminal that exited *cleanly*, so quitting an agent from

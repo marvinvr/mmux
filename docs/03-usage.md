@@ -72,7 +72,7 @@ region they apply to.
 | `g` · `G` | Jump to the first / last row |
 | `Enter` · `l` · `→` | Open the selected row (see below) |
 | `s` | Start: spawn a launcher, or start a stopped session |
-| `x` | Close: **removes** an agent/terminal row entirely; **stops** a running process (row stays; runs its `stop:` teardown if it has one) |
+| `x` | Close: **removes** an agent/terminal row entirely (asks to confirm first if it's still running — like quit); **stops** a running process (row stays; runs its `stop:` teardown if it has one). Closing lands the cursor on the **previous** row |
 | `r` | Restart the selected session (or spawn a launcher) |
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
@@ -109,7 +109,7 @@ program. **`Ctrl-b` is the leader**: press it, then one more key for an mmux com
 | --- | --- |
 | `Ctrl-b` `h` · `Ctrl-b` `←` · `Ctrl-b` `Esc` | Back to the sidebar |
 | `Ctrl-b` `d` | Detach |
-| `Ctrl-b` `x` | Close the focused session (removes an agent/terminal, stops a process), then return to the sidebar |
+| `Ctrl-b` `x` | Close the focused session (removes an agent/terminal — confirmed first if running — stops a process), then return to the sidebar |
 | `Ctrl-b` `R` | Reload config, then return to the sidebar |
 | `Ctrl-b` `q` | Quit mmux (same confirmation as `q` when anything is running) |
 | `Ctrl-b` `b` | Send a literal `Ctrl-b` to the program (e.g. for an inner tmux) |

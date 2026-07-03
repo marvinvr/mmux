@@ -933,7 +933,7 @@ dependencies = [
 
 [[package]]
 name = "mmux"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "bytes",
