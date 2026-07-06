@@ -231,11 +231,11 @@ fn brew_prefix() -> Option<PathBuf> {
 
 /// The release-asset target triple for this OS/arch, or `None` for a platform we don't
 /// ship a prebuilt binary for. Linux ships static musl binaries (run on any distro
-/// regardless of glibc); macOS ships per-arch Mach-O binaries.
+/// regardless of glibc); macOS ships an Apple-silicon binary only (Intel Macs are EOL and
+/// install from source, so they never self-manage).
 fn asset_target() -> Option<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Some("aarch64-apple-darwin"),
-        ("macos", "x86_64") => Some("x86_64-apple-darwin"),
         ("linux", "aarch64") => Some("aarch64-unknown-linux-musl"),
         ("linux", "x86_64") => Some("x86_64-unknown-linux-musl"),
         _ => None,
@@ -440,8 +440,8 @@ mod tests {
 
     #[test]
     fn asset_target_covers_shipped_platforms() {
-        // Whatever host runs the tests must map to one of the four shipped triples
-        // (or None on an unshipped platform — still a valid, non-panicking answer).
+        // Whatever host runs the tests must map to one of the three shipped triples
+        // (or None on an unshipped platform, e.g. Intel macOS — still valid, non-panicking).
         let t = asset_target();
         if let Some(t) = t {
             assert!(t.contains("apple-darwin") || t.contains("linux-musl"));

@@ -1,5 +1,5 @@
 # Runs on every push to main and every pull request. Everything here is lightweight enough
-# to run per-commit, and everything runs in parallel: lint, tests, the four native-arch
+# to run per-commit, and everything runs in parallel: lint, tests, the three native-arch
 # build+smoke jobs (via the reusable _build.yml), and a non-blocking TUI boot test. This is
 # what catches an arch/musl/exec break on the commit that caused it — not weeks later at a tag.
 name: CI

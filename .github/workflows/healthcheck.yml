@@ -22,8 +22,6 @@ jobs:
         include:
           - os: macos-14
             kind: mac
-          - os: macos-13
-            kind: mac
           - os: ubuntu-latest
             kind: linux
           - os: ubuntu-24.04-arm

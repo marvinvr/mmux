@@ -19,8 +19,8 @@ class Mmux < Formula
       sha256 "MAC_ARM_SHA_PLACEHOLDER"
     end
     on_intel do
-      url "https://github.com/marvinvr/mmux/releases/download/TAG_PLACEHOLDER/mmux-x86_64-apple-darwin.tar.gz"
-      sha256 "MAC_X86_SHA_PLACEHOLDER"
+      # Intel Macs are EOL — no prebuilt binary. Build from the source url above.
+      depends_on "rust" => :build
     end
   end
 

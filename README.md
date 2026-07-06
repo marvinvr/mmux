@@ -28,7 +28,7 @@ done), mmux raises a native desktop notification — even over SSH.
 
 ## Install
 
-macOS & Linux (arm64 & x86_64):
+macOS (Apple Silicon) & Linux (arm64 & x86_64):
 
 ```sh
 curl -fsSL https://mmux.org/install.sh | sh

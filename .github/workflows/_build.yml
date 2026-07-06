@@ -1,5 +1,5 @@
 # Reusable build + per-arch smoke test. Called by ci.yml (every commit) and release.yml
-# (every tag). Each target builds on its OWN native-arch runner — macOS arm/Intel and Linux
+# (every tag). Each target builds on its OWN native-arch runner — macOS arm and Linux
 # arm/x86 — so the same job that produces a binary can immediately run it (no cross-compiling,
 # no QEMU). Static musl builds on Linux run on any distro regardless of glibc. Every build is
 # stamped MMUX_RELEASE=1 — the marker the in-app self-updater requires (see src/update.rs).
@@ -25,9 +25,7 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            os: macos-14 # Apple silicon
-          - target: x86_64-apple-darwin
-            os: macos-13 # last Intel macOS runner
+            os: macos-14 # Apple silicon (Intel Macs are EOL; they build from source)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest # native x86_64
           - target: aarch64-unknown-linux-musl

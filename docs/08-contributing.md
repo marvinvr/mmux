@@ -66,8 +66,8 @@ PTY/TUI layers are verified by hand by the maintainer — with one automated exc
   formatter gate would fail spuriously.)
 - **`test`** — `cargo test`.
 - **`build+smoke`** — the reusable `.github/workflows/_build.yml`: builds the release binary for
-  all four shipped targets, **each on its own native-arch runner** (macOS arm `macos-14` / Intel
-  `macos-13`, Linux x86 `ubuntu-latest` / arm64 `ubuntu-24.04-arm`), then runs `ci/smoke.sh` on the
+  all three shipped targets, **each on its own native-arch runner** (macOS arm `macos-14`, Linux
+  x86 `ubuntu-latest` / arm64 `ubuntu-24.04-arm`), then runs `ci/smoke.sh` on the
   binary it just built — relocated and (macOS) re-signed exactly as an install would, so the
   "does it actually execute on this platform" question is answered on every commit, not just at a
   tag. Linux targets are static musl builds (run on any distro regardless of glibc). Builds are
@@ -86,7 +86,7 @@ Releases are tag-driven, and **staged**: a tag is verified on real per-platform 
 distributed, so a broken build never reaches users. Pushing a `v*` tag (e.g.
 `git tag v0.1.4 && git push origin v0.1.4`) runs `.github/workflows/release.yml`:
 
-1. **`build`** — the same reusable `_build.yml` (four native-arch builds + smoke), uploading the
+1. **`build`** — the same reusable `_build.yml` (three native-arch builds + smoke), uploading the
    tarballs as artifacts.
 2. **`publish-prerelease`** — attaches the tarballs + a `checksums.txt` and creates the GitHub
    Release as a **prerelease**. GitHub's `releases/latest` excludes prereleases, so install.sh, the

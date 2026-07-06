@@ -13,7 +13,7 @@ separately — mmux just launches them.
 
 ## Install Script (recommended)
 
-Works on macOS and Linux, arm64 and x86_64:
+Works on macOS (Apple Silicon) and Linux (arm64 and x86_64):
 
 ```sh
 curl -fsSL https://mmux.org/install.sh | sh
@@ -43,10 +43,11 @@ If `~/.local/bin` isn't on your `PATH`, the script prints the line to add.
 brew install marvinvr/mmux/mmux
 ```
 
-This installs a prebuilt binary on macOS (arm64 / x86_64). A brew install notifies you when a new
-version is out and applies it with `brew upgrade mmux` once you confirm (see
-[Auto-Update](04-configuration.md#auto-update)). On Linux, `brew` builds mmux from source (pulling
-in Rust automatically) — prefer the install script there.
+This installs a prebuilt binary on macOS (Apple Silicon); on Intel Macs (which are EOL) it builds
+from source, pulling in Rust automatically. A brew install notifies you when a new version is out
+and applies it with `brew upgrade mmux` once you confirm (see
+[Auto-Update](04-configuration.md#auto-update)). On Linux, `brew` also builds from source — prefer
+the install script there.
 
 ## From Source
 
@@ -73,10 +74,12 @@ Source builds don't self-update (they carry no release marker) — pull and rebu
 Every tagged release attaches per-platform tarballs (and a `checksums.txt`) to the
 [GitHub Releases](https://github.com/marvinvr/mmux/releases) page:
 
-- `aarch64-apple-darwin` (macOS arm64)
-- `x86_64-apple-darwin` (macOS Intel)
+- `aarch64-apple-darwin` (macOS, Apple Silicon)
 - `aarch64-unknown-linux-musl` (Linux arm64, static)
 - `x86_64-unknown-linux-musl` (Linux x86_64, static)
+
+Intel Macs are EOL and ship no prebuilt binary — install via [Homebrew](#homebrew-macos) or
+[from source](#from-source).
 
 The [install script](#install-script-recommended) picks the right one automatically. To do it by
 hand, download and extract the `mmux` binary onto your `PATH`, and (on macOS) re-sign it as shown

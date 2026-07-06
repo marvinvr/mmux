@@ -27,18 +27,15 @@ sha_file() { sha256 <"$1" | cut -d' ' -f1; }
 SOURCE_URL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
 SOURCE_SHA="$(curl -fsSL "$SOURCE_URL" | sha256 | cut -d' ' -f1)"
 MAC_ARM_SHA="$(sha_file "${DIST}/mmux-aarch64-apple-darwin.tar.gz")"
-MAC_X86_SHA="$(sha_file "${DIST}/mmux-x86_64-apple-darwin.tar.gz")"
 
 echo "Rendering formula for ${VERSION}:" >&2
 echo "  source:  $SOURCE_SHA" >&2
 echo "  mac arm: $MAC_ARM_SHA" >&2
-echo "  mac x86: $MAC_X86_SHA" >&2
 
 sed -e "s|VERSION_PLACEHOLDER|${VERSION}|g" \
 	-e "s|TAG_PLACEHOLDER|${TAG}|g" \
 	-e "s|SOURCE_SHA_PLACEHOLDER|${SOURCE_SHA}|g" \
 	-e "s|MAC_ARM_SHA_PLACEHOLDER|${MAC_ARM_SHA}|g" \
-	-e "s|MAC_X86_SHA_PLACEHOLDER|${MAC_X86_SHA}|g" \
 	"$TEMPLATE" >"$OUT"
 
 # Sanity check: no placeholder survived the substitution.

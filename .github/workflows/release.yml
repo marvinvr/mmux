@@ -58,9 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14 # arm
-            kind: mac
-          - os: macos-13 # intel
+          - os: macos-14 # Apple silicon
             kind: mac
           - os: ubuntu-latest # x86_64
             kind: linux
@@ -99,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+          for t in aarch64-apple-darwin; do
             url="https://github.com/marvinvr/mmux/releases/download/$TAG/mmux-$t.tar.gz"
             for i in 1 2 3; do curl -fsSL -o "dist/mmux-$t.tar.gz" "$url" && break || { echo "retry $i"; sleep $((i*5)); }; done
           done

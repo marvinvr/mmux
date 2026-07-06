@@ -35,7 +35,7 @@ case "$os" in
 Darwin)
 	case "$arch" in
 	arm64 | aarch64) target="aarch64-apple-darwin" ;;
-	x86_64) target="x86_64-apple-darwin" ;;
+	x86_64) err "Intel Macs have no prebuilt binary — install with Homebrew (\`brew install marvinvr/mmux/mmux\`, builds from source) or \`cargo install\`." ;;
 	*) err "unsupported macOS architecture: $arch" ;;
 	esac
 	;;

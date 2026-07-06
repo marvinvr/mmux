@@ -22,7 +22,7 @@ attention dot on the sidebar row and raises a native desktop notification, even 
 
 ## Install
 
-Recommended (macOS & Linux, arm64 & x86_64) — the script installs a prebuilt binary to
+Recommended (macOS Apple Silicon & Linux arm64/x86_64) — the script installs a prebuilt binary to
 `~/.local/bin` and keeps itself up to date in the background:
 
 ```
