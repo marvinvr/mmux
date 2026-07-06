@@ -103,8 +103,10 @@ impl App {
         };
         self.regions.git_rows = hits.rows;
         self.regions.git_branch_rows = hits.branches;
+        self.regions.git_commit_rows = hits.commits;
         self.regions.git_changes = hits.changes_area;
         self.regions.git_branches = hits.branches_area;
+        self.regions.git_commits = hits.commits_area;
     }
 
     /// Paint the active drag selection (if it targets this pane and has actually
@@ -230,6 +232,7 @@ impl App {
                 }
             }
             Some(Nav::Panel) => " git ".into(),
+            Some(Nav::Link) => " link ".into(),
             None => " mmux ".into(),
         }
     }
@@ -260,6 +263,7 @@ impl App {
                 }
             }
             Some(Nav::Panel) => "Git panel — press Enter to open it.".into(),
+            Some(Nav::Link) => "Press Enter to link another project into the workspace.".into(),
             None => "No agents or processes configured.\nEdit mmux.yaml and reopen.".into(),
         }
     }
@@ -286,7 +290,8 @@ fn render_screen(f: &mut Frame, area: Rect, pane: &Pane, focused: bool) {
 }
 
 /// The diff pane's title: ` Δ path/to/file.rs  +12 −3 `, the counts coloured like
-/// the diff body. For an image preview it's ` ▦ path/to/logo.png  1200×800 ` instead.
+/// the diff body. For an image preview it's ` ▦ path/to/logo.png  1200×800 `, and for a
+/// commit ` ● abc1234 subject  +12 −3 ` instead.
 fn diff_title(v: &DiffView) -> Line<'static> {
     if let Some(img) = &v.image {
         return Line::from(vec![
@@ -302,11 +307,21 @@ fn diff_title(v: &DiffView) -> Line<'static> {
         ]);
     }
     let mut spans = Vec::new();
-    spans.push(Span::raw(" Δ "));
-    spans.push(Span::styled(
-        v.path.clone(),
-        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-    ));
+    // A commit diff leads with its short hash + subject; a file diff with its path.
+    if let Some(c) = &v.commit {
+        spans.push(Span::raw(" ● "));
+        spans.push(Span::styled(
+            format!("{} ", c.short),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(c.subject.clone(), Style::default().fg(Color::White)));
+    } else {
+        spans.push(Span::raw(" Δ "));
+        spans.push(Span::styled(
+            v.path.clone(),
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+    }
     spans.push(Span::styled(format!("  +{}", v.added), Style::default().fg(Color::Green)));
     spans.push(Span::styled(format!(" −{} ", v.removed), Style::default().fg(Color::Red)));
     Line::from(spans)
@@ -364,6 +379,20 @@ fn render_image(f: &mut Frame, area: Rect, img: &mut PreviewImage) {
 /// digit width (from [`DiffView::gutter`]); `width` is the pane width, so a tinted row
 /// pads out to fill it rather than stopping at the end of the text.
 fn diff_line(l: &DiffLine, width: u16, gutter: usize) -> Line<'static> {
+    // File divider (multi-file commit): a bold path header spanning the row, so you can
+    // tell which file the hunks below it belong to.
+    if matches!(l.kind, DiffKind::File) {
+        let mut line = Line::from(vec![Span::styled(
+            format!(" ▸ {}", l.text),
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        )]);
+        let pad = (width as usize).saturating_sub(line.width());
+        if pad > 0 {
+            line.spans.push(Span::raw(" ".repeat(pad)));
+        }
+        line.style = Style::default().bg(theme::DIFF_FILE_BG);
+        return line;
+    }
     // Hunk header: a quiet blue divider, indented to line up with the code column
     // (number + separating space + sign), no gutter number of its own.
     if matches!(l.kind, DiffKind::Hunk) {

@@ -286,9 +286,10 @@ impl App {
         let Some(nav) = self.current_nav() else {
             return;
         };
-        // Opening anything but the panel puts a session in the main pane, so drop a
-        // diff preview that was occupying it.
-        if !matches!(nav, Nav::Panel) {
+        // Opening anything but the panel or the link row puts a session in the main
+        // pane, so drop a diff preview that was occupying it. (The link row raises a
+        // modal, leaving the main pane — and any preview — untouched.)
+        if !matches!(nav, Nav::Panel | Nav::Link) {
             self.clear_diff();
         }
         match nav {
@@ -314,6 +315,9 @@ impl App {
                 self.focus = Focus::Terminal;
             }
             Nav::Panel => self.focus = Focus::Right,
+            // The link row raises the directory browser (the same modal the button and
+            // the old `L` key used); focus stays on the sidebar behind the overlay.
+            Nav::Link => self.open_link_browser(),
         }
     }
 
@@ -334,10 +338,23 @@ impl App {
         if let Some(Nav::Session(i)) = self.current_nav() {
             match self.sessions[i].kind {
                 // Agents and terminals are throwaway instances: closing one removes
-                // it for good rather than leaving an exited husk in the sidebar. A
-                // *running* one still has live work and — unlike quit — isn't
-                // restored on reopen, so we confirm first (mirroring the quit modal).
-                Kind::Agent | Kind::Terminal if self.sessions[i].is_running() => {
+                // it for good rather than leaving an exited husk in the sidebar. One
+                // with live work — unlike quit — isn't restored on reopen, so we
+                // confirm first (mirroring the quit modal). "Live work" is the same
+                // signal that spins the sidebar glyph: an agent that's actively
+                // working (`busy`), or any running terminal (which has no working
+                // signal to go quiet). An idle agent — running but awaiting you, its
+                // spinner replaced by the green `●` — reads as done and closes with no
+                // nag, so the prompt matches exactly what the sidebar shows.
+                Kind::Agent | Kind::Terminal => {
+                    let needs_confirm = match self.sessions[i].kind {
+                        Kind::Agent => self.sessions[i].busy(),
+                        _ => self.sessions[i].is_running(),
+                    };
+                    if !needs_confirm {
+                        self.close_session(i);
+                        return;
+                    }
                     let name = self.sessions[i].name.clone();
                     let (title, noun) = match self.sessions[i].kind {
                         Kind::Terminal => ("Close terminal?", "terminal"),
@@ -353,7 +370,6 @@ impl App {
                         },
                     ));
                 }
-                Kind::Agent | Kind::Terminal => self.close_session(i),
                 // Processes are config-defined entries: stop but keep the row so it
                 // can be started again in place. A running one that declares a `stop:`
                 // fires its teardown command — but only when it was actually running
@@ -498,7 +514,7 @@ impl App {
                     g.refresh();
                 }
             }
-            None => {}
+            Some(Nav::Link) | None => {}
         }
     }
 
@@ -511,7 +527,7 @@ impl App {
     ///
     /// Reload only ever refreshes the *existing* projects, keyed by directory — it
     /// never adds or drops one. Growing the workspace is [`link_project`](Self::link_project)'s
-    /// job (the sidebar's "Link another project" button); *removing* a linked project,
+    /// job (the sidebar's standalone "Link another project" box); *removing* a linked project,
     /// or any other `linked-projects` edit made by hand, still needs a reopen.
     pub(crate) fn reload(&mut self) {
         // Reload each project's config by dir. A project whose config fails to load

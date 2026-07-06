@@ -2,8 +2,8 @@
 //!
 //! The right column is three stacked, individually-bordered boxes — **Changes**
 //! (top, flexible, rendered as a compressed directory *tree* via
-//! [`git::tree_rows`](crate::git::tree_rows)), **Branches** (middle), **Recent**
-//! (bottom) — plus the modal
+//! [`git::tree_rows`](crate::git::tree_rows)), **Branches** (middle), **Commits**
+//! (bottom, a scrollable, selectable history) — plus the modal
 //! commit / new-branch prompt drawn over the whole UI. These are free functions
 //! over `&GitPanel` so they stay decoupled from the rest of `App`; the thin
 //! wrapper that owns the per-frame hit [`Regions`](super::Regions) lives in
@@ -26,19 +26,21 @@ use ratatui::Frame;
 pub(crate) struct GitRows {
     pub rows: Vec<(u16, usize)>,     // tree rows: screen y → cursor (tree-row) index
     pub branches: Vec<(u16, usize)>, // branch rows: screen y → branch index
+    pub commits: Vec<(u16, usize)>,  // commit rows: screen y → log index
     pub changes_area: Option<Rect>,  // the Changes box, so a whitespace click focuses it
     pub branches_area: Option<Rect>, // the Branches box, ditto
+    pub commits_area: Option<Rect>,  // the Commits box, ditto
 }
 
-/// Draw the git panel into `area` as three bordered boxes, returning the file and
-/// branch row maps for click routing.
+/// Draw the git panel into `area` as three bordered boxes, returning the file, branch
+/// and commit row maps for click routing.
 pub(crate) fn render_git(f: &mut Frame, area: Rect, git: &GitPanel, focused: bool) -> GitRows {
     let mut hit = GitRows::default();
     if area.width < 3 || area.height < 3 {
         return hit;
     }
 
-    // Branches + Recent are equal-height side boxes; Changes takes the rest. On a
+    // Branches + Commits are equal-height side boxes; Changes takes the rest. On a
     // short column we drop the side boxes and give everything to Changes.
     let side_h: u16 = if area.height >= 20 {
         8
@@ -66,7 +68,8 @@ pub(crate) fn render_git(f: &mut Frame, area: Rect, git: &GitPanel, focused: boo
     if side_h > 0 {
         hit.branches_area = Some(chunks[1]);
         render_branches(f, chunks[1], git, focused, &mut hit.branches);
-        render_recent(f, chunks[2], git);
+        hit.commits_area = Some(chunks[2]);
+        render_commits(f, chunks[2], git, focused, &mut hit.commits);
     }
     hit
 }
@@ -90,16 +93,6 @@ fn render_changes(
 ) {
     let active = focused && git.section == Section::Changes;
     let mut title = String::from(" Changes ");
-    if !git.branch.is_empty() {
-        title.push_str(&format!("· {}", git.branch));
-        if git.ahead > 0 {
-            title.push_str(&format!(" ↑{}", git.ahead));
-        }
-        if git.behind > 0 {
-            title.push_str(&format!(" ↓{}", git.behind));
-        }
-        title.push(' ');
-    }
     if let Some(b) = git.busy {
         title.push_str(&format!("· {b} "));
     }
@@ -162,19 +155,32 @@ fn render_branches(
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-fn render_recent(f: &mut Frame, area: Rect, git: &GitPanel) {
-    let block = boxed(" Recent ".into(), false);
+fn render_commits(
+    f: &mut Frame,
+    area: Rect,
+    git: &GitPanel,
+    focused: bool,
+    hit: &mut Vec<(u16, usize)>,
+) {
+    let active = focused && git.section == Section::Commits;
+    let block = boxed(" Commits ".into(), active);
     let inner = block.inner(area);
     f.render_widget(block, area);
     if inner.width == 0 || inner.height == 0 {
         return;
     }
-    let lines: Vec<Line> = git
-        .log
-        .iter()
-        .take(inner.height as usize)
-        .map(commit_row)
-        .collect();
+    if git.log.is_empty() {
+        f.render_widget(dim_line("  no commits"), inner);
+        return;
+    }
+    // Window over the log so the cursor stays on screen, and register each visible row.
+    let (start, count) = window(git.log.len(), git.commit_cursor, inner.height as usize);
+    let mut lines = Vec::with_capacity(count);
+    for off in 0..count {
+        let i = start + off;
+        lines.push(commit_row(&git.log[i], active && i == git.commit_cursor, inner.width));
+        hit.push((inner.y + off as u16, i));
+    }
     f.render_widget(Paragraph::new(lines), inner);
 }
 
@@ -285,11 +291,20 @@ fn branch_row(b: &Branch, selected: bool, width: u16) -> Line<'static> {
     line
 }
 
-fn commit_row(c: &Commit) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!("{} ", c.short), Style::default().fg(Color::DarkGray)),
-        Span::styled(c.summary.clone(), Style::default().fg(Color::Gray)),
-    ])
+fn commit_row(c: &Commit, selected: bool, width: u16) -> Line<'static> {
+    let bar = if selected { "▌" } else { " " };
+    // bar + short hash + space; the subject fills whatever's left.
+    let chrome = 1 + c.short.chars().count() + 1;
+    let subject = truncate_middle(&c.summary, (width as usize).saturating_sub(chrome));
+    let mut line = Line::from(vec![
+        Span::styled(bar.to_string(), Style::default().fg(Color::Magenta)),
+        Span::styled(format!("{} ", c.short), Style::default().fg(Color::Yellow)),
+        Span::styled(subject, Style::default().fg(Color::Gray)),
+    ]);
+    if selected {
+        fill_selection(&mut line, width);
+    }
+    line
 }
 
 fn dim_line(s: &str) -> Paragraph<'static> {

@@ -12,37 +12,54 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
-use std::time::Duration;
 
-/// How long after an agent's terminal title last changed we still count it as
-/// "working". Agents animate the title while busy; once it's been static this long
-/// the agent is treated as idle/awaiting you and its sidebar row lights up green.
-const TITLE_IDLE: Duration = Duration::from_secs(2);
+/// The link box's fixed height: top border + one row + bottom border.
+const LINK_H: u16 = 3;
+/// Minimum body height worth splitting a link box off from (else the box is dropped
+/// this frame — keyboard nav still reaches the row).
+const MIN_BODY: u16 = 3;
 
 impl App {
     pub(crate) fn render_sidebar(&mut self, f: &mut Frame, area: Rect) {
-        // A multi-project workspace becomes one bordered box per project, stacked
-        // vertically: the active project's box expands to fill the column, the others
-        // shrink to just their rows. This holds in both wide and compact (phone) mode.
-        // A single project keeps the original single-box drawer. Either way the
-        // "Link another project" button is drawn on the bottom *inner* row of a box, so
-        // it sits inside the sidebar chrome (see the box renderers below).
+        // The whole left column routes clicks to the sidebar. A standalone box pinned to
+        // the column's bottom hosts the "+ Link another project" row — its own chrome, not
+        // tucked inside a project box, since it acts on the workspace (it always grows the
+        // root project), not any one project. It's a nav row: arrow-reachable, highlighted
+        // when selected, opened by Enter or a click. The body above it fills the rest, so
+        // the active project's box still expands to run right down to the link box.
+        self.regions.sidebar = Some(area);
+        let (body, link_area) = split_link_box(area);
         if self.projects.len() > 1 {
-            self.render_sidebar_projects(f, area);
+            self.render_sidebar_projects(f, body);
         } else {
-            self.render_sidebar_single(f, area);
+            self.render_sidebar_single(f, body);
+        }
+        if let Some(link_area) = link_area {
+            self.render_link_box(f, link_area);
         }
     }
 
-    /// Draw the "Link another project" button on `row`, returning its rect for click
-    /// routing. Styled exactly like the `+ New …` launchers (left-aligned green text, no
-    /// background); dimmed once the workspace hits the project cap.
-    fn draw_link_button(&self, f: &mut Frame, row: Rect) -> Rect {
-        let capped = self.projects.len() >= crate::config::MAX_PROJECTS;
-        let fg = if capped { Color::DarkGray } else { Color::Green };
-        let line = entry_line("+ Link another project", false, Style::default().fg(fg), None, false, row.width);
-        f.render_widget(Paragraph::new(line), row);
-        row
+    /// Draw the standalone, `Projects`-titled "+ Link another project" box pinned to the
+    /// column's bottom. The row is styled by [`nav_row`](Self::nav_row) — left-aligned and
+    /// the same weight as a `+ New …` launcher — so it highlights when selected like any
+    /// other row; its rect is stored for click routing.
+    fn render_link_box(&mut self, f: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(Span::styled(" Projects ", Style::default().fg(Color::Gray)))
+            .border_style(Style::default().fg(Color::DarkGray));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width == 0 || inner.height == 0 {
+            return;
+        }
+        let nav = self.build_nav();
+        let Some(pos) = nav.iter().position(|n| matches!(n, Nav::Link)) else {
+            return;
+        };
+        let row = Rect { height: 1, ..inner };
+        f.render_widget(Paragraph::new(self.nav_row(pos, Nav::Link, inner.width)), row);
+        self.regions.link_btn = Some(row);
     }
 
     /// One bordered box per project, stacked top-to-bottom. The active box expands to
@@ -50,7 +67,6 @@ impl App {
     /// compact (phone) mode the git panel — which has no column of its own there — is
     /// appended as a final box so it stays reachable. Works in wide and compact alike.
     fn render_sidebar_projects(&mut self, f: &mut Frame, area: Rect) {
-        self.regions.sidebar = Some(area);
         self.regions.rows.clear();
         let nav = self.build_nav();
         let n = self.projects.len();
@@ -72,12 +88,7 @@ impl App {
         }
 
         // The active project's box absorbs the slack; everything else is content-sized.
-        // The bottom-most *project* box reserves one extra row for the "Link another
-        // project" button pinned inside its bottom edge (the active box already has the
-        // slack to spare a row).
-        let host = n - 1;
-        let mut content_h: Vec<u16> = blocks.iter().map(|(_, _, l, _)| l.len() as u16 + 2).collect();
-        content_h[host] += 1;
+        let content_h: Vec<u16> = blocks.iter().map(|(_, _, l, _)| l.len() as u16 + 2).collect();
         let heights = box_heights(&content_h, self.active, area.height);
         let chunks = Layout::vertical(heights.iter().map(|h| Constraint::Length(*h))).split(area);
 
@@ -103,20 +114,15 @@ impl App {
             if i < n {
                 self.regions.project_boxes.push((rect, i));
             }
-            // The host box gives up its bottom inner row to the link button.
-            let (content, link_row) = if i == host { reserve_link_row(inner) } else { (inner, None) };
             // Map each row's local line index to an absolute screen `y` for click
             // routing, skipping any the box is too short to actually show.
             for (ly, pos) in rows {
-                let y = inner.y + ly;
-                if y < content.y + content.height {
-                    self.regions.rows.push((y, pos));
+                let ry = inner.y + ly;
+                if ry < inner.y + inner.height {
+                    self.regions.rows.push((ry, pos));
                 }
             }
-            f.render_widget(Paragraph::new(lines), content);
-            if let Some(row) = link_row {
-                self.regions.link_btn = Some(self.draw_link_button(f, row));
-            }
+            f.render_widget(Paragraph::new(lines), inner);
         }
     }
 
@@ -176,11 +182,6 @@ impl App {
             .border_style(Style::default().fg(Color::DarkGray));
         let inner = block.inner(area);
         f.render_widget(block, area);
-        self.regions.sidebar = Some(area);
-        // The link button takes the drawer's bottom inner row; sections fill the rest.
-        // (In compact mode the git panel is reachable via its `GIT` row below and the
-        // `[git]` footer button on the pane — the drawer carries no title-bar targets.)
-        let (content, link_row) = reserve_link_row(inner);
 
         self.regions.rows.clear();
         let nav = self.build_nav();
@@ -222,10 +223,7 @@ impl App {
             });
         }
 
-        f.render_widget(Paragraph::new(lines), content);
-        if let Some(row) = link_row {
-            self.regions.link_btn = Some(self.draw_link_button(f, row));
-        }
+        f.render_widget(Paragraph::new(lines), inner);
     }
 
     /// The sidebar block title: the root (launch) project's display name.
@@ -324,7 +322,7 @@ impl App {
                     // ping) is acknowledged — suppressed — on the pane you're viewing.
                     _ => {
                         let attn = match s.kind {
-                            Kind::Agent => s.is_running() && !s.working(TITLE_IDLE),
+                            Kind::Agent => s.is_running() && !s.busy(),
                             _ => s.attention() && !(sel && self.focus == Focus::Terminal),
                         };
                         // A busy agent gets the rotating spinner before its name; a
@@ -357,28 +355,36 @@ impl App {
                     width,
                 )
             }
+            // The standalone link box's row: styled like the `+ New …` launchers, dimmed
+            // once the workspace hits the project cap (linking would be refused).
+            Nav::Link => {
+                let capped = self.projects.len() >= crate::config::MAX_PROJECTS;
+                let fg = if capped { Color::DarkGray } else { Color::Green };
+                entry_line("+ Link another project", sel, Style::default().fg(fg), None, false, width)
+            }
         }
     }
 }
 
-/// Reserve the bottom *inner* row of a box for the "Link another project" button:
-/// returns the content rect above it and the button row, so the button sits inside the
-/// box's borders. The row is `None` when the box is too short to spare one (the `L` key
-/// and footer chip still work).
-fn reserve_link_row(inner: Rect) -> (Rect, Option<Rect>) {
-    if inner.height < 2 {
-        return (inner, None);
+/// Carve the standalone, bottom-pinned "Projects" (link) box off the bottom of the
+/// sidebar column: returns the body rect above it (the project box(es) / drawer, which
+/// then fills that body) and the link box rect. When the column is too short to spare a
+/// box the whole area is the body and there's no link box — keyboard nav still reaches
+/// the row, it just isn't drawn this frame.
+fn split_link_box(area: Rect) -> (Rect, Option<Rect>) {
+    if area.height < LINK_H + MIN_BODY {
+        return (area, None);
     }
-    let content = Rect { height: inner.height - 1, ..inner };
-    let row = Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 };
-    (content, Some(row))
+    let body = Rect { height: area.height - LINK_H, ..area };
+    let link = Rect { y: area.y + area.height - LINK_H, height: LINK_H, ..area };
+    (body, Some(link))
 }
 
 /// Vertical heights for the stacked per-project boxes: inactive boxes keep their
 /// content height, the active box expands to absorb the remaining space. The result
-/// always sums to `total` (so the active box runs to the bottom, no dead space). If
-/// the content can't all fit, the active box keeps a minimum and inactive boxes are
-/// trimmed from the bottom.
+/// always sums to `total` (so the active box runs to the bottom of the body, no dead
+/// space above the link box). If the content can't all fit, the active box keeps a
+/// minimum and inactive boxes are trimmed from the bottom.
 fn box_heights(content: &[u16], active: usize, total: u16) -> Vec<u16> {
     const MIN_BOX: u16 = 3; // top border + ≥1 row + bottom border
     let n = content.len();

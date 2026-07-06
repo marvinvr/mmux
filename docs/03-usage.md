@@ -12,7 +12,7 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 │   + New Claude  │  (the focused program's  │  [ ] README.md │
 │ TERMINAL       │   live terminal screen)   │ Branches       │
 │   + New Terminal│                          │ * main         │
-│ PROCESSES      │                           │ Recent         │
+│ PROCESSES      │                           │ Commits        │
 │ ● Dev server   │                           │  a1b2c3 fix …  │
 │   + New Process │                          │                │
 └────────────────┴───────────────────────────┴────────────────┘
@@ -72,12 +72,11 @@ region they apply to.
 | `g` · `G` | Jump to the first / last row |
 | `Enter` · `l` · `→` | Open the selected row (see below) |
 | `s` | Start: spawn a launcher, or start a stopped session |
-| `x` | Close: **removes** an agent/terminal row entirely (asks to confirm first if it's still running — like quit); **stops** a running process (row stays; runs its `stop:` teardown if it has one). Closing lands the cursor on the **previous** row |
+| `x` | Close: **removes** an agent/terminal row entirely (asks to confirm first only if there's live work to lose — a **spinning** agent, or a running terminal; an idle agent showing the green `●` closes with no prompt); **stops** a running process (row stays; runs its `stop:` teardown if it has one). Closing lands the cursor on the **previous** row |
 | `r` | Restart the selected session (or spawn a launcher) |
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
-| `L` | [Link another project](04-configuration.md#linked-projects) into the workspace (also the button at the bottom of the sidebar) |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
 | `?` | Open the [About card](#the-about-card) (version, links, manual update check/apply) |
 | `[` · `]` | Switch to the previous / next project ([linked projects](04-configuration.md#linked-projects); no-op with one project) |
@@ -89,7 +88,8 @@ region they apply to.
 **Opening a row** with `Enter`/`l`/`→` does the right thing for its kind: a `+ New Agent`/
 `+ New Terminal` launcher spawns and jumps into a fresh pane; `+ New Process` opens the
 [guided form](#adding-editing-and-deleting-a-process); a stopped session is (re)started and
-focused; the git-panel row (in narrow mode) focuses the panel.
+focused; the `+ Link another project` row (its own box at the bottom) opens the
+[directory browser](#linking-another-project); the git-panel row (in narrow mode) focuses the panel.
 
 > **Agents/terminals vs. processes.** Agents and terminals are throwaway instances, so `x` kills
 > the pane and removes the row outright. Processes are **config entries**, so they're managed
@@ -103,13 +103,16 @@ focused; the git-panel row (in narrow mode) focuses the panel.
 ## Pane Keys (a focused program)
 
 When the main pane is focused, every keystroke is translated to terminal bytes and sent to the
-program. **`Ctrl-b` is the leader**: press it, then one more key for an mmux command.
+program. **`Ctrl-b` is the leader**: press it, then one more key for an mmux command. The leader is
+**global** — the same chords work no matter what has focus (the sidebar, a pane, or the git panel) —
+so "leave" (detach/quit) and "back to the sidebar" are one motor pattern everywhere. You never have
+to return to the sidebar first just to reach them.
 
 | Chord | Action |
 | --- | --- |
 | `Ctrl-b` `h` · `Ctrl-b` `←` · `Ctrl-b` `Esc` | Back to the sidebar |
 | `Ctrl-b` `d` | Detach |
-| `Ctrl-b` `x` | Close the focused session (removes an agent/terminal — confirmed first if running — stops a process), then return to the sidebar |
+| `Ctrl-b` `x` | Close the focused session (removes an agent/terminal — confirmed first only if a **spinning** agent or a running terminal — stops a process), then return to the sidebar |
 | `Ctrl-b` `R` | Reload config, then return to the sidebar |
 | `Ctrl-b` `q` | Quit mmux (same confirmation as `q` when anything is running) |
 | `Ctrl-b` `b` | Send a literal `Ctrl-b` to the program (e.g. for an inner tmux) |
@@ -130,19 +133,19 @@ It has three boxes:
   starts at the repo's top-level files and folders — there is no whole-repo row taking up the first
   line (stage everything with `a`). The filename color encodes the change: green
   (added/untracked), red (deleted/unmerged), cyan (renamed/copied), yellow (modified). The box
-  title shows the branch with `↑ahead`/`↓behind` counts and a `pulling…`/`pushing…` note during
-  network operations.
-- **Branches** — local branches, current one marked, with upstream tracking notes.
-- **Recent** — the last 20 commits, display-only.
+  title shows a `pulling…`/`pushing…` note during network operations.
+- **Branches** — local branches, current one marked, with upstream tracking notes (ahead/behind).
+- **Commits** — recent history (up to 200 commits), scrollable and selectable. Select a commit to
+  show its full diff in the main pane, copy its hash or message, or revert / uncommit it.
 
 Focus the panel with `Tab` (or click it), then:
 
 | Key | Action |
 | --- | --- |
 | `↑` / `k` · `↓` / `j` | Move the cursor (with a diff preview open, it follows the cursor) |
-| `Tab` | Toggle between the Changes and Branches boxes |
-| `Enter` · `Space` | Stage/unstage the file or directory under the cursor — or, in Branches, switch to the branch |
-| `v` | Preview the selected file's diff in the main pane (press again to close) |
+| `Tab` | Cycle the cursor: Changes → Branches → Commits |
+| `Enter` · `Space` | Stage/unstage the file or directory — or switch to the branch, or show the commit's diff |
+| `v` | Preview the selected file's / commit's diff in the main pane (press again to close) |
 | `a` | Stage all changes (press again to unstage all) |
 | `c` | Commit (opens a message prompt; `Ctrl+⏎` there commits **and** pushes) |
 | `C` | Commit & push (same prompt, but a plain `⏎` commits and pushes) |
@@ -154,12 +157,22 @@ Focus the panel with `Tab` (or click it), then:
 | `r` | Refresh |
 | `h` · `←` · `Esc` | Close the diff preview if open, else back to the sidebar |
 
+In the **Commits** box these keys act on the selected commit:
+
+| Key | Action |
+| --- | --- |
+| `y` · `Y` | Copy the short hash · the full 40-char hash |
+| `m` | Copy the full commit message (subject + body) |
+| `t` | Revert the commit (`git revert`; asks to confirm — creates a new undoing commit) |
+| `u` | Uncommit to here (`git reset --soft`; asks to confirm — later commits become staged changes) |
+
 Staging is whole-file or whole-directory (or `a` for the whole repo) — there is no hunk staging.
 Committing with nothing staged stages everything first. Commit & push (`C`, or `Ctrl+⏎` from the
 commit prompt) commits and then kicks off the same background push as `P` — the push result is
 flashed when it returns. Pull and push never block the UI; a second press while one is in flight is
-ignored. The panel re-reads git state on a short throttle, so commits an agent makes in the main
-pane show up on their own.
+ignored. Revert and uncommit go through a confirmation and refresh the panel; neither loses work
+(revert adds a commit, uncommit keeps the changes staged). The panel re-reads git state on a short
+throttle, so commits an agent makes in the main pane show up on their own.
 
 ### The Diff Preview
 
@@ -172,6 +185,13 @@ large diffs. It is a *live preview*: as you move the Changes cursor it follows a
 the file on the same throttle as the panel, so an agent's edits to the shown file appear as they
 happen. The header reads `Δ <path>  +added −removed`; the diff is `HEAD` vs the working tree, so
 staged and unstaged edits show together (a brand-new file shows as all-added).
+
+The same pager shows a **commit** when you select one in the Commits box (⏎ / `v` / click): its full
+`git show` diff across every file it touched, each file introduced by a bold `▸ path` divider so you
+can tell the hunks apart. The header reads `● <hash> <subject>  +added −removed`. Unlike the file
+preview a commit diff is static — it doesn't self-refresh — and it stays up until you close it or
+select a session. (Binary changes read as git's "Binary files differ"; only the working-tree preview
+inlines images.)
 
 Click the preview (or it's already in front in compact mode) to scroll it with `↑↓` / `j` `k`,
 `PgUp`/`PgDn` / `Space`, `Ctrl-d`/`Ctrl-u`, and `g`/`G`. Close it with `Esc` (or `q` / `h`); it
@@ -260,9 +280,10 @@ the stop command never restarts it — the teardown only ever runs when the proc
 
 ## Linking Another Project
 
-The **`+ Link another project`** button pinned inside the bottom of the sidebar box (or the `L` key)
-opens a small directory browser to add a [linked project](04-configuration.md#linked-projects) —
-any other project you want in the same workspace, not just another clone — without leaving mmux:
+The **`+ Link another project`** row sits in its own box at the bottom of the sidebar — reach it with
+the arrow keys and press `Enter`, or click it. It opens a small directory browser to add a
+[linked project](04-configuration.md#linked-projects) — any other project you want in the same
+workspace, not just another clone — without leaving mmux:
 
 - It opens one level **above** your launch directory, so nearby projects (the common `../proj2`) are
   right there.
@@ -293,12 +314,12 @@ instead. Programs that don't track the mouse are unaffected: their pane drag-sel
   selects it (its output shows in the main pane) but keeps focus on the sidebar, and
   double-click **restarts** it in place — start if stopped, respawn if running — without jumping
   in (the `r` key does the same). In a [multi-project](04-configuration.md#linked-projects)
-  workspace, clicking another project's box switches to it. The **`+ Link another project`** button
-  inside the bottom of the sidebar box opens the [project browser](#linking-another-project).
-- **Git panel.** Single-click focuses a box and selects a row; on a changed file it also
-  [previews the file's diff](#the-diff-preview) in the main pane. Double-click a file to
-  stage/unstage it or a branch to switch to it. The scroll wheel moves the cursor (and the open
-  preview follows it).
+  workspace, clicking another project's box switches to it. The **`+ Link another project`** box
+  at the bottom of the sidebar opens the [project browser](#linking-another-project).
+- **Git panel.** Single-click focuses a box and selects a row; on a changed file or a commit it also
+  [previews the diff](#the-diff-preview) in the main pane. Double-click a file to stage/unstage it or
+  a branch to switch to it. The scroll wheel moves the cursor (and the open preview follows it in the
+  Changes and Commits boxes).
 - **Main pane.** Single-click focuses it. If the program tracks the mouse, the click/drag/release
   goes to it (place the cursor, select in-app); otherwise — or with **Shift** held — **click and
   drag to select text and copy it** to the clipboard on release (a footer flash confirms

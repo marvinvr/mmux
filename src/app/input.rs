@@ -33,10 +33,53 @@ impl App {
             self.open_picker();
             return;
         }
+        // The `Ctrl-b` leader is global: armed from any focus, the next key is an mmux
+        // command (detach / quit / close / back / reload / literal Ctrl-b). This makes
+        // "leave" one motor pattern everywhere — you never have to first hop back to the
+        // sidebar. In a focused pane it also intercepts `Ctrl-b` before `key_pane` would
+        // forward it to the program as bytes.
+        if self.pending_leader {
+            self.pending_leader = false;
+            self.leader_command(k);
+            return;
+        }
+        if k.code == KeyCode::Char('b') && k.modifiers.contains(KeyModifiers::CONTROL) {
+            self.pending_leader = true;
+            return;
+        }
         match self.focus {
             Focus::Sidebar => self.key_sidebar(k),
             Focus::Terminal => self.key_pane(k),
             Focus::Right => self.key_git(k),
+        }
+    }
+
+    /// A `Ctrl-b`-prefixed command. Global (armed in [`on_key`](Self::on_key) from any
+    /// focus) so detach / quit / close / back are one motor pattern everywhere — you're
+    /// never forced to return to the sidebar first. Actions that consume a session or
+    /// land you "outside" a pane drop focus to the sidebar and clear any diff preview
+    /// still occupying the main pane. `b` sends a literal `Ctrl-b`, but only a focused
+    /// pane has anywhere to send it (`send_focused` is a no-op otherwise).
+    fn leader_command(&mut self, k: KeyEvent) {
+        match k.code {
+            KeyCode::Char('d') => crate::tmux::detach(),
+            KeyCode::Char('q') => self.request_quit(),
+            KeyCode::Char('x') => {
+                self.do_stop();
+                self.clear_diff();
+                self.focus = Focus::Sidebar;
+            }
+            KeyCode::Char('h') | KeyCode::Left | KeyCode::Esc => {
+                self.clear_diff();
+                self.focus = Focus::Sidebar;
+            }
+            KeyCode::Char('R') => {
+                self.reload();
+                self.clear_diff();
+                self.focus = Focus::Sidebar; // surface any newly added items
+            }
+            KeyCode::Char('b') => self.send_focused(vec![0x02]), // literal Ctrl-b to the pane
+            _ => {}
         }
     }
 
@@ -56,9 +99,6 @@ impl App {
             // asks to confirm, then removes it from the config. No-ops on other rows.
             KeyCode::Char('e') => self.edit_selected(),
             KeyCode::Char('D') => self.delete_selected(),
-            // Link another project directory into the workspace (also the button at the
-            // bottom of the sidebar).
-            KeyCode::Char('L') => self.open_link_browser(),
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
             // is showing); otherwise a no-op.
             KeyCode::Char('U') => self.apply_update(),
@@ -102,30 +142,8 @@ impl App {
             }
             return;
         }
-        // Leader (Ctrl-b) prefixed commands.
-        if self.pending_leader {
-            self.pending_leader = false;
-            match k.code {
-                KeyCode::Char('d') => crate::tmux::detach(),
-                KeyCode::Char('x') => {
-                    self.do_stop();
-                    self.focus = Focus::Sidebar;
-                }
-                KeyCode::Char('h') | KeyCode::Left | KeyCode::Esc => self.focus = Focus::Sidebar,
-                KeyCode::Char('R') => {
-                    self.reload();
-                    self.focus = Focus::Sidebar; // surface any newly added items
-                }
-                KeyCode::Char('q') => self.request_quit(),
-                KeyCode::Char('b') => self.send_focused(vec![0x02]), // literal Ctrl-b
-                _ => {}
-            }
-            return;
-        }
-        if k.code == KeyCode::Char('b') && k.modifiers.contains(KeyModifiers::CONTROL) {
-            self.pending_leader = true;
-            return;
-        }
+        // The `Ctrl-b` leader is handled globally in `on_key` before we reach here, so a
+        // focused pane only has to translate the keystroke to bytes for the program.
         let bytes = encode_key(&k);
         if !bytes.is_empty() {
             // Typing snaps back to the live view if we'd scrolled into history.
@@ -153,8 +171,9 @@ impl App {
                 }
                 self.git_preview_follow();
             }
-            // Tab moves between the Changes and Branches boxes; ⏎/space acts on the
-            // active one (stage a file / switch to a branch); v previews the file's diff.
+            // Tab cycles Changes → Branches → Commits; ⏎/space acts on the active one
+            // (stage a file / switch to a branch / show a commit's diff); v previews the
+            // file's or commit's diff.
             KeyCode::Tab => self.git_section_toggle(),
             KeyCode::Char(' ') | KeyCode::Enter => self.git_activate(),
             KeyCode::Char('v') => self.git_toggle_diff(),
@@ -167,6 +186,13 @@ impl App {
             KeyCode::Char('n') => self.git_newbranch_prompt(),
             KeyCode::Char('p') => self.git_start("pull"),
             KeyCode::Char('P') => self.git_start("push"),
+            // Commits-box actions (each gates on the active section, so they're no-ops in
+            // the other boxes): copy short/full hash, copy message, revert, uncommit.
+            KeyCode::Char('y') => self.git_copy_commit_hash(false),
+            KeyCode::Char('Y') => self.git_copy_commit_hash(true),
+            KeyCode::Char('m') => self.git_copy_commit_message(),
+            KeyCode::Char('t') => self.git_revert_prompt(),
+            KeyCode::Char('u') => self.git_soft_reset_prompt(),
             KeyCode::Char('r') => {
                 if let Some(g) = self.active_git_mut() {
                     g.refresh();
@@ -525,7 +551,7 @@ impl App {
             self.footer_action(action);
             return;
         }
-        // The "Link another project" button pinned to the sidebar's bottom row.
+        // The standalone "Link another project" box at the bottom of the sidebar.
         if hit(self.regions.link_btn, c, r) {
             self.open_link_browser();
             return;
@@ -581,7 +607,6 @@ impl App {
                 self.reload();
                 self.focus = Focus::Sidebar; // surface any newly added items
             }
-            FooterAction::LinkProject => self.open_link_browser(),
             FooterAction::Detach => crate::tmux::detach(),
             FooterAction::Quit => self.request_quit(),
             FooterAction::FocusPanel => {
@@ -609,6 +634,10 @@ impl App {
             FooterAction::GitNewBranch => self.git_newbranch_prompt(),
             FooterAction::GitPull => self.git_start("pull"),
             FooterAction::GitPush => self.git_start("push"),
+            FooterAction::GitCopyHash => self.git_copy_commit_hash(false),
+            FooterAction::GitCopyMessage => self.git_copy_commit_message(),
+            FooterAction::GitRevert => self.git_revert_prompt(),
+            FooterAction::GitSoftReset => self.git_soft_reset_prompt(),
         }
     }
 
@@ -884,7 +913,8 @@ impl App {
 
     /// A click anywhere in the git column: focus the box that was clicked — so even a
     /// click in a box's whitespace activates that section — and, on a row, select it,
-    /// with a double-click staging the file / switching to the branch.
+    /// with a double-click staging the file / switching to the branch / (in Commits)
+    /// showing the commit diff.
     fn on_git_click(&mut self, c: u16, r: u16) {
         match self.git_section_at(c, r) {
             Some(Section::Changes) => {
@@ -928,17 +958,35 @@ impl App {
                     }
                 }
             }
-            // Recent box or a border: focus already moved to the column; leave the
-            // active section unchanged.
+            Some(Section::Commits) => {
+                if let Some(g) = self.active_git_mut() {
+                    g.section = Section::Commits;
+                }
+                if let Some(&(_, idx)) = self.regions.git_commit_rows.iter().find(|(y, _)| *y == r) {
+                    if let Some(g) = self.active_git_mut() {
+                        g.commit_cursor = idx.min(g.log.len().saturating_sub(1));
+                    }
+                    // Single click shows the commit's diff (it then follows the cursor);
+                    // reveal it when the main pane isn't visible beside the panel.
+                    self.git_show_commit();
+                    if self.diff.is_some() && self.regions.main.is_none() {
+                        self.focus = Focus::Terminal;
+                    }
+                }
+            }
+            // A border: focus already moved to the column; leave the active section
+            // unchanged.
             None => {}
         }
     }
 
-    /// Which git box (if any) the point `(c, r)` falls in. Branches is tested first
-    /// since the boxes don't overlap, but order keeps it unambiguous.
+    /// Which git box (if any) the point `(c, r)` falls in. Tested in order; the boxes
+    /// don't overlap, so order only disambiguates a shared border pixel.
     fn git_section_at(&self, c: u16, r: u16) -> Option<Section> {
         if hit(self.regions.git_branches, c, r) {
             Some(Section::Branches)
+        } else if hit(self.regions.git_commits, c, r) {
+            Some(Section::Commits)
         } else if hit(self.regions.git_changes, c, r) {
             Some(Section::Changes)
         } else {
@@ -961,16 +1009,16 @@ impl App {
     /// moves its file cursor instead.
     fn scroll_at(&mut self, col: u16, row: u16, delta: i32) {
         if hit(self.regions.right, col, row) {
-            // Scroll moves (and activates) the box under the cursor; over Recent or a
-            // border it does nothing.
+            // Scroll moves (and activates) the box under the cursor; over a border it
+            // does nothing.
             if let Some(sec) = self.git_section_at(col, row) {
-                let changes = sec == Section::Changes;
+                let follows = sec != Section::Branches; // Changes / Commits drive a preview
                 if let Some(g) = self.active_git_mut() {
                     g.section = sec;
                     g.move_cursor(if delta > 0 { -1 } else { 1 });
                 }
-                // Keep an open preview in step when scrolling the file list.
-                if changes {
+                // Keep an open preview in step when scrolling the file / commit list.
+                if follows {
                     self.git_preview_follow();
                 }
             }

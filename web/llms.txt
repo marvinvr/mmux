@@ -49,7 +49,7 @@ rejoins a running session from anywhere; `mmux check` prints the effective merge
 
 - One mmux per directory, kept alive inside a tmux session; it survives terminal close and SSH drops.
 - Agents, terminals and processes share one unified session model — each is spawned, stopped and restarted from the sidebar.
-- The git panel is native (Changes / Branches / Recent boxes), not an embedded external tool. A changed file's diff previews in the main pane; changed images preview as the picture itself (sixels on capable terminals, half-block glyphs elsewhere).
+- The git panel is native (Changes / Branches / Commits boxes), not an embedded external tool. A changed file's diff previews in the main pane; selecting a commit shows its full diff there too; changed images preview as the picture itself (sixels on capable terminals, half-block glyphs elsewhere).
 - Linked projects group related project directories into one sidebar; the git panel follows whichever project is active.
 - Config is two layers merged at launch: a global `~/.mmux/config.yaml` with each project's `mmux.yaml` on top.
 - Common keys: `↑`/`↓` move · `Enter` open or spawn · `s`/`x`/`r` start/close/restart · `Tab` focus the git panel · `Ctrl+P` file picker · `d` detach · `q` quit · `Ctrl-b h` return to the sidebar.

@@ -50,8 +50,9 @@ impl App {
     }
 
     /// Snapshot every running agent/terminal to `~/.mmux/state/<hash>.yaml`. Reads
-    /// each pane's **live** cwd (so a `cd` survives) and re-derives each agent's
-    /// current conversation id first. Processes are excluded — they return from config.
+    /// each pane's **live** cwd (so a `cd` survives) and resolves each agent's resume
+    /// id first (see [`refresh_agent_ids`](Self::refresh_agent_ids)). Processes are
+    /// excluded — they return from config.
     pub(crate) fn save_state(&mut self) {
         self.refresh_agent_ids();
         let root = self.root_dir().to_path_buf();
@@ -90,40 +91,40 @@ impl App {
         restore::save(&root, &state);
     }
 
-    /// Re-derive each Claude/Codex agent's *current* conversation id from disk, so
-    /// a session the user switched to in-agent (`/resume`, `/new`, `/clear`) comes
-    /// back rather than the one we launched. For each agent we look at the
-    /// transcripts the tool recorded for its cwd, newest first, and:
-    ///   * a fresh agent with no id yet adopts the newest (a Codex first launch);
-    ///   * an agent already bound to a conversation switches only to a *strictly
-    ///     newer* one — so a just-spawned agent whose transcript isn't written yet
-    ///     keeps the id we launched it with instead of grabbing a stale conversation.
-    /// Ids are claimed as we go so several agents in one directory bind to distinct
-    /// conversations. mtime is the only signal the tools expose, so with multiple
-    /// same-directory agents the newest conversations are matched by recency, not
-    /// identity — best-effort, like the rest of restore.
+    /// Make sure every agent is bound to the conversation id it should resume by,
+    /// **without mixing up** several agents in the same directory.
+    ///
+    /// Claude *owns* its ids: each `Claude #N` is minted a UUID and launched with
+    /// `--session-id`, so it already writes — and resumes — its own thread. Those ids
+    /// are authoritative and are never reassigned. Codex has no such flag, so a fresh
+    /// Codex agent has to *discover* the id of the session it just created by looking
+    /// at the transcripts the tool recorded for its cwd (newest first); once it has
+    /// one, it sticks.
+    ///
+    /// So: reserve every id already in use, then let only an id-less agent (a Codex
+    /// first launch) adopt the newest conversation no sibling has claimed. We
+    /// deliberately do **not** chase the newest transcript for an already-bound agent.
+    /// That directory is a shared history — closed agents, `/resume` targets, and plain
+    /// `claude`/`codex` runs all pile up there — so "newest for this cwd" is *not*
+    /// "the conversation this pane is in". Treating it that way is what made an idle
+    /// agent restore onto a recently-active sibling's session.
     fn refresh_agent_ids(&mut self) {
-        let mut claimed: HashSet<String> = HashSet::new();
+        // Reserve every id already in use so discovery below can't hand the same
+        // conversation to two agents.
+        let mut claimed: HashSet<String> = self
+            .sessions
+            .iter()
+            .filter_map(|s| s.agent.as_ref().and_then(|r| r.id.clone()))
+            .collect();
         for s in &mut self.sessions {
             let Some(r) = s.agent.as_mut() else { continue };
+            // Claude ids are owned; a Codex agent that already found its session keeps
+            // it. Only an id-less Codex first launch still needs to discover one.
+            if r.tool.owns_id() || r.id.is_some() {
+                continue;
+            }
             let ranked = crate::agent::sessions_for(r.tool, &s.recipe.cwd);
-            let newest = ranked.iter().find(|(id, _)| !claimed.contains(id));
-            let chosen = match (r.id.as_deref(), newest) {
-                // Fresh agent (Codex first launch): take the newest if one exists.
-                (None, Some((id, _))) => Some(id.clone()),
-                // Bound already: adopt a different conversation only when it's newer
-                // than the one we're on (keeps a not-yet-flushed launch stable).
-                (Some(x), Some((id, mtime))) if id != x => {
-                    let cur = ranked.iter().find(|(i, _)| i == x).map(|(_, m)| *m);
-                    match cur {
-                        Some(cm) if *mtime > cm => Some(id.clone()),
-                        _ => Some(x.to_string()),
-                    }
-                }
-                (Some(x), _) => Some(x.to_string()),
-                (None, None) => None,
-            };
-            if let Some(id) = chosen {
+            if let Some((id, _)) = ranked.into_iter().find(|(id, _)| !claimed.contains(id)) {
                 claimed.insert(id.clone());
                 r.id = Some(id);
             }

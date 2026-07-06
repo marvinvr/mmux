@@ -19,6 +19,7 @@ pub enum Nav {
     NewProcess(usize),      // (project): launcher for the "+ New Process" form in that project
     Session(usize),         // a live/exited session: self.sessions[i]
     Panel,                  // the active project's right panel (only listed in compact mode)
+    Link,                   // the standalone "+ Link another project" box (targets projects[0])
 }
 
 impl App {
@@ -39,6 +40,10 @@ impl App {
         if self.compact && self.active_git().is_some() {
             nav.push(Nav::Panel);
         }
+        // The link row is always last: its own standalone box below every project, so
+        // it's reachable by the arrow keys (and highlights when selected). Opening it
+        // (Enter / click) raises the browser; it grows `projects[0]`, capped or not.
+        nav.push(Nav::Link);
         nav
     }
 
@@ -50,12 +55,12 @@ impl App {
         }
     }
 
-    /// Which project a nav row belongs to (the shared panel row belongs to none).
+    /// Which project a nav row belongs to (the shared panel and link rows belong to none).
     pub(crate) fn project_of(&self, nav: Nav) -> Option<usize> {
         match nav {
             Nav::NewAgent(p, _) | Nav::NewTerminal(p) | Nav::NewProcess(p) => Some(p),
             Nav::Session(i) => Some(self.sessions[i].project),
-            Nav::Panel => None,
+            Nav::Panel | Nav::Link => None,
         }
     }
 
@@ -81,15 +86,15 @@ impl App {
     pub(crate) fn pane_at(&self, nav: Nav) -> Option<&Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_ref(),
-            // The git panel is native, not pane-backed; launchers have no pane.
-            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
+            // The git panel is native, not pane-backed; launchers and the link row have no pane.
+            Nav::Panel | Nav::Link | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
         }
     }
 
     pub(crate) fn pane_at_mut(&mut self, nav: Nav) -> Option<&mut Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_mut(),
-            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
+            Nav::Panel | Nav::Link | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
         }
     }
 

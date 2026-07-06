@@ -9,13 +9,13 @@
 //!   start it plain, find the session it wrote under `~/.codex/sessions`, and
 //!   reattach with `codex resume <uuid>`.
 //!
-//! The minted/started id only fixes which conversation a launch *creates*. Which
-//! conversation an agent is *currently in* can change underneath us — the user can
-//! `/resume`, `/new`, or `/clear` inside the agent — so the id we reattach by is
-//! re-derived from disk at save time via [`sessions_for`]: both tools write one
-//! transcript per conversation tagged with its `cwd`, and the active one is simply
-//! the newest for that cwd. Used by [`crate::app`] to persist and restore agents
-//! across a quit/crash/self-update reopen (see [`crate::restore`]).
+//! Claude's minted id is authoritative — mmux launches by it and resumes by it, so
+//! each `Claude #N` keeps its own thread and several in one directory never get mixed
+//! up. Codex hands us no id, so a fresh Codex agent has to *discover* the session it
+//! just created via [`sessions_for`]: both tools write one transcript per conversation
+//! tagged with its `cwd`, and the newest for that cwd is the one Codex just started.
+//! Used by [`crate::app`] to persist and restore agents across a quit/crash/self-update
+//! reopen (see [`crate::restore`]).
 
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -117,8 +117,8 @@ pub fn mint_uuid() -> String {
 }
 
 /// Every conversation `tool` recorded for `cwd`, as `(session_id, mtime)` and
-/// **newest first** — the basis for re-deriving which conversation an agent is
-/// currently in (see the module docs). Both tools write one `*.jsonl` per session:
+/// **newest first** — used to discover the session a freshly launched Codex agent
+/// just created (see the module docs). Both tools write one `*.jsonl` per session:
 /// Claude under `~/.claude/projects/<dir>/<id>.jsonl` (id is the filename, `cwd`
 /// is recorded in the opening lines), Codex under `~/.codex/sessions/YYYY/MM/DD/`
 /// (id and `cwd` in the first `session_meta` line). Best-effort: an unreadable

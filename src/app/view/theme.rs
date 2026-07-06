@@ -20,6 +20,9 @@ pub(crate) const DIFF_ADD_SIGN: Color = Color::Rgb(63, 185, 80);
 pub(crate) const DIFF_DEL_SIGN: Color = Color::Rgb(248, 81, 73);
 pub(crate) const DIFF_GUTTER: Color = Color::Rgb(110, 118, 129);
 pub(crate) const DIFF_HUNK: Color = Color::Rgb(88, 166, 255);
+/// Background tint behind a `▸ path` file divider in a multi-file commit diff — a muted
+/// blue-gray bar so each file's start reads as a section break.
+pub(crate) const DIFF_FILE_BG: Color = Color::Rgb(33, 43, 60);
 
 pub(crate) fn status_style(s: Status) -> Style {
     match s {

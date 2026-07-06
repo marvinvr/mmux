@@ -12,6 +12,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+/// How long after an agent's terminal title last changed we still count it as
+/// "working". Agents animate the title while busy; once it's been static this
+/// long the agent is treated as idle/awaiting you. This is the single window
+/// behind [`Session::busy`], shared by the sidebar spinner and the close
+/// confirmation so the two never disagree about "is it working".
+const TITLE_IDLE: Duration = Duration::from_secs(2);
+
 /// Which sidebar bucket a session belongs to. Drives ordering, the badge, and
 /// the placeholder wording — never the lifecycle, which is identical for all.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -231,6 +238,16 @@ impl Session {
     /// agent is treated as "needs you" rather than busy. See the sidebar's `nav_row`.
     pub fn working(&self, within: Duration) -> bool {
         self.is_running() && self.pane.as_ref().map(|p| p.title_active(within)).unwrap_or(false)
+    }
+
+    /// Whether this agent is *visibly* working right now — running with a live,
+    /// still-changing title, i.e. exactly when its sidebar row shows the rotating
+    /// spinner (see [`working`](Self::working) and the sidebar's `nav_row`). The
+    /// close confirmation keys on this so it fires for the same agents that spin:
+    /// an idle agent (running but quiet, showing the green `●`) reads as done and
+    /// closes without a nag.
+    pub fn busy(&self) -> bool {
+        self.working(TITLE_IDLE)
     }
 
     /// Drain notifications captured from this session's pane since the last call.

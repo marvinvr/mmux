@@ -152,25 +152,29 @@ workspace live — every other path leaves the project set fixed for the session
 The right column is a **native git panel** — mmux's own UI, not an embedded program. It is **not**
 a `Session` and has no PTY: it is `Project.git: Option<GitPanel>`, created once in `Project::new`
 when [`git-panel`](04-configuration.md#git-panel) is enabled and the directory is a repo. It draws
-three boxes (Changes / Branches / Recent) and is driven by its own keymap.
+three boxes (Changes / Branches / Commits) and is driven by its own keymap — `Tab` cycles the
+cursor through all three.
 
 - **`git.rs`** (top level) is a stateless layer of synchronous shell-outs to the `git` CLI —
-  status, log, branches, stage/discard/commit/switch/pull/push — returning data or git's stderr
-  as a plain string. Nothing is cached.
+  status, log, branches, `show`, stage/discard/commit/switch/pull/push, and the commit ops
+  (`revert`, soft `reset`, `commit_message`) — returning data or git's stderr as a plain string.
+  Nothing is cached.
 - **`app/git.rs`** is the `GitPanel` state machine plus the `impl App` git-action methods. It
   refreshes on a 1500 ms throttle while visible (and immediately after any mutation). Network ops
   (pull/push) block, so they run on a throwaway thread and report back over an `mpsc` channel
-  drained in `tick()`.
+  drained in `tick()`. The centre-pane `DiffView` pager serves both a live working-file preview
+  (follows the Changes cursor, self-refreshes) and a static commit diff (`git show`, rendered with
+  per-file dividers, chosen in the Commits box).
 
 `GitPanel` also hosts the **`Overlay`** enum — full-screen modals that eat every key while open:
 
 | Overlay | Raised by | Effect |
 | --- | --- | --- |
 | `Prompt` | `c` / `n` in the panel | Commit message / new-branch name |
-| `Confirm` | `d` in the panel · `D` on a process · `q` | Yes/no guard: destructive discard · delete a process · quit |
+| `Confirm` | `d` in the panel · `t` / `u` on a commit · `D` on a process · `q` | Yes/no guard: destructive discard · revert / uncommit a commit · delete a process · quit |
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
 | `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |
-| `LinkProject` | `+ Link another project` / `L` | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
+| `LinkProject` | `+ Link another project` (its own sidebar box) | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
 
 The picker (`picker.rs`) lists files with the `ignore` crate (ripgrep's walking engine, in-process
 — so no external `rg` is needed; `.gitignore` is deliberately *not* honoured and heavy
@@ -260,10 +264,9 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   `~/.mmux/state/<session-hash>.yaml` (keyed by the same canonical-dir hash tmux uses, via
   `tmux::session_name`). It writes on every structural change (a cheap fingerprint in `tick()`
   gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
-  Each save also re-derives every agent's **current** conversation id from disk (`refresh_agent_ids`
-  → `agent::sessions_for`), so a session the user switched to *inside* the agent — `/resume`, `/new`,
-  `/clear` — is the one that comes back, not the one mmux launched. Only agents/terminals are saved —
-  processes come back from config.
+  Each save also resolves every agent's resume id (`refresh_agent_ids`): Claude ids are minted by
+  mmux and left untouched, while a fresh Codex agent discovers the id of the session it just created
+  (`agent::sessions_for`). Only agents/terminals are saved — processes come back from config.
 - **Restore.** `App::new` always calls `restore_sessions` on startup; it's a no-op when there's no
   file. This is safe to do unconditionally because the **tmux singleton** means a fresh inner
   process only ever starts when there's no live session to attach to (a detach leaves the inner
@@ -272,12 +275,11 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   - **Claude / Codex agents resume their conversation.** `agent.rs` is a hardcoded, no-config
     adapter detected purely by command basename. Claude lets mmux *own* the id (launch with
     `--session-id <uuid>`, reattach with `--resume <uuid>`), so several `Claude #N` in one
-    directory each resume their own thread. Codex has no such flag, so mmux launches it plain and
-    reattaches with `codex resume <uuid>`. Either way the id reattached by is the one **re-derived
-    at save time** (`agent::sessions_for` — the newest transcript the tool recorded for that cwd),
-    so switching conversations inside the agent is followed; the launch id is just the starting
-    point. With several same-directory agents, mtime is the only signal, so the newest
-    conversations are matched to panes by recency, not identity — best-effort.
+    directory each resume their **own** thread — the id is authoritative and is never reassigned
+    between agents, so idle agents can't be shuffled onto a recently-active sibling's session.
+    Codex has no such flag, so mmux launches it plain, **discovers** the session it created
+    (`agent::sessions_for` — the newest transcript for that cwd no sibling has already claimed),
+    and reattaches with `codex resume <uuid>`.
   - **Terminals reopen at their live cwd.** `Pane::cwd()` reads the shell's working directory from
     the OS (`/proc/<pid>/cwd` on Linux, `proc_pidinfo` on macOS), so a `cd` survives — though as a
     fresh shell (no history/env/jobs). Editor panes reopen their file the same way.
@@ -293,8 +295,9 @@ removes it from the snapshot, so it's easy to get a clean slate.
 - **Navigation is positional.** `App.sel` is an index into the `Vec<Nav>` returned by
   `build_nav()`, rebuilt on demand. `Nav` is one row in display order: the launchers
   (`NewAgent`/`NewTerminal`/`NewProcess`, each carrying its project), `Session(i)` (an index into
-  the flat sessions vec), and `Panel` (the git panel — listed in nav *only* in compact mode).
-  Any code that mutates `sessions` must re-clamp `sel` against the freshly built nav. This is the
+  the flat sessions vec), `Panel` (the git panel — listed in nav *only* in compact mode), and
+  `Link` (the standalone "+ Link another project" box, always last — it belongs to no project and
+  grows the root). Any code that mutates `sessions` must re-clamp `sel` against the freshly built nav. This is the
   one place that is deliberately not yet ideal — see [Planned](08-contributing.md#planned-and-known-limits).
 - **Focus** (`Sidebar` / `Terminal` / `Right`) decides which region gets keys. `focused_pane()`
   resolves it — and returns `None` for `Right`, because the git panel is native UI with no PTY to
@@ -308,9 +311,12 @@ removes it from the snapshot, so it's easy to get a clean slate.
 - **Output:** program → PTY → reader thread → vt100 parser → `Pane` (title + when it last changed,
   bell, notifications via `Callbacks`). The app reads it through
   `Session::subtitle/attention/working/take_notifications` (`working` keys off the title-change
-  time so a quiet agent reads as "needs you").
-- **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then by focus). In a pane,
-  `keymap::encode_key` translates the key to PTY bytes and `Pane::send` queues them.
+  time so a quiet agent reads as "needs you"). `Session::busy` (`working` over a fixed ~2s window)
+  is the single "is this agent actively working" predicate — it's what both spins the sidebar glyph
+  and gates the close-confirmation, so the prompt fires for exactly the agents that show a spinner.
+- **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader
+  via `leader_command`, then by focus). In a pane, `keymap::encode_key` translates the key to PTY
+  bytes and `Pane::send` queues them.
 - **Notifications:** captured pane events → `collect_notifications` → `notify.rs` builds the OSC
   escape (wrapped in tmux passthrough when inside tmux) → written to stdout → the outer terminal
   renders the popup. See [Notifications](05-notifications.md).

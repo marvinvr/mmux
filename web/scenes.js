@@ -11,7 +11,7 @@
  * Every pane shows REAL, recognizable software (DESIGN.md §8): the actual Claude
  * Code welcome banner (its block-glyph logo, captured from `claude`), the actual
  * OpenAI Codex banner (captured from `codex`), a real zsh + cargo run, a real vite
- * banner, and the real native mmux git panel (Changes / Branches / Recent boxes).
+ * banner, and the real native mmux git panel (Changes / Branches / Commits boxes).
  */
 
 (function () {
@@ -142,7 +142,7 @@
   /* ----- the native git panel: three bordered boxes (DESIGN.md §5 / §9) -----
    * Mirrors src/app/view/git.rs: Changes (a file tree with [✓]/[~]/[ ] staging
    * checkboxes, names colored by change type, the cursor row on a magenta bar),
-   * Branches (current ● in green), Recent (short hash + summary). */
+   * Branches (current ● in green), Commits (short hash + summary). */
   function gitSections(active) {
     return [
       {
@@ -164,7 +164,7 @@
         ],
       },
       {
-        title: "Recent",
+        title: "Commits",
         lines: [
           { tokens: [{ t: "e2e6087 ", c: "dim" }, { t: "add token service" }] },
           { tokens: [{ t: "fce46df ", c: "dim" }, { t: "drag-select scrollback" }] },

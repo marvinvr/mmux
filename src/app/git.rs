@@ -1,12 +1,13 @@
 //! The native git panel — a small, lazygit-flavoured replacement for an embedded
 //! git TUI in the right column.
 //!
-//! It renders as three bordered boxes (Changes · Branches · Recent, see
+//! It renders as three bordered boxes (Changes · Branches · Commits, see
 //! [`view::git`](super::view::git)). The keyboard cursor lives in one [`Section`]
-//! at a time — Changes or Branches — with Recent display-only. This is **not** a
-//! pane: there's no child process and no vt100 grid, just state we draw ourselves
-//! and drive with our own keys ([`App::key_git`](super::input)). One panel lives
-//! per project; the visible one is the active project's.
+//! at a time — Tab cycles between them. This is **not** a pane: there's no child
+//! process and no vt100 grid, just state we draw ourselves and drive with our own
+//! keys ([`App::key_git`](super::input)). One panel lives per project; the visible
+//! one is the active project's. A selected commit's diff opens in the centre pager
+//! (`git show`, see [`DiffView`]).
 //!
 //! Network ops (pull/push) block, so they run on a throwaway thread and report
 //! back over a channel drained in [`App::tick`](super::App::tick). Status, branch
@@ -26,14 +27,16 @@ use super::App;
 /// How often the visible panel re-reads git state (picks up commits an agent makes
 /// in the main pane). A couple of cheap `git` forks.
 const REFRESH_EVERY: Duration = Duration::from_millis(1500);
-/// How many recent commits to keep for the history box.
-const LOG_LINES: usize = 20;
+/// How many recent commits to keep for the Commits box. Enough to scroll through real
+/// history; reading this many `git log` subjects is still a sub-millisecond fork.
+const LOG_LINES: usize = 200;
 
-/// Which sub-box the keyboard cursor drives. Recent is display-only, so not a section.
+/// Which sub-box the keyboard cursor drives. Tab cycles through all three.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Section {
     Changes,
     Branches,
+    Commits,
 }
 
 /// The result of a backgrounded network op, sent back from its worker thread.
@@ -45,8 +48,6 @@ pub(crate) struct JobDone {
 pub(crate) struct GitPanel {
     pub dir: PathBuf,
     pub branch: String,
-    pub ahead: u32,
-    pub behind: u32,
     pub files: Vec<FileEntry>,
     /// The flattened directory tree drawn in the Changes box (root → dirs → files),
     /// rebuilt from `files` on every refresh. The Changes cursor indexes this.
@@ -59,6 +60,8 @@ pub(crate) struct GitPanel {
     pub cursor: usize,
     /// Cursor into `branches` (the Branches box).
     pub branch_cursor: usize,
+    /// Cursor into `log` (the Commits box).
+    pub commit_cursor: usize,
     /// A network op in flight: the present-tense label to show ("pushing…").
     pub busy: Option<&'static str>,
     last_refresh: Option<Instant>,
@@ -73,8 +76,6 @@ impl GitPanel {
         let mut g = GitPanel {
             dir,
             branch: String::new(),
-            ahead: 0,
-            behind: 0,
             files: Vec::new(),
             rows: Vec::new(),
             branches: Vec::new(),
@@ -82,6 +83,7 @@ impl GitPanel {
             section: Section::Changes,
             cursor: 0,
             branch_cursor: 0,
+            commit_cursor: 0,
             busy: None,
             last_refresh: None,
             tx,
@@ -96,14 +98,13 @@ impl GitPanel {
     pub(crate) fn refresh(&mut self) {
         let st = git::status(&self.dir);
         self.branch = st.branch;
-        self.ahead = st.ahead;
-        self.behind = st.behind;
         self.files = st.files;
         self.rows = git::tree_rows(&self.files);
         self.branches = git::branches(&self.dir);
         self.log = git::log(&self.dir, LOG_LINES);
         self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
         self.branch_cursor = self.branch_cursor.min(self.branches.len().saturating_sub(1));
+        self.commit_cursor = self.commit_cursor.min(self.log.len().saturating_sub(1));
         self.last_refresh = Some(Instant::now());
     }
 
@@ -126,18 +127,26 @@ impl GitPanel {
             Section::Branches => {
                 self.branch_cursor = step(self.branch_cursor, self.branches.len(), delta)
             }
+            Section::Commits => self.commit_cursor = step(self.commit_cursor, self.log.len(), delta),
         }
     }
 
+    /// Tab cycles the cursor forward through the three boxes.
     pub(crate) fn toggle_section(&mut self) {
         self.section = match self.section {
             Section::Changes => Section::Branches,
-            Section::Branches => Section::Changes,
+            Section::Branches => Section::Commits,
+            Section::Commits => Section::Changes,
         };
     }
 
     pub(crate) fn selected_branch(&self) -> Option<&Branch> {
         self.branches.get(self.branch_cursor)
+    }
+
+    /// The commit under the Commits cursor (what `y`/`m`/revert/reset/⏎ act on).
+    pub(crate) fn selected_commit(&self) -> Option<&Commit> {
+        self.log.get(self.commit_cursor)
     }
 
     /// What `d` discards given the cursor: a `(pathspec, confirmation prompt)` pair for
@@ -236,6 +245,21 @@ impl GitPanel {
         res
     }
 
+    /// Revert a commit (see [`git::revert`]), then refresh so the new commit shows.
+    pub(crate) fn revert(&mut self, hash: &str) -> Result<String, String> {
+        let res = git::revert(&self.dir, hash);
+        self.refresh();
+        res
+    }
+
+    /// Soft-reset HEAD to a commit (see [`git::soft_reset`]), then refresh so the moved
+    /// tip and the newly-staged changes show.
+    pub(crate) fn soft_reset(&mut self, hash: &str) -> Result<String, String> {
+        let res = git::soft_reset(&self.dir, hash);
+        self.refresh();
+        res
+    }
+
     /// Kick off a background pull/push. A no-op if one is already running, so a
     /// double-tap can't launch two.
     pub(crate) fn start_job(&mut self, verb: &'static str, f: fn(&Path) -> Result<String, String>) {
@@ -286,10 +310,21 @@ pub(crate) struct DiffView {
     /// First visible line (the pager scroll offset).
     pub scroll: usize,
     /// A decoded image, when the changed file is a picture: the pane shows it instead
-    /// of a textual diff (and `lines` is empty). See [`PreviewImage`].
+    /// of a textual diff (and `lines` is empty). See [`PreviewImage`]. Only ever set for
+    /// a working-file diff — a commit's historical blob isn't decoded.
     pub image: Option<PreviewImage>,
+    /// When set, this pager is showing a single commit (`git show`) rather than the
+    /// working-tree file diff: its short hash + subject for the title. A commit diff is
+    /// static and multi-file, so it never self-refreshes and `path` is empty.
+    pub commit: Option<CommitRef>,
     /// When the body was last built, to throttle the live re-read.
     built_at: Instant,
+}
+
+/// The identity of a commit shown in the pager — just what the title needs.
+pub(crate) struct CommitRef {
+    pub short: String,
+    pub subject: String,
 }
 
 /// One diff body line: its change kind, the raw text (kept for the hunk header and
@@ -314,29 +349,33 @@ impl DiffLine {
     /// and the sign column so a copied diff pastes as plain code.
     pub(crate) fn content(&self) -> &str {
         match self.kind {
-            DiffKind::Hunk => &self.text,
+            // A hunk header and a file separator carry their full text, sign and all.
+            DiffKind::Hunk | DiffKind::File => &self.text,
             _ => self.text.get(1..).unwrap_or(""),
         }
     }
 }
 
-/// The visible diff line kinds (the noisy `diff --git`/`index`/`+++`/`---` headers
-/// are dropped at build time, so they need no variant).
+/// The visible diff line kinds. The `index`/`+++`/`---` header noise is dropped at build
+/// time; a `diff --git` header only becomes a [`File`](DiffKind::File) divider for a
+/// multi-file commit (`git show`), and is dropped for the single-file working preview.
 #[derive(Clone, Copy)]
 pub(crate) enum DiffKind {
     Add,
     Del,
     Hunk,
     Context,
+    /// A `diff --git` file boundary in a multi-file commit — rendered as a bold path
+    /// divider so you can tell which file each hunk belongs to.
+    File,
 }
 
 impl DiffView {
-    /// Shell out to `git diff` for `file` and parse it into render-ready lines. Once
-    /// inside a hunk, a leading `+`/`-` is unambiguously an addition/deletion (the
-    /// `+++`/`---` file headers only appear *before* the first `@@`), so a simple
-    /// in-hunk flag classifies every line without the header lines confusing it.
+    /// Build the working-tree preview of one changed `file` (`git diff HEAD`). An image
+    /// gets its picture shown instead of git's "Binary files differ"; anything else is
+    /// parsed into render-ready lines. Single-file, so the `diff --git` header is dropped
+    /// for a clean read (no file dividers).
     fn build(project: usize, dir: &Path, file: &FileEntry) -> DiffView {
-        // An image file gets its picture shown instead of git's "Binary files differ".
         // Falls through to the text path when it isn't a decodable format, is missing
         // (a deletion), is too big, or fails to decode.
         if is_image_path(&file.path) {
@@ -350,83 +389,13 @@ impl DiffView {
                     gutter: 0,
                     scroll: 0,
                     image: Some(image),
+                    commit: None,
                     built_at: Instant::now(),
                 };
             }
         }
         let raw = git::diff(dir, &file.path, file.untracked);
-        // Highlight by file type — but not for a giant diff, where lighting every line
-        // costs more than it's worth (the pager is a preview, not a full read).
-        let hl = if raw.len() <= MAX_HIGHLIGHT_BYTES {
-            Highlighter::for_path(&file.path)
-        } else {
-            Highlighter::plain()
-        };
-        let mut lines = Vec::new();
-        let (mut added, mut removed) = (0u32, 0u32);
-        let mut in_hunk = false;
-        let mut new_no: u32 = 0; // next new-file line number within the current hunk
-        let mut max_no: u32 = 0; // widest number shown → the gutter width
-        for l in raw.lines() {
-            if l.starts_with("diff ") {
-                in_hunk = false; // a new file section — back to header noise
-            } else if l.starts_with("@@") {
-                in_hunk = true;
-                // Pick up the new-file start line so the gutter can number the hunk.
-                new_no = hunk_new_start(l).unwrap_or(new_no);
-                lines.push(DiffLine {
-                    text: l.to_string(),
-                    kind: DiffKind::Hunk,
-                    sign: ' ',
-                    new_no: None,
-                    spans: Vec::new(),
-                });
-            } else if l.starts_with("Binary files") {
-                lines.push(DiffLine {
-                    text: l.to_string(),
-                    kind: DiffKind::Context,
-                    sign: ' ',
-                    new_no: None,
-                    spans: hl.line(l),
-                });
-            } else if in_hunk {
-                // Inside a hunk a leading `+`/`-` is unambiguously an addition/deletion
-                // (the `+++`/`---` file headers only appear *before* the first `@@`).
-                let sign = l.as_bytes().first().copied();
-                let code = l.get(1..).unwrap_or(""); // the line minus its sign column
-                let (kind, no) = match sign {
-                    Some(b'+') => {
-                        added += 1;
-                        let n = new_no;
-                        new_no += 1;
-                        (DiffKind::Add, Some(n))
-                    }
-                    Some(b'-') => {
-                        removed += 1;
-                        (DiffKind::Del, None) // a deletion has no new-file line
-                    }
-                    // git's "\ No newline at end of file" note: a marker, not a real
-                    // line — show it but don't number it or advance the counter.
-                    Some(b'\\') => (DiffKind::Context, None),
-                    _ => {
-                        let n = new_no;
-                        new_no += 1;
-                        (DiffKind::Context, Some(n))
-                    }
-                };
-                if let Some(n) = no {
-                    max_no = max_no.max(n);
-                }
-                lines.push(DiffLine {
-                    text: l.to_string(),
-                    kind,
-                    sign: sign.map(|b| b as char).unwrap_or(' '),
-                    new_no: no,
-                    spans: hl.line(code),
-                });
-            }
-            // else: header lines before the first hunk — hidden for a clean read.
-        }
+        let (lines, added, removed, max_no) = parse_diff(&raw, Some(&file.path), false);
         DiffView {
             project,
             path: file.path.clone(),
@@ -436,9 +405,137 @@ impl DiffView {
             gutter: digits(max_no),
             scroll: 0,
             image: None,
+            commit: None,
             built_at: Instant::now(),
         }
     }
+
+    /// Build the pager for a single commit (`git show`). Static and multi-file, so it
+    /// renders the `diff --git` file dividers, carries the commit's hash + subject for the
+    /// title, and never previews a binary as an image (that would need the historical blob).
+    fn build_commit(project: usize, dir: &Path, c: &Commit) -> DiffView {
+        let raw = git::show(dir, &c.hash);
+        let (lines, added, removed, max_no) = parse_diff(&raw, None, true);
+        DiffView {
+            project,
+            path: String::new(),
+            added,
+            removed,
+            lines,
+            gutter: digits(max_no),
+            scroll: 0,
+            image: None,
+            commit: Some(CommitRef { short: c.short.clone(), subject: c.summary.clone() }),
+            built_at: Instant::now(),
+        }
+    }
+}
+
+/// Parse raw unified-diff text into render-ready [`DiffLine`]s, with the added/removed
+/// tallies and the widest new-file line number (→ the gutter width). Once inside a hunk a
+/// leading `+`/`-` is unambiguously an addition/deletion (the `+++`/`---` headers only
+/// appear *before* the first `@@`), so a simple in-hunk flag classifies every line.
+/// `initial` seeds the syntax highlighter with a file path; with `file_headers` set (a
+/// multi-file commit) each `diff --git … b/<path>` becomes a bold [`DiffKind::File`]
+/// divider and re-seeds the highlighter to that file's language.
+fn parse_diff(
+    raw: &str,
+    initial: Option<&str>,
+    file_headers: bool,
+) -> (Vec<DiffLine>, u32, u32, u32) {
+    // Don't light a giant diff — lighting every line costs more than it's worth for a
+    // preview, so past the cap everything falls back to plain text.
+    let plain = raw.len() > MAX_HIGHLIGHT_BYTES;
+    let hl_for = |path: Option<&str>| match (plain, path) {
+        (false, Some(p)) => Highlighter::for_path(p),
+        _ => Highlighter::plain(),
+    };
+    let mut hl = hl_for(initial);
+    let mut lines = Vec::new();
+    let (mut added, mut removed) = (0u32, 0u32);
+    let mut in_hunk = false;
+    let mut new_no: u32 = 0; // next new-file line number within the current hunk
+    let mut max_no: u32 = 0; // widest number shown → the gutter width
+    for l in raw.lines() {
+        if let Some(body) = l.strip_prefix("diff --git ") {
+            in_hunk = false; // a new file section — back to header noise
+            let path = git_b_path(body);
+            hl = hl_for(path.as_deref()); // colour each file by its own language
+            if file_headers {
+                lines.push(DiffLine {
+                    text: path.unwrap_or_else(|| l.to_string()),
+                    kind: DiffKind::File,
+                    sign: ' ',
+                    new_no: None,
+                    spans: Vec::new(),
+                });
+            }
+        } else if l.starts_with("diff ") {
+            in_hunk = false; // other diff header forms (`--cc`, `--combined`)
+        } else if l.starts_with("@@") {
+            in_hunk = true;
+            // Pick up the new-file start line so the gutter can number the hunk.
+            new_no = hunk_new_start(l).unwrap_or(new_no);
+            lines.push(DiffLine {
+                text: l.to_string(),
+                kind: DiffKind::Hunk,
+                sign: ' ',
+                new_no: None,
+                spans: Vec::new(),
+            });
+        } else if l.starts_with("Binary files") {
+            lines.push(DiffLine {
+                text: l.to_string(),
+                kind: DiffKind::Context,
+                sign: ' ',
+                new_no: None,
+                spans: hl.line(l),
+            });
+        } else if in_hunk {
+            let sign = l.as_bytes().first().copied();
+            let code = l.get(1..).unwrap_or(""); // the line minus its sign column
+            let (kind, no) = match sign {
+                Some(b'+') => {
+                    added += 1;
+                    let n = new_no;
+                    new_no += 1;
+                    (DiffKind::Add, Some(n))
+                }
+                Some(b'-') => {
+                    removed += 1;
+                    (DiffKind::Del, None) // a deletion has no new-file line
+                }
+                // git's "\ No newline at end of file" note: a marker, not a real
+                // line — show it but don't number it or advance the counter.
+                Some(b'\\') => (DiffKind::Context, None),
+                _ => {
+                    let n = new_no;
+                    new_no += 1;
+                    (DiffKind::Context, Some(n))
+                }
+            };
+            if let Some(n) = no {
+                max_no = max_no.max(n);
+            }
+            lines.push(DiffLine {
+                text: l.to_string(),
+                kind,
+                sign: sign.map(|b| b as char).unwrap_or(' '),
+                new_no: no,
+                spans: hl.line(code),
+            });
+        }
+        // else: header lines before the first hunk — hidden for a clean read.
+    }
+    (lines, added, removed, max_no)
+}
+
+/// The new-file path from a `diff --git a/… b/…` header body (everything after
+/// `"diff --git "`). Splits on the last `" b/"` — unambiguous for the unquoted paths git
+/// emits (a path with spaces gets quoted, which we don't try to parse, falling back to the
+/// raw header). Returns the `b/`-side path with its prefix stripped.
+fn git_b_path(body: &str) -> Option<String> {
+    body.rsplit_once(" b/").map(|(_, b)| b.to_string())
 }
 
 /// Don't syntax-highlight a diff whose raw text exceeds this — lighting thousands of
@@ -687,6 +784,11 @@ pub(crate) enum Confirmed {
     /// its pane and drops the row. Identified by name (not index) so it survives a prune
     /// while the modal is open. See [`App::close_named_session`](super::App::close_named_session).
     CloseSession { project: usize, name: String },
+    /// Revert the commit `hash` (`git revert --no-edit`) — a new commit undoing it.
+    Revert { hash: String },
+    /// Soft-reset HEAD to `hash` (`git reset --soft`) — move the tip back, keep the later
+    /// changes staged. Recoverable, but rewrites the branch, so it's gated behind confirm.
+    SoftReset { hash: String },
 }
 
 impl Overlay {
@@ -767,7 +869,7 @@ impl App {
         self.projects[self.active].git.as_mut()
     }
 
-    /// Toggle which box (Changes ↔ Branches) the cursor drives.
+    /// Tab: cycle the cursor through the Changes → Branches → Commits boxes.
     pub(crate) fn git_section_toggle(&mut self) {
         if let Some(g) = self.active_git_mut() {
             g.toggle_section();
@@ -781,12 +883,13 @@ impl App {
         }
     }
 
-    /// Enter/Space: stage the cursor's file/dir/root (Changes) or switch to the
-    /// branch (Branches).
+    /// Enter/Space: stage the cursor's file/dir/root (Changes), switch to the branch
+    /// (Branches), or show the commit's diff in the main pane (Commits).
     pub(crate) fn git_activate(&mut self) {
         match self.active_git().map(|g| g.section) {
             Some(Section::Changes) => self.git_toggle_stage(),
             Some(Section::Branches) => self.git_switch_selected(),
+            Some(Section::Commits) => self.git_show_commit(),
             None => {}
         }
     }
@@ -903,6 +1006,16 @@ impl App {
             Confirmed::Quit => self.should_quit = true,
             Confirmed::DeleteProcess { project, name } => self.delete_process(project, &name),
             Confirmed::CloseSession { project, name } => self.close_named_session(project, &name),
+            Confirmed::Revert { hash } => match self.active_git_mut().map(|g| g.revert(&hash)) {
+                Some(Ok(s)) => self.flash_git(first_line(&s)),
+                Some(Err(e)) => self.flash_git(first_line(&e)),
+                None => {}
+            },
+            Confirmed::SoftReset { hash } => match self.active_git_mut().map(|g| g.soft_reset(&hash)) {
+                Some(Ok(s)) => self.flash_git(first_line(&s)),
+                Some(Err(e)) => self.flash_git(first_line(&e)),
+                None => {}
+            },
         }
     }
 
@@ -926,18 +1039,109 @@ impl App {
         }
     }
 
-    /// Keep the open diff in step with the cursor (called after a cursor move). Does
-    /// nothing unless a preview is already open — moving the cursor never *opens* one.
-    pub(crate) fn git_preview_follow(&mut self) {
-        if self.diff.is_some() {
-            self.git_open_diff();
+    /// Show the selected commit's full diff (`git show`) in the centre pager. Only acts
+    /// in the Commits section — the same method backs Enter, `v`, and a commit click.
+    pub(crate) fn git_show_commit(&mut self) {
+        let proj = self.active;
+        let built = self
+            .active_git()
+            .filter(|g| g.section == Section::Commits)
+            .and_then(|g| g.selected_commit().map(|c| DiffView::build_commit(proj, &g.dir, c)));
+        if let Some(view) = built {
+            self.diff = Some(view);
         }
     }
 
-    /// `v`: open the current file's diff, or close it if one's already showing.
+    /// Copy the selected commit's hash — the short hash, or the full 40-char id with
+    /// `full`. Commits-section only; flashes what it copied.
+    pub(crate) fn git_copy_commit_hash(&mut self, full: bool) {
+        let hash = self
+            .active_git()
+            .filter(|g| g.section == Section::Commits)
+            .and_then(|g| g.selected_commit())
+            .map(|c| if full { c.hash.clone() } else { c.short.clone() });
+        if let Some(hash) = hash {
+            crate::clipboard::copy(&hash);
+            self.flash_git(format!("copied {hash}"));
+        }
+    }
+
+    /// Copy the selected commit's full message (subject + body) to the clipboard.
+    /// Commits-section only.
+    pub(crate) fn git_copy_commit_message(&mut self) {
+        let msg = self
+            .active_git()
+            .filter(|g| g.section == Section::Commits)
+            .and_then(|g| g.selected_commit().map(|c| (g.dir.clone(), c.hash.clone())))
+            .map(|(dir, hash)| git::commit_message(&dir, &hash));
+        match msg {
+            Some(Ok(m)) if !m.is_empty() => {
+                crate::clipboard::copy(&m);
+                self.flash_git("copied commit message".into());
+            }
+            Some(Err(e)) => self.flash_git(first_line(&e)),
+            _ => {}
+        }
+    }
+
+    /// Open the revert confirmation for the selected commit (Commits section only).
+    pub(crate) fn git_revert_prompt(&mut self) {
+        if let Some(c) = self
+            .active_git()
+            .filter(|g| g.section == Section::Commits)
+            .and_then(|g| g.selected_commit())
+        {
+            let (hash, short, subject) = (c.hash.clone(), c.short.clone(), c.summary.clone());
+            self.overlay = Some(Overlay::confirm(
+                "Revert commit",
+                format!("Revert {short} \"{subject}\"?\nCreates a new commit undoing it."),
+                "y revert · n cancel",
+                Confirmed::Revert { hash },
+            ));
+        }
+    }
+
+    /// Open the soft-reset ("uncommit to here") confirmation for the selected commit.
+    /// Commits section only.
+    pub(crate) fn git_soft_reset_prompt(&mut self) {
+        if let Some(c) = self
+            .active_git()
+            .filter(|g| g.section == Section::Commits)
+            .and_then(|g| g.selected_commit())
+        {
+            let (hash, short, subject) = (c.hash.clone(), c.short.clone(), c.summary.clone());
+            self.overlay = Some(Overlay::confirm(
+                "Reset to commit",
+                format!(
+                    "Soft-reset HEAD to {short} \"{subject}\"?\n\
+                     Later commits become staged changes; nothing is lost."
+                ),
+                "y reset · n cancel",
+                Confirmed::SoftReset { hash },
+            ));
+        }
+    }
+
+    /// Keep the open diff in step with the cursor (called after a cursor move). Does
+    /// nothing unless a preview is already open — moving the cursor never *opens* one.
+    /// Section-aware: in Commits it re-shows the newly-selected commit, elsewhere it
+    /// re-reads the file under the Changes cursor.
+    pub(crate) fn git_preview_follow(&mut self) {
+        if self.diff.is_none() {
+            return;
+        }
+        match self.active_git().map(|g| g.section) {
+            Some(Section::Commits) => self.git_show_commit(),
+            _ => self.git_open_diff(),
+        }
+    }
+
+    /// `v`: open the current file's / commit's diff, or close it if one's already showing.
     pub(crate) fn git_toggle_diff(&mut self) {
         if self.diff.is_some() {
             self.diff = None;
+        } else if self.active_git().map(|g| g.section) == Some(Section::Commits) {
+            self.git_show_commit();
         } else {
             self.git_open_diff();
         }
@@ -966,6 +1170,11 @@ impl App {
         };
         if view.project != self.active {
             self.diff = None;
+            return;
+        }
+        // A commit diff is static and tied to no working-tree file — keep it until the
+        // user closes it or selects a session (it's never in `g.files` to re-find).
+        if view.commit.is_some() {
             return;
         }
         let (path, scroll, due, is_image) = (

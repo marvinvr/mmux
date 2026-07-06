@@ -853,7 +853,7 @@ section {
   color: var(--text-2);
 }
 
-/* native git panel: three bordered boxes (Changes / Branches / Recent), matching
+/* native git panel: three bordered boxes (Changes / Branches / Commits), matching
  * src/app/view/git.rs. The box title sits on the top border like a ratatui Block. */
 .git-box {
   position: relative;
@@ -884,7 +884,7 @@ section {
 /* the focused section is bordered magenta in the tool */
 .git-box--active { border-color: var(--magenta); }
 .git-box--active .git-box-title { color: var(--magenta); }
-/* tree rows are column-aligned (pre); a long line (e.g. a Recent commit summary)
+/* tree rows are column-aligned (pre); a long line (e.g. a Commits-box summary)
  * is clipped with an ellipsis instead of spilling outside the box. */
 .git-box-body .screen-line {
   white-space: pre;

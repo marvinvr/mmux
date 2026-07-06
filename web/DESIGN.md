@@ -184,7 +184,7 @@ a ratatui `Block`) on ONE terminal background. Key rules:
   border via `.tw-main-title`, exactly like `main_title` in `src/app/view/pane.rs`. Focused main
   pane border = magenta. The block cursor is a real CSS block.
 - **Git panel** ~200px: no outer frame — three bordered `.git-box`es (Changes tree with
-  `[✓]/[~]/[ ]` staging checkboxes and a magenta cursor bar, Branches, Recent) ARE the column,
+  `[✓]/[~]/[ ]` staging checkboxes and a magenta cursor bar, Branches, Commits) ARE the column,
   mirroring `src/app/view/git.rs`; the first box takes the slack; long lines clip with an
   ellipsis; the focused box is bordered magenta.
 - **Status bar**: the tmux-green signature — green bar, dark text. Scroll demo: a per-scene hint;

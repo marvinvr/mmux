@@ -29,6 +29,10 @@ pub struct FileEntry {
 /// One line of recent history, from `git log`.
 #[derive(Clone)]
 pub struct Commit {
+    /// Full 40-char object id — what the mutating ops (revert / reset) and `Y` act on,
+    /// since an abbreviated hash can be ambiguous.
+    pub hash: String,
+    /// Abbreviated hash, shown in the Commits box and copied by `y`.
     pub short: String,
     pub summary: String,
 }
@@ -45,8 +49,6 @@ pub struct Branch {
 /// A snapshot of `git status` for the panel header + file list.
 pub struct Status {
     pub branch: String,
-    pub ahead: u32,
-    pub behind: u32,
     pub files: Vec<FileEntry>,
 }
 
@@ -60,7 +62,7 @@ pub fn is_repo(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Read the working-tree status: current branch, ahead/behind, and changed files.
+/// Read the working-tree status: the current branch and the changed files.
 /// Failures (not a repo, git missing) collapse to an empty status rather than an
 /// error — the panel just shows "clean".
 pub fn status(dir: &Path) -> Status {
@@ -69,19 +71,10 @@ pub fn status(dir: &Path) -> Status {
     // can place, so it rendered as a nameless row — expanding it nests new files under
     // their folder like any other change (and matches the post-stage view).
     let raw = run(dir, &["status", "--porcelain=v2", "--branch", "-uall"]).unwrap_or_default();
-    let mut st = Status { branch: String::new(), ahead: 0, behind: 0, files: Vec::new() };
+    let mut st = Status { branch: String::new(), files: Vec::new() };
     for line in raw.lines() {
         if let Some(rest) = line.strip_prefix("# branch.head ") {
             st.branch = rest.trim().to_string();
-        } else if let Some(rest) = line.strip_prefix("# branch.ab ") {
-            // "+A -B"
-            for tok in rest.split_whitespace() {
-                if let Some(a) = tok.strip_prefix('+') {
-                    st.ahead = a.parse().unwrap_or(0);
-                } else if let Some(b) = tok.strip_prefix('-') {
-                    st.behind = b.parse().unwrap_or(0);
-                }
-            }
         } else if let Some(e) = parse_change(line) {
             st.files.push(e);
         }
@@ -163,19 +156,46 @@ fn glyph(x: char, y: char) -> char {
     }
 }
 
-/// The last `n` commits as `(short hash, subject)` pairs (newest first).
+/// The last `n` commits as `(full hash, short hash, subject)` triples (newest first).
 pub fn log(dir: &Path, n: usize) -> Vec<Commit> {
-    let fmt = format!("--pretty=format:%h{US}%s");
+    let fmt = format!("--pretty=format:%H{US}%h{US}%s");
     let raw = run(dir, &["log", &format!("-{n}"), &fmt]).unwrap_or_default();
     raw.lines()
         .filter_map(|l| {
-            let (short, summary) = l.split_once(US)?;
-            (!short.is_empty()).then(|| Commit {
-                short: short.to_string(),
-                summary: summary.to_string(),
-            })
+            let mut it = l.split(US);
+            let hash = it.next()?.to_string();
+            let short = it.next()?.to_string();
+            let summary = it.next().unwrap_or("").to_string();
+            (!hash.is_empty()).then(|| Commit { hash, short, summary })
         })
         .collect()
+}
+
+/// The full unified diff of a single commit (`git show`), for the diff pager. `--no-color`
+/// guards against a `color.ui = always` config; the commit message + header sit before the
+/// first hunk and are dropped by the pager's parser, leaving just the per-file diffs.
+/// Returns the raw text (empty on a bad hash).
+pub fn show(dir: &Path, hash: &str) -> String {
+    run(dir, &["show", "--no-color", hash]).unwrap_or_default()
+}
+
+/// The full commit message (subject + body) of `hash`, for the `m` copy action.
+pub fn commit_message(dir: &Path, hash: &str) -> Result<String, String> {
+    run(dir, &["log", "-1", "--format=%B", hash]).map(|s| s.trim_end().to_string())
+}
+
+/// Revert `hash` — create a new commit that undoes it (`--no-edit` keeps the default
+/// message, no editor). Non-destructive but can hit conflicts, surfaced as the error.
+pub fn revert(dir: &Path, hash: &str) -> Result<String, String> {
+    let out = run(dir, &["revert", "--no-edit", hash])?;
+    Ok(out.lines().next().unwrap_or("reverted").trim().to_string())
+}
+
+/// Soft-reset HEAD to `hash` — move the branch tip back but leave every later change
+/// staged in the index (nothing in the working tree is touched, so it's recoverable).
+pub fn soft_reset(dir: &Path, hash: &str) -> Result<String, String> {
+    run(dir, &["reset", "--soft", hash]).map(drop)?;
+    Ok(format!("reset to {}", &hash[..hash.len().min(7)]))
 }
 
 /// Local branches, most-recently-committed first, with the current one flagged.

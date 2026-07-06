@@ -38,9 +38,12 @@ pub(crate) struct Regions {
     pub git_rows: Vec<(u16, usize)>,
     // The git panel's branch rows: screen `y` → branch index, for click-to-switch.
     pub git_branch_rows: Vec<(u16, usize)>,
+    // The git panel's commit rows: screen `y` → commit (log) index, for click-to-show.
+    pub git_commit_rows: Vec<(u16, usize)>,
     // The git panel's box areas, so a click in a box's whitespace focuses that section.
     pub git_changes: Option<Rect>,
     pub git_branches: Option<Rect>,
+    pub git_commits: Option<Rect>,
     // Per-project sidebar box rects (multi-project mode, wide or compact): a click
     // that misses a row but lands in one of these switches to that project.
     pub project_boxes: Vec<(Rect, usize)>,
@@ -59,8 +62,6 @@ pub(crate) enum FooterAction {
     EditProcess,
     /// Delete the selected process (asks to confirm, then rewrites `mmux.yaml`).
     DeleteProcess,
-    /// Open the "Link another project" directory browser.
-    LinkProject,
     Detach,
     Quit,
     FocusPanel,
@@ -87,6 +88,15 @@ pub(crate) enum FooterAction {
     GitNewBranch,
     GitPull,
     GitPush,
+    // Commits-box actions (mirror the keys in `key_git`).
+    /// Copy the selected commit's short hash.
+    GitCopyHash,
+    /// Copy the selected commit's full message.
+    GitCopyMessage,
+    /// Revert the selected commit (opens a confirm).
+    GitRevert,
+    /// Soft-reset ("uncommit") HEAD to the selected commit (opens a confirm).
+    GitSoftReset,
 }
 
 /// One footer segment: either a plain non-clickable hint, or a bracketed,
@@ -373,7 +383,6 @@ impl App {
                     }
                 }
                 v.push(Seg::btn("R", "reload", Reload));
-                v.push(Seg::btn("L", "link", LinkProject));
                 if self.projects.len() > 1 {
                     v.push(Seg::hint("[ ] project"));
                 }
@@ -385,14 +394,15 @@ impl App {
                 v.push(Seg::btn("q", "quit", Quit));
                 (v, vec![])
             }
-            // The git panel: clickable buttons mirroring its keymap. The ⏎ action is
-            // section-aware (stage a file / switch a branch). On a phone the trailing key
-            // becomes a right-corner [✕ close] back to the pane (the same corner that
-            // opened git); wide keeps [h back] to the drawer.
+            // The git panel: clickable buttons mirroring its keymap. The ⏎ action and the
+            // chip set are section-aware (stage a file / switch a branch / show a commit
+            // diff). On a phone the trailing key becomes a right-corner [✕ close] back to
+            // the pane (the same corner that opened git); wide keeps [h back] to the drawer.
             Focus::Right => {
                 let section = self.active_git().map(|g| g.section);
                 let activate = match section {
                     Some(Section::Branches) => "switch",
+                    Some(Section::Commits) => "diff",
                     _ => "stage",
                 };
                 let mut v = vec![
@@ -400,22 +410,38 @@ impl App {
                     Seg::btn("Tab", "section", GitSection),
                     Seg::btn("⏎", activate, GitActivate),
                 ];
-                // Stage-all, diff preview and discard all target the changes tree, so
-                // only offer them there; stash is whole-tree and always available.
-                if section != Some(Section::Branches) {
-                    v.push(Seg::btn("a", "all", GitStageAll));
-                    let diff_label = if self.diff.is_some() { "close" } else { "diff" };
-                    v.push(Seg::btn("v", diff_label, GitDiff));
-                    v.push(Seg::btn("d", "discard", GitDiscard));
+                let diff_label = if self.diff.is_some() { "close" } else { "diff" };
+                match section {
+                    // The Commits box acts on the selected commit: show its diff, copy the
+                    // hash / message, revert it, or uncommit (soft-reset) to it. Pull/push
+                    // stay handy for pushing a revert.
+                    Some(Section::Commits) => v.extend([
+                        Seg::btn("v", diff_label, GitDiff),
+                        Seg::btn("y", "hash", GitCopyHash),
+                        Seg::btn("m", "msg", GitCopyMessage),
+                        Seg::btn("t", "revert", GitRevert),
+                        Seg::btn("u", "uncommit", GitSoftReset),
+                        Seg::btn("p", "pull", GitPull),
+                        Seg::btn("P", "push", GitPush),
+                    ]),
+                    _ => {
+                        // Stage-all, diff preview and discard all target the changes tree,
+                        // so only offer them there; stash is whole-tree and always there.
+                        if section != Some(Section::Branches) {
+                            v.push(Seg::btn("a", "all", GitStageAll));
+                            v.push(Seg::btn("v", diff_label, GitDiff));
+                            v.push(Seg::btn("d", "discard", GitDiscard));
+                        }
+                        v.extend([
+                            Seg::btn("s", "stash", GitStash),
+                            Seg::btn("c", "commit", GitCommit),
+                            Seg::btn("C", "c&push", GitCommitPush),
+                            Seg::btn("n", "branch", GitNewBranch),
+                            Seg::btn("p", "pull", GitPull),
+                            Seg::btn("P", "push", GitPush),
+                        ]);
+                    }
                 }
-                v.extend([
-                    Seg::btn("s", "stash", GitStash),
-                    Seg::btn("c", "commit", GitCommit),
-                    Seg::btn("C", "c&push", GitCommitPush),
-                    Seg::btn("n", "branch", GitNewBranch),
-                    Seg::btn("p", "pull", GitPull),
-                    Seg::btn("P", "push", GitPush),
-                ]);
                 if self.compact {
                     return (v, vec![Seg::btn("✕", "close", CloseToMain)]);
                 }
@@ -433,11 +459,15 @@ impl App {
                 };
                 (vec![Seg::btn("☰", "menu", FocusSidebar)], right)
             }
+            // Every chip here is a `Ctrl-b` chord (the leader is spelled out once up
+            // front), so detach/quit/close/back are reachable straight from the pane —
+            // no hop to the sidebar first.
             Focus::Terminal => (
                 vec![
-                    Seg::hint("Ctrl-b →"),
+                    Seg::hint("Ctrl-b then"),
                     Seg::btn("h", "back", FocusSidebar),
                     Seg::btn("d", "detach", Detach),
+                    Seg::btn("q", "quit", Quit),
                     Seg::btn("x", "close", Stop),
                     Seg::btn("b", "send Ctrl-b", SendLeaderB),
                 ],

@@ -137,7 +137,7 @@
           ],
         },
         {
-          title: "Recent",
+          title: "Commits",
           lines: [
             { tokens: [{ t: "e2e6087 ", c: "dim" }, { t: "add token service" }] },
             { tokens: [{ t: "fce46df ", c: "dim" }, { t: "drag-select scrollback" }] },
@@ -448,7 +448,7 @@
     }
   }
 
-  // The native git panel: a column of bordered boxes (Changes / Branches / Recent),
+  // The native git panel: a column of bordered boxes (Changes / Branches / Commits),
   // matching src/app/view/git.rs. Legacy `panel.lines` still renders as a flat list.
   function renderPanel(t, panel) {
     if (!t.panel) return;
