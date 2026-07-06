@@ -484,6 +484,23 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, m: MouseEvent) {
+        // A modal overlay captures the mouse just as it captures keys: only its own
+        // link hitboxes (the About card's URLs) are live; every other click is
+        // swallowed so it can't leak to the sidebar/footer behind the modal.
+        if self.overlay.is_some() {
+            if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+                if let Some(url) = self
+                    .regions
+                    .links
+                    .iter()
+                    .find(|(rect, _)| hit(Some(*rect), m.column, m.row))
+                    .map(|(_, u)| u.clone())
+                {
+                    self.open_url(&url);
+                }
+            }
+            return;
+        }
         match m.kind {
             MouseEventKind::ScrollUp => self.scroll_at(m.column, m.row, 3),
             MouseEventKind::ScrollDown => self.scroll_at(m.column, m.row, -3),
@@ -546,6 +563,7 @@ impl App {
     /// live pane — arm a drag-to-copy selection anchored at that cell.
     fn on_left_down(&mut self, c: u16, r: u16) {
         self.drag = None;
+        self.pending_url = None;
         // Footer shortcut buttons sit on their own row below everything else.
         if let Some(&(_, action)) = self.regions.footer_btns.iter().find(|(rect, _)| hit(Some(*rect), c, r)) {
             self.footer_action(action);
@@ -581,9 +599,39 @@ impl App {
                     self.focus = Focus::Terminal;
                     self.clear_focused_attention();
                     self.arm_selection(SelTarget::Main, c, r);
+                    // Remember a URL under the press: a plain click (no drag) opens it
+                    // on release, a drag copies instead. See `on_left_up`.
+                    self.pending_url = self.url_under(c, r);
                 }
             }
         }
+    }
+
+    /// The web URL under screen cell `(c, r)` in the live main pane, if the cell sits
+    /// on one. Reads the displayed row from the vt100 screen (already reflecting any
+    /// scrollback) and extracts the link token — see [`url_at`].
+    fn url_under(&self, c: u16, r: u16) -> Option<String> {
+        let inner = self.regions.main_inner?;
+        if !hit(Some(inner), c, r) {
+            return None;
+        }
+        let nav = self.current_nav()?;
+        let pane = self.pane_at(nav)?;
+        let row = (r - inner.y) as usize;
+        let col = (c - inner.x) as usize;
+        pane.with_screen(|s| {
+            let (_, cols) = s.size();
+            let text = s.rows(0, cols).nth(row)?;
+            url_at(&text, col)
+        })
+        .flatten()
+    }
+
+    /// Open `url` in the browser and flash a confirmation. Central so both the About
+    /// card and pane-content links share one path.
+    fn open_url(&mut self, url: &str) {
+        crate::open::url(url);
+        self.flash = Some((format!("opened {url}"), std::time::Instant::now()));
     }
 
     /// Run the action behind a clicked footer button. Each mirrors the matching
@@ -664,16 +712,22 @@ impl App {
         }
     }
 
-    /// Release: a real drag copies its contents; a plain click just clears.
+    /// Release: a real drag copies its contents; a plain click on a URL opens it;
+    /// any other plain click just clears.
     fn on_left_up(&mut self) {
         self.drag_scroll = 0;
+        let pending = self.pending_url.take();
         if let Some(sel) = self.drag.take() {
             if sel.moved {
                 match sel.target {
                     SelTarget::Main => self.copy_selection(sel),
                     SelTarget::Diff => self.copy_diff_selection(sel),
                 }
+                return; // a drag is a copy, never a link click
             }
+        }
+        if let Some(url) = pending {
+            self.open_url(&url);
         }
     }
 
@@ -1067,6 +1121,57 @@ fn hit(rect: Option<Rect>, col: u16, row: u16) -> bool {
     rect.is_some_and(|r| col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height)
 }
 
+/// Extract the web URL under character column `col` of `line`, if any. Expands to the
+/// whitespace-delimited token at the click, strips a wrapping pair and trailing
+/// prose punctuation, and accepts only `http(s)://…` or `www.…` (the latter gains an
+/// `https://` scheme). Deliberately conservative — a file path, a `v0.8.0`, or a
+/// `foo.bar()` in code must never open a browser.
+fn url_at(line: &str, col: usize) -> Option<String> {
+    let chars: Vec<char> = line.chars().collect();
+    if col >= chars.len() || chars[col].is_whitespace() {
+        return None;
+    }
+    // Grow to the whitespace-delimited token around the clicked column.
+    let mut start = col;
+    while start > 0 && !chars[start - 1].is_whitespace() {
+        start -= 1;
+    }
+    let mut end = col + 1;
+    while end < chars.len() && !chars[end].is_whitespace() {
+        end += 1;
+    }
+    let mut tok = &chars[start..end];
+    // Peel a symmetric wrapper, e.g. (url) <url> [url] "url" 'url'.
+    while tok.len() >= 2
+        && matches!(
+            (tok[0], tok[tok.len() - 1]),
+            ('(', ')') | ('<', '>') | ('[', ']') | ('{', '}') | ('"', '"') | ('\'', '\'')
+        )
+    {
+        tok = &tok[1..tok.len() - 1];
+    }
+    // Then any stray leading opener / trailing punctuation that clings to prose.
+    let mut lo = 0;
+    while lo < tok.len() && matches!(tok[lo], '(' | '<' | '[' | '{' | '"' | '\'') {
+        lo += 1;
+    }
+    let mut hi = tok.len();
+    while hi > lo
+        && matches!(tok[hi - 1], '.' | ',' | ';' | ':' | '!' | '?' | ')' | '>' | ']' | '}' | '"' | '\'')
+    {
+        hi -= 1;
+    }
+    let url: String = tok[lo..hi].iter().collect();
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        Some(url)
+    } else if lower.starts_with("www.") && url.len() > 4 {
+        Some(format!("https://{url}"))
+    } else {
+        None
+    }
+}
+
 /// The base xterm button code for a crossterm mouse button (0 left, 1 middle,
 /// 2 right) — what `Pane::mouse_input` expects.
 fn button_code(b: MouseButton) -> u8 {
@@ -1164,6 +1269,36 @@ mod tests {
         assert_eq!(cell_at(INNER, 0, 99, 99), (4, 9));
         // At an offset, the clamped top edge is an older line by `off`.
         assert_eq!(cell_at(INNER, 4, 0, 0), (-4, 0));
+    }
+
+    #[test]
+    fn url_at_finds_link_under_the_click() {
+        let line = "see https://example.com/path for details";
+        // Anywhere inside the token resolves to the whole URL.
+        assert_eq!(url_at(line, 4).as_deref(), Some("https://example.com/path"));
+        assert_eq!(url_at(line, 20).as_deref(), Some("https://example.com/path"));
+        // Whitespace and non-URL words don't.
+        assert_eq!(url_at(line, 3), None); // the space
+        assert_eq!(url_at(line, 0), None); // "see"
+        assert_eq!(url_at(line, 100), None); // past the end
+    }
+
+    #[test]
+    fn url_at_strips_wrappers_and_trailing_punctuation() {
+        assert_eq!(url_at("(https://a.co)", 5).as_deref(), Some("https://a.co"));
+        assert_eq!(url_at("<https://a.co>", 5).as_deref(), Some("https://a.co"));
+        assert_eq!(url_at("visit https://a.co.", 10).as_deref(), Some("https://a.co"));
+        assert_eq!(url_at("\"https://a.co\",", 5).as_deref(), Some("https://a.co"));
+    }
+
+    #[test]
+    fn url_at_schemes_www_and_rejects_bare_words() {
+        assert_eq!(url_at("www.example.com", 2).as_deref(), Some("https://www.example.com"));
+        // No scheme and not www → not a link (paths, versions, code).
+        assert_eq!(url_at("src/app/input.rs", 4), None);
+        assert_eq!(url_at("v0.8.0", 2), None);
+        assert_eq!(url_at("foo.bar()", 1), None);
+        assert_eq!(url_at("example.com", 2), None);
     }
 
     #[test]

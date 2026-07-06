@@ -105,6 +105,10 @@ pub(crate) struct App {
     compact: bool,     // single-column (phone) mode
     regions: Regions,  // per-frame hit rects + sidebar row map
     drag: Option<Selection>, // in-progress mouse drag-to-copy selection
+    /// A URL under the current left-press, opened on release if the press doesn't
+    /// become a drag (a drag is a copy instead). Set in `on_left_down`, consumed in
+    /// `on_left_up`. See [`input`](crate::app::input).
+    pending_url: Option<String>,
     /// Edge auto-scroll direction for a held drag: `1` reveals older history, `-1`
     /// moves toward the present, `0` not at an edge. Applied each `tick` so the
     /// selection keeps extending while the cursor sits still at a pane edge.
@@ -217,6 +221,7 @@ impl App {
             compact: false,
             regions: Regions::default(),
             drag: None,
+            pending_url: None,
             drag_scroll: 0,
             overlay: None,
             diff: None,

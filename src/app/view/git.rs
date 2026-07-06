@@ -399,7 +399,14 @@ fn mmux_logo_lines(pad: usize) -> Vec<Line<'static>> {
         .collect()
 }
 
-pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_update: bool) {
+/// Draws the card and returns the clickable link hitboxes (screen rect → URL) for
+/// [`Regions::links`](super::Regions), so a click on a link opens it in the browser.
+pub(crate) fn render_about(
+    f: &mut Frame,
+    area: Rect,
+    update: &UpdateState,
+    can_update: bool,
+) -> Vec<(Rect, String)> {
     let version = env!("CARGO_PKG_VERSION");
 
     // The update status line + the action key (if any) it unlocks.
@@ -447,7 +454,14 @@ pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_
 
     let bold = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
     let label = Style::default().fg(Color::DarkGray);
-    let link = Style::default().fg(Color::Cyan);
+    let link = Style::default().fg(Color::Cyan).add_modifier(Modifier::UNDERLINED);
+    // (label, link text, URL). Rendered as a line *and* registered as a click target
+    // below, so the two stay in sync. The label is fixed-width, so the URL always
+    // starts at the same column.
+    let link_rows: [(&str, &str, &str); 2] = [
+        ("built by  ", "marvinvr.ch", "https://marvinvr.ch"),
+        ("source    ", "github.com/marvinvr/mmux", "https://github.com/marvinvr/mmux"),
+    ];
     let text_lines: Vec<Line> = vec![
         Line::from(Span::styled(format!("mmux v{version}"), bold)),
         Line::from(Span::styled(
@@ -455,25 +469,24 @@ pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_
             Style::default().fg(Color::Gray),
         )),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("built by  ", label),
-            Span::styled("marvinvr.ch", link),
-        ]),
-        Line::from(vec![
-            Span::styled("source    ", label),
-            Span::styled("github.com/marvinvr/mmux", link),
-        ]),
+        Line::from(vec![Span::styled(link_rows[0].0, label), Span::styled(link_rows[0].1, link)]),
+        Line::from(vec![Span::styled(link_rows[1].0, label), Span::styled(link_rows[1].1, link)]),
         Line::from(""),
         Line::from(Span::styled(status, status_style)),
         Line::from(""),
         Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
     ];
+    // The two link lines' index within the text block (rows 3 and 4 above).
+    let link_line_idx = [3u16, 4u16];
 
     // Top the card with the mmux mark (half-block pixel art), centered over the text.
     let text_widest = text_lines.iter().map(|l| l.width()).max().unwrap_or(0);
+    let n_text = text_lines.len();
     let mut lines = mmux_logo_lines(text_widest.saturating_sub(16) / 2);
     lines.push(Line::from(""));
     lines.extend(text_lines);
+    // Where the text block starts within `lines` (past the logo + its blank line).
+    let text_top = (lines.len() - n_text) as u16;
 
     let widest = lines.iter().map(|l| l.width()).max().unwrap_or(0);
     let w = (widest as u16 + 4).clamp(24, 64);
@@ -487,9 +500,24 @@ pub(crate) fn render_about(f: &mut Frame, area: Rect, update: &UpdateState, can_
     f.render_widget(Clear, rect);
     f.render_widget(block, rect);
     if inner.width == 0 || inner.height == 0 {
-        return;
+        return Vec::new();
     }
     f.render_widget(Paragraph::new(lines), inner);
+
+    // Register each link's on-screen span as a click target.
+    let right = inner.x + inner.width;
+    let bottom = inner.y + inner.height;
+    let mut links = Vec::new();
+    for (i, (label_s, link_s, url)) in link_rows.iter().enumerate() {
+        let x = inner.x + label_s.chars().count() as u16;
+        let y = inner.y + text_top + link_line_idx[i];
+        if x >= right || y >= bottom {
+            continue; // clipped off a tiny card
+        }
+        let width = (link_s.chars().count() as u16).min(right - x);
+        links.push((Rect { x, y, width, height: 1 }, url.to_string()));
+    }
+    links
 }
 
 /// The "Link another project" browser: a path header, a live filter, the current

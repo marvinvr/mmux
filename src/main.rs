@@ -5,6 +5,7 @@ mod cli;
 mod config;
 mod git;
 mod notify;
+mod open;
 mod pane;
 mod restore;
 mod tmux;

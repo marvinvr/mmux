@@ -235,7 +235,8 @@ file opens in `$VISUAL`/`$EDITOR` (else the first of `micro`, `nano`, `vim`, `vi
 
 Press **`?`** in the sidebar (or click the `[? about]` footer chip) to open a small card with the
 running version, a link home (`marvinvr.ch`) and to the source, and the current
-[self-update](04-configuration.md#auto-update) status. From it:
+[self-update](04-configuration.md#auto-update) status. The two links are **clickable** — a click
+opens them in your browser (see [Opening links](#opening-links)). From it:
 
 | Key | Action |
 | --- | --- |
@@ -328,8 +329,22 @@ instead. Programs that don't track the mouse are unaffected: their pane drag-sel
   **full-screen program** (nano, micro, `less`, vim, …), which runs on the alternate screen and has
   no scrollback, the wheel is handed to the program instead: forwarded as a mouse-wheel event if it
   tracks the mouse, otherwise as arrow keys. When a [diff preview](#the-diff-preview) occupies the
-  pane it's a read-only pager instead — the wheel and the keys scroll the diff.
+  pane it's a read-only pager instead — the wheel and the keys scroll the diff. A plain click on a
+  **URL** in the pane opens it — see [Opening links](#opening-links).
 - **Footer.** The shortcut chips are clickable — each is an alias for its keybinding.
+
+## Opening links
+
+Click a link to open it in your default browser. This works in two places:
+
+- **mmux's own UI** — the two links on the [About card](#the-about-card) (`marvinvr.ch` and the
+  source repo). A plain click opens them.
+- **Pane content** — a URL an agent or program prints (`http(s)://…`, or a bare `www.…`). A plain
+  **click** on it opens it; a footer flash confirms `opened <url>`. Only a *click* opens — a
+  **drag** across a URL still [selects and copies](#scrollback-and-copy) it as usual, so you can copy
+  a link instead of following it. If the program [tracks the mouse](#mouse) (vim, micro, …) a plain
+  click goes to it, so **hold Shift** and click to open the link instead. Opening is best-effort via
+  the platform opener (`open` on macOS, `xdg-open` on Linux).
 
 ## Scrollback and Copy
 

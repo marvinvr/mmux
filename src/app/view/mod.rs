@@ -47,6 +47,10 @@ pub(crate) struct Regions {
     // Per-project sidebar box rects (multi-project mode, wide or compact): a click
     // that misses a row but lands in one of these switches to that project.
     pub project_boxes: Vec<(Rect, usize)>,
+    // Clickable link hitboxes drawn by mmux's own UI (currently the About card):
+    // screen rect → the URL to open. Consulted before any other routing while a
+    // modal is open.
+    pub links: Vec<(Rect, String)>,
 }
 
 /// What clicking a footer button does. Each variant mirrors an existing
@@ -183,7 +187,7 @@ impl App {
         // with `&self` access rather than the stateless `render_overlay`.
         match self.overlay.as_ref() {
             Some(super::git::Overlay::About) => {
-                git::render_about(f, content, &self.update, self.can_self_update())
+                self.regions.links = git::render_about(f, content, &self.update, self.can_self_update());
             }
             Some(ov) => git::render_overlay(f, content, ov),
             None => {}
