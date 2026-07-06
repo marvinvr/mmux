@@ -94,19 +94,25 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
+          HOMEBREW_NO_INSTALL_FROM_API: "1"
         run: |
           set -euo pipefail
           mkdir -p dist
-          for t in aarch64-apple-darwin; do
-            url="https://github.com/marvinvr/mmux/releases/download/$TAG/mmux-$t.tar.gz"
-            for i in 1 2 3; do curl -fsSL -o "dist/mmux-$t.tar.gz" "$url" && break || { echo "retry $i"; sleep $((i*5)); }; done
-          done
+          url="https://github.com/marvinvr/mmux/releases/download/$TAG/mmux-aarch64-apple-darwin.tar.gz"
+          for i in 1 2 3; do curl -fsSL -o "dist/mmux-aarch64-apple-darwin.tar.gz" "$url" && break || { echo "retry $i"; sleep $((i*5)); }; done
           DIST=dist TAG="$TAG" TEMPLATE=.github/homebrew/mmux.rb OUT="$RUNNER_TEMP/mmux.rb" \
             bash .github/scripts/render-formula.sh
-          # Installs from the rendered formula: exercises the real url + sha256 + the macOS
-          # codesign install step. The version check is exactly what the formula's own
-          # `test do` block asserts, so we run it directly rather than via `brew test`.
-          brew install --formula "$RUNNER_TEMP/mmux.rb"
+          # Homebrew rejects installing a bare formula file path, so drop the rendered formula
+          # into a throwaway LOCAL tap and install it by name. This exercises the real url +
+          # sha256 + the macOS codesign install step; the version check below is exactly what
+          # the formula's own `test do` block asserts.
+          tap="$(brew --repository)/Library/Taps/mmux/homebrew-verify"
+          mkdir -p "$tap/Formula"
+          cp "$RUNNER_TEMP/mmux.rb" "$tap/Formula/mmux.rb"
+          git -C "$tap" init -q
+          git -C "$tap" add -A
+          git -C "$tap" -c user.email=ci@mmux.local -c user.name=ci commit -qm "mmux verify formula"
+          brew install mmux/verify/mmux
           mmux --version | grep -q "mmux ${{ steps.v.outputs.version }}"
 
       # Prove the static musl binary runs on Alpine (musl, no glibc) and old glibc, at this
