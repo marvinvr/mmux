@@ -237,9 +237,11 @@ FIELD REFERENCE
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
                 · stop (shell line run in the dir when stopped/quit, not on restart)
     git-panel   enabled (bool, default true; the panel is automatic for git repos)
-    auto-update enabled (bool, default true; Homebrew installs only — checks on start
-                and every 6 hours, installs in the background, shows a "restart to
-                update" badge. Off for non-brew/dev builds or with MMUX_NO_UPDATE=1)
+    auto-update enabled (bool, default true; Homebrew + script-installed binaries —
+                checks on start and every 6 hours. A script install downloads it in the
+                background and shows "restart to update"; a brew install shows "update
+                available" and runs `brew upgrade` on confirm. Off for source/dev builds
+                or with MMUX_NO_UPDATE=1)
     (* required. cwd is relative to the file's directory. Omitted lists/maps are empty.)
 
 QUICK START

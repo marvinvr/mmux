@@ -1,17 +1,25 @@
-//! Background self-update for Homebrew-installed builds.
+//! Background self-update for release builds.
 //!
-//! mmux's only install path today is the `marvinvr/homebrew-mmux` tap, so the updater
-//! is brew-shaped: a cheap version *check* (curl the tap formula, compare its `version`
-//! to ours) gates a heavier *install* (`brew update` + `brew upgrade mmux`). Both run on
-//! throwaway threads and report back over an [`mpsc`](std::sync::mpsc) channel the TUI
-//! drains in its tick loop — the same pattern the git panel uses for pull/push.
+//! mmux ships two managed install paths, and the updater serves both from one flow:
 //!
-//! Applying the update is a separate, user-gated step ([`exec_restart`]): brew can swap
-//! the on-disk binary while mmux runs without disturbing anything, but running the *new*
-//! code means replacing the inner process, which necessarily ends the live panes. So the
-//! install happens automatically in the background; only the restart waits for the user.
+//! - **Homebrew** (macOS): the binary lives under `$(brew --prefix)`. A newer release is
+//!   *offered*, not auto-applied — the About card asks first, then runs `brew upgrade mmux`
+//!   for the user (brew's own bookkeeping must drive its own upgrade, so we can't just swap
+//!   the file underneath it).
+//! - **Self-managed** (the `mmux.org/install.sh` binary, typically in `~/.local/bin`): a
+//!   release binary we can atomically replace ourselves. Here the update is silent —
+//!   downloaded and staged in the background, exactly like the old brew flow.
+//!
+//! Both kinds share one version check: follow the GitHub `releases/latest` redirect and
+//! read the tag (a plain web redirect — no REST API, no rate limit, no token, no hosting).
+//! Everything runs on throwaway threads reporting over an [`mpsc`](std::sync::mpsc) channel
+//! the TUI drains in its tick loop — the same pattern the git panel uses for pull/push.
+//!
+//! Applying is always a separate, user-gated step ([`exec_restart`]): staging the new
+//! binary is safe while mmux runs, but running the *new* code means replacing the inner
+//! process, which necessarily ends the live panes. So only the restart waits for the user.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -19,24 +27,43 @@ use std::time::Duration;
 /// The version this binary was built as — what every check compares against.
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
-/// Where CI publishes the formula every release. We read its `version` line directly
-/// (rather than `brew outdated`, which only reflects the last `brew update`) so the
-/// check is current, fast, and needs no global brew refresh.
-const FORMULA_URL: &str =
-    "https://raw.githubusercontent.com/marvinvr/homebrew-mmux/main/Formula/mmux.rb";
+/// The GitHub "latest release" URL. A GET redirects (302) to `…/releases/tag/vX.Y.Z`;
+/// we read the tag off the final URL. Serves both install kinds as the single version
+/// source (the tap formula and the release tag are bumped from the same CI run).
+const RELEASES_LATEST: &str = "https://github.com/marvinvr/mmux/releases/latest";
+
+/// Where the per-target tarballs are attached on each release.
+const DOWNLOAD_BASE: &str = "https://github.com/marvinvr/mmux/releases/download";
+
+/// Whether this binary was built by the release pipeline (CI sets `MMUX_RELEASE=1`). Only
+/// release binaries self-manage: a `cargo install` from source lacks the stamp and stays
+/// inert, matching the old "non-brew installs don't self-update" behaviour. Homebrew is
+/// detected separately (it may build its Linux fallback from source without the stamp).
+const IS_RELEASE_BUILD: bool = option_env!("MMUX_RELEASE").is_some();
+
+/// How mmux was installed — decides how (and whether) an update is applied.
+#[derive(Clone, Copy)]
+pub enum InstallKind {
+    /// Under Homebrew's prefix: upgrade via `brew upgrade mmux`, after the user confirms.
+    Brew,
+    /// A release binary in a user-writable location: download the new tarball and swap it
+    /// in place ourselves, no confirmation needed.
+    SelfManaged,
+}
 
 /// One finished background step, sent from a worker thread to the app's tick loop.
 pub enum UpdateMsg {
-    /// The check found a newer release; carries its version.
-    Available(String),
+    /// The check found a newer release. `kind` decides the app's next move: a self-managed
+    /// install downloads it straight away; a brew install waits for the user to confirm.
+    Available { version: String, kind: InstallKind },
     /// The check ran and we're already current.
     UpToDate,
-    /// The background `brew upgrade` finished — the new binary is on disk.
+    /// The new binary is on disk and staged — a restart applies it.
     Installed(String),
-    /// A step failed (network, brew, parse). Carries a short reason; surfaced quietly
+    /// A step failed (network, brew, tar, parse). Carries a short reason; surfaced quietly
     /// and retried on the next periodic check.
     Failed(String),
-    /// This isn't a Homebrew install, so the updater can't act. A terminal verdict (no
+    /// This isn't a managed install, so the updater can't act. A terminal verdict (no
     /// retry buys anything): it resolves the optimistic `Checking` state the UI starts in
     /// into a quiet "self-update off" rather than leaving the About card spinning forever.
     NotManaged,
@@ -44,37 +71,37 @@ pub enum UpdateMsg {
 
 /// The cheap, synchronous gate: should the updater run at all? Covers everything that
 /// doesn't need a subprocess — config opt-out, a dev build, or the `MMUX_NO_UPDATE`
-/// escape hatch. The brew-managed test is deferred into the worker thread so startup
-/// never blocks on `brew`.
+/// escape hatch. The install-kind test is deferred into the worker thread so startup
+/// never blocks on `brew` or a filesystem probe.
 pub fn permitted(cfg_allows: bool) -> bool {
     cfg_allows
         && !cfg!(debug_assertions)
         && std::env::var_os("MMUX_NO_UPDATE").is_none()
 }
 
-/// Kick off a background check: verify we're a brew install, fetch the tap formula, and
-/// report whether a newer version exists. A non-brew build can't self-update, so it reports
+/// Kick off a background check: classify the install, then report whether a newer version
+/// exists (and, for a found update, how it should be applied). An unmanaged build reports
 /// [`NotManaged`](UpdateMsg::NotManaged) and stops — enough for the UI to resolve its
-/// optimistic `Checking` state into a quiet "off", without ever showing a badge it can't act
-/// on. (It can't decline silently: the caller already flipped to `Checking` before spawning
-/// us, so a worker that returns without sending leaves the About card spinning forever.)
+/// optimistic `Checking` state into a quiet "off". (It can't decline silently: the caller
+/// already flipped to `Checking` before spawning us, so a worker that returns without
+/// sending leaves the About card spinning forever.)
 ///
-/// First, cheaply and locally: a *sibling* mmux session may have already run the brew
-/// upgrade while we keep running the old code. If the on-disk binary is newer than ours,
-/// the update is effectively already staged — report it [`Installed`](UpdateMsg::Installed)
-/// straight away and skip both the network check and a redundant `brew upgrade`.
+/// First, cheaply and locally: a *sibling* session may have already upgraded the on-disk
+/// binary (brew relinked it, or another mmux self-installed) while we keep running the old
+/// code. If what a restart would launch is newer than ours, the update is effectively
+/// staged — report it [`Installed`](UpdateMsg::Installed) and skip the network check.
 pub fn spawn_check(tx: Sender<UpdateMsg>) {
     std::thread::spawn(move || {
-        if !is_brew_managed() {
+        let Some(kind) = install_kind() else {
             let _ = tx.send(UpdateMsg::NotManaged);
             return;
-        }
+        };
         if let Some(v) = installed_newer() {
             let _ = tx.send(UpdateMsg::Installed(v));
             return;
         }
         let msg = match check_latest() {
-            Ok(Some(v)) => UpdateMsg::Available(v),
+            Ok(Some(v)) => UpdateMsg::Available { version: v, kind },
             Ok(None) => UpdateMsg::UpToDate,
             Err(e) => UpdateMsg::Failed(e),
         };
@@ -82,9 +109,9 @@ pub fn spawn_check(tx: Sender<UpdateMsg>) {
     });
 }
 
-/// The version of the binary an in-place restart would land on (the brew symlink),
-/// but only if it's strictly newer than the running one — i.e. a sibling session
-/// already upgraded it. `None` if it's the same/older, or we can't read it.
+/// The version of the binary an in-place restart would land on, but only if it's strictly
+/// newer than the running one — i.e. a sibling session already upgraded it. `None` if it's
+/// the same/older, or we can't read it.
 fn installed_newer() -> Option<String> {
     let out = Command::new(resolve_exe()).arg("--version").output().ok()?;
     if !out.status.success() {
@@ -96,22 +123,26 @@ fn installed_newer() -> Option<String> {
     version_gt(&v, CURRENT).then_some(v)
 }
 
-/// Kick off the background install of `version` via brew. Reports [`UpdateMsg::Installed`]
-/// once the new binary is linked, or [`UpdateMsg::Failed`] with a one-line reason.
-pub fn spawn_install(tx: Sender<UpdateMsg>, version: String) {
+/// Kick off the background install of `version`. For a self-managed install this downloads
+/// and swaps the binary; for brew it runs `brew upgrade mmux` (already confirmed by the
+/// user). Reports [`UpdateMsg::Installed`] once the new binary is on disk, or
+/// [`UpdateMsg::Failed`] with a one-line reason.
+pub fn spawn_install(tx: Sender<UpdateMsg>, version: String, kind: InstallKind) {
     std::thread::spawn(move || {
-        let msg = match run_install() {
+        let result = match kind {
+            InstallKind::Brew => run_brew_upgrade(),
+            InstallKind::SelfManaged => run_self_install(&version),
+        };
+        let _ = tx.send(match result {
             Ok(()) => UpdateMsg::Installed(version),
             Err(e) => UpdateMsg::Failed(e),
-        };
-        let _ = tx.send(msg);
+        });
     });
 }
 
 /// Replace this process image with a fresh `mmux --inner`, keeping the same tmux pane.
-/// The caller restores the terminal first; on success this never returns. We invoke the
-/// stable brew symlink rather than [`std::env::current_exe`], which after a `brew upgrade`
-/// may point into a Cellar dir brew has already cleaned up. Returns the error on failure.
+/// The caller restores the terminal first; on success this never returns. Returns the
+/// error on failure.
 pub fn exec_restart() -> std::io::Error {
     use std::os::unix::process::CommandExt;
     // `MMUX_INNER` / `MMUX_DIR` are already in our env (tmux set them) and are inherited
@@ -121,8 +152,11 @@ pub fn exec_restart() -> std::io::Error {
     Command::new(resolve_exe()).arg("--inner").exec()
 }
 
-/// The binary to invoke for an in-place restart: the brew symlink if we can find it
-/// (stable across upgrades), else the current exe, else a bare `mmux` for a PATH lookup.
+/// The binary to invoke for an in-place restart. For a brew install we prefer the brew
+/// symlink (stable across upgrades, where [`std::env::current_exe`] may point into a
+/// Cellar dir brew has already cleaned up). For a self-managed install brew's `bin/mmux`
+/// doesn't exist, so this naturally falls through to `current_exe` — the path we just
+/// swapped the new binary onto.
 fn resolve_exe() -> PathBuf {
     if let Some(prefix) = brew_prefix() {
         let p = prefix.join("bin").join("mmux");
@@ -133,9 +167,22 @@ fn resolve_exe() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("mmux"))
 }
 
+/// Classify this install, or `None` if the updater can't act on it. Brew wins first (it may
+/// build its Linux fallback from source, so the release stamp isn't required there); a
+/// stamped release binary in a user-writable dir on a target we ship for is self-managed;
+/// everything else (source builds, root-owned installs, unshipped targets) stays inert.
+fn install_kind() -> Option<InstallKind> {
+    if is_brew_managed() {
+        return Some(InstallKind::Brew);
+    }
+    if IS_RELEASE_BUILD && asset_target().is_some() && exe_dir_writable() {
+        return Some(InstallKind::SelfManaged);
+    }
+    None
+}
+
 /// Whether this binary is managed by Homebrew — `brew` is on PATH and the running exe
-/// lives under its prefix (`$(brew --prefix)/Cellar/…`). The one signal that the updater
-/// can actually act: a `cargo install` or a dev build fails it and stays inert.
+/// lives under its prefix (`$(brew --prefix)/Cellar/…`).
 fn is_brew_managed() -> bool {
     let Some(prefix) = brew_prefix() else {
         return false;
@@ -149,6 +196,28 @@ fn is_brew_managed() -> bool {
     exe.starts_with(&prefix)
 }
 
+/// Can we atomically replace the running binary in place? The self-managed path stages the
+/// new binary beside the old one and renames over it, which needs write access to the
+/// *directory*. Probed by creating (and removing) a temp file there — the honest test,
+/// since permission bits alone miss ownership.
+fn exe_dir_writable() -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let Some(dir) = exe.parent() else {
+        return false;
+    };
+    let probe = dir.join(format!(".mmux-writable-{}", std::process::id()));
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// `$(brew --prefix)` (e.g. `/opt/homebrew` or `/usr/local`), or `None` if brew is absent.
 fn brew_prefix() -> Option<PathBuf> {
     let out = Command::new("brew").arg("--prefix").output().ok()?;
@@ -160,56 +229,144 @@ fn brew_prefix() -> Option<PathBuf> {
     (!s.is_empty()).then(|| PathBuf::from(s))
 }
 
-/// Fetch the tap formula and return `Some(version)` if it's newer than ours, else `None`.
+/// The release-asset target triple for this OS/arch, or `None` for a platform we don't
+/// ship a prebuilt binary for. Linux ships static musl binaries (run on any distro
+/// regardless of glibc); macOS ships per-arch Mach-O binaries.
+fn asset_target() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("aarch64-apple-darwin"),
+        ("macos", "x86_64") => Some("x86_64-apple-darwin"),
+        ("linux", "aarch64") => Some("aarch64-unknown-linux-musl"),
+        ("linux", "x86_64") => Some("x86_64-unknown-linux-musl"),
+        _ => None,
+    }
+}
+
+/// Fetch the latest release version and return `Some(version)` if it's newer than ours.
 fn check_latest() -> Result<Option<String>, String> {
-    let rb = curl(FORMULA_URL)?;
-    let latest =
-        parse_formula_version(&rb).ok_or_else(|| "no version found in formula".to_string())?;
+    let latest = latest_version()?;
     Ok(version_gt(&latest, CURRENT).then_some(latest))
 }
 
-/// Refresh the tap so brew sees the new formula, then upgrade just mmux. Output is
-/// captured (and discarded) so nothing leaks onto the TUI; `HOMEBREW_NO_AUTO_UPDATE`
-/// keeps `upgrade` from refreshing a second time. Treats "already up to date" (a clean
-/// exit) as success, so a sibling session that upgraded first doesn't read as a failure.
-fn run_install() -> Result<(), String> {
-    let update = Command::new("brew")
-        .args(["update", "--quiet"])
-        .output()
-        .map_err(|e| format!("running brew: {e}"))?;
-    if !update.status.success() {
-        return Err(format!("brew update: {}", first_line(&update.stderr)));
-    }
-    let upgrade = Command::new("brew")
-        .args(["upgrade", "mmux"])
-        .env("HOMEBREW_NO_AUTO_UPDATE", "1")
-        .output()
-        .map_err(|e| format!("running brew: {e}"))?;
-    if !upgrade.status.success() {
-        return Err(format!("brew upgrade: {}", first_line(&upgrade.stderr)));
-    }
-    Ok(())
-}
-
-/// A single `curl -fsSL` GET with a short timeout, returning the body as text.
-fn curl(url: &str) -> Result<String, String> {
+/// Follow the `releases/latest` redirect and read the version off the resulting
+/// `…/releases/tag/vX.Y.Z` URL. A plain web redirect, so no REST API rate limit, no token.
+fn latest_version() -> Result<String, String> {
     let out = Command::new("curl")
-        .args(["-fsSL", "--max-time", "10", url])
+        .args(["-fsSL", "--max-time", "10", "-o", "/dev/null", "-w", "%{url_effective}"])
+        .arg(RELEASES_LATEST)
         .output()
         .map_err(|e| format!("running curl: {e}"))?;
     if !out.status.success() {
         return Err(format!("curl exited {}", out.status));
     }
-    String::from_utf8(out.stdout).map_err(|_| "non-utf8 response".to_string())
+    let url = String::from_utf8(out.stdout).map_err(|_| "non-utf8 response".to_string())?;
+    parse_tag_version(&url).ok_or_else(|| "no release tag in redirect".to_string())
 }
 
-/// Pull the `version "X.Y.Z"` value out of a Homebrew formula's text.
-fn parse_formula_version(rb: &str) -> Option<String> {
-    rb.lines().find_map(|line| {
-        let rest = line.trim().strip_prefix("version ")?;
-        let v = rest.trim().trim_matches('"').trim();
-        (!v.is_empty()).then(|| v.to_string())
-    })
+/// Pull `X.Y.Z` out of a `…/releases/tag/vX.Y.Z` URL (leading `v` stripped). Returns `None`
+/// if the tail isn't a version — e.g. a repo with no releases redirects to `…/releases`.
+fn parse_tag_version(url: &str) -> Option<String> {
+    let tag = url.trim().trim_end_matches('/').rsplit('/').next()?;
+    let v = tag.trim_start_matches('v').trim();
+    (v.chars().next().is_some_and(|c| c.is_ascii_digit())).then(|| v.to_string())
+}
+
+/// Run the confirmed `brew upgrade mmux`. Output is captured (and discarded) so nothing
+/// leaks onto the TUI. We let brew do its implicit auto-update — that's what lets `upgrade`
+/// see the freshly-pushed formula without a separate `brew update` step. Since it's
+/// user-initiated (not a background loop), the extra moment brew spends refreshing is fine.
+fn run_brew_upgrade() -> Result<(), String> {
+    let out = Command::new("brew")
+        .args(["upgrade", "mmux"])
+        .output()
+        .map_err(|e| format!("running brew: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("brew upgrade: {}", first_line(&out.stderr)));
+    }
+    Ok(())
+}
+
+/// Download the release tarball for `version`, extract it, and atomically swap it over the
+/// running binary. Everything is staged in a temp dir *beside* the live binary so the final
+/// rename is atomic (same filesystem); replacing the path the process launched from is safe
+/// on Unix (the kernel keeps the old inode alive until we exec or exit). Integrity rests on
+/// the HTTPS download from github.com (`curl -f` fails on any non-2xx), so there's no
+/// separate checksum step — the transport already authenticates the bytes.
+fn run_self_install(version: &str) -> Result<(), String> {
+    let target = asset_target().ok_or_else(|| "unsupported platform".to_string())?;
+    let exe = std::env::current_exe().map_err(|e| format!("locating binary: {e}"))?;
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let dir = exe.parent().ok_or_else(|| "binary has no parent directory".to_string())?;
+
+    let url = format!("{DOWNLOAD_BASE}/v{version}/mmux-{target}.tar.gz");
+    let stage = dir.join(format!(".mmux-update-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&stage);
+    std::fs::create_dir(&stage).map_err(|e| format!("staging dir: {e}"))?;
+
+    // Run the fallible middle in a closure so the staging dir is always cleaned up after.
+    let result = install_from(&url, &stage, &exe);
+    let _ = std::fs::remove_dir_all(&stage);
+    result
+}
+
+/// The fallible core of [`run_self_install`]: download → extract → (re-sign) → swap.
+fn install_from(url: &str, stage: &Path, exe: &Path) -> Result<(), String> {
+    let tarball = stage.join("mmux.tar.gz");
+    curl_to_file(url, &tarball)?;
+
+    // `tar` is present on macOS and Linux; extract into the staging dir (never over the
+    // live binary), yielding `mmux` there.
+    let status = Command::new("tar")
+        .arg("-xzf")
+        .arg(&tarball)
+        .arg("-C")
+        .arg(stage)
+        .status()
+        .map_err(|e| format!("running tar: {e}"))?;
+    if !status.success() {
+        return Err("tar failed to extract the release".to_string());
+    }
+    let fresh = stage.join("mmux");
+    if !fresh.exists() {
+        return Err("release archive did not contain mmux".to_string());
+    }
+    set_executable(&fresh)?;
+
+    // A relocated ad-hoc-signed macOS binary gets SIGKILL'd ("Killed: 9") on first run
+    // unless re-signed in place — the same fix the Homebrew formula applies.
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&fresh)
+            .status();
+    }
+
+    std::fs::rename(&fresh, exe).map_err(|e| format!("replacing binary: {e}"))
+}
+
+/// `chmod 755` — tar usually preserves the bit, but make sure the swapped-in binary runs.
+fn set_executable(p: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(p)
+        .map_err(|e| format!("stat: {e}"))?
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(p, perms).map_err(|e| format!("chmod: {e}"))
+}
+
+/// A `curl -fsSL` download to `path` with a generous timeout for the binary tarball.
+fn curl_to_file(url: &str, path: &Path) -> Result<(), String> {
+    let out = Command::new("curl")
+        .args(["-fsSL", "--max-time", "120", "-o"])
+        .arg(path)
+        .arg(url)
+        .output()
+        .map_err(|e| format!("running curl: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("download failed: {}", first_line(&out.stderr)));
+    }
+    Ok(())
 }
 
 /// True if `a` is strictly newer than `b`, comparing dot-separated numeric components
@@ -245,7 +402,7 @@ fn first_line(bytes: &[u8]) -> String {
 
 /// How often a long-running session re-checks for an update in the background. Timed
 /// from each session's startup (not the wall clock), so independent sessions stagger
-/// their checks rather than all hitting the tap at once.
+/// their checks rather than all hitting GitHub at once.
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[cfg(test)]
@@ -265,14 +422,29 @@ mod tests {
     }
 
     #[test]
-    fn parses_version_from_formula() {
-        let rb = r#"
-class Mmux < Formula
-  desc "..."
-  version "0.3.5"
-  head "https://github.com/marvinvr/mmux.git", branch: "main"
-"#;
-        assert_eq!(parse_formula_version(rb).as_deref(), Some("0.3.5"));
-        assert_eq!(parse_formula_version("no version here").as_deref(), None);
+    fn parses_version_from_release_redirect() {
+        assert_eq!(
+            parse_tag_version("https://github.com/marvinvr/mmux/releases/tag/v0.9.0").as_deref(),
+            Some("0.9.0")
+        );
+        assert_eq!(
+            parse_tag_version("https://github.com/marvinvr/mmux/releases/tag/v1.2.3/").as_deref(),
+            Some("1.2.3")
+        );
+        // A repo with no releases redirects to the bare list — not a version.
+        assert_eq!(
+            parse_tag_version("https://github.com/marvinvr/mmux/releases"),
+            None
+        );
+    }
+
+    #[test]
+    fn asset_target_covers_shipped_platforms() {
+        // Whatever host runs the tests must map to one of the four shipped triples
+        // (or None on an unshipped platform — still a valid, non-panicking answer).
+        let t = asset_target();
+        if let Some(t) = t {
+            assert!(t.contains("apple-darwin") || t.contains("linux-musl"));
+        }
     }
 }

@@ -25,14 +25,10 @@ class Mmux < Formula
   end
 
   on_linux do
-    on_intel do
-      url "https://github.com/marvinvr/mmux/releases/download/TAG_PLACEHOLDER/mmux-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "LINUX_X86_SHA_PLACEHOLDER"
-    end
-    on_arm do
-      # No prebuilt binary for Linux arm64 — fall back to building from the source url.
-      depends_on "rust" => :build
-    end
+    # Linux installs via the mmux.org script (static musl binaries, arm64 + x86_64 — see
+    # the README). Homebrew on Linux is a secondary path, so the tap builds from the
+    # source url above rather than shipping a bottle.
+    depends_on "rust" => :build
   end
 
   def install

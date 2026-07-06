@@ -28,23 +28,23 @@ done), mmux raises a native desktop notification — even over SSH.
 
 ## Install
 
-```sh
-brew install marvinvr/mmux/mmux
-```
-
-Or build from source with [Rust](https://rustup.rs):
+macOS & Linux (arm64 & x86_64):
 
 ```sh
-cargo install --path .
+curl -fsSL https://mmux.org/install.sh | sh
 ```
+
+On macOS you can use Homebrew instead (`brew install marvinvr/mmux/mmux`), or build from source
+with [Rust](https://rustup.rs) (`cargo install --path .`).
 
 mmux needs **tmux** on your `PATH`. The git panel uses `git`; the `Ctrl+P` file picker opens
 files in your `$EDITOR`. See [Installation](docs/02-installation.md) for prebuilt binaries and
 the macOS code-signing note.
 
-A Homebrew install **keeps itself up to date**: it checks in the background on startup and every 6
-hours, installs new releases automatically, and shows a quiet `↻ restart to update` badge — press
-`U` (or click it) to restart in place (your session is restored, as above). See
+A script-installed binary **keeps itself up to date**: it checks in the background on startup and
+every 6 hours, downloads new releases automatically, and shows a quiet `↻ restart to update`
+badge — press `U` (or click it) to restart in place (your session is restored, as above). A
+Homebrew install notifies you and applies the upgrade with one confirmation. See
 [Auto-Update](docs/04-configuration.md#auto-update).
 
 ## Quick Start

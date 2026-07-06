@@ -1,0 +1,79 @@
+# Weekly (and on-demand) check that the LIVE distribution channels still work for whatever is
+# currently `latest` — no new release required. It re-runs the real user install paths against
+# the deployed mmux.org script and the live Homebrew tap; if any leg fails, it auto-invokes the
+# yank workflow. This is the safety net for rot that a release-time check can't see: link
+# breakage, tap drift, a runner-image change, an expired anything.
+name: Distribution healthcheck
+
+on:
+  schedule:
+    - cron: "17 9 * * 1" # Mondays, 09:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write # yank (called on failure) needs to edit the release
+  issues: write
+
+jobs:
+  healthcheck:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            kind: mac
+          - os: macos-13
+            kind: mac
+          - os: ubuntu-latest
+            kind: linux
+          - os: ubuntu-24.04-arm
+            kind: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve current latest version
+        id: v
+        shell: bash
+        run: |
+          url="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/marvinvr/mmux/releases/latest)"
+          v="${url##*/}"; v="${v#v}"
+          # Guard: a repo with no promoted release redirects to `…/releases`, not a tag. Skip
+          # the checks (job succeeds → no yank) rather than "verifying" a nonexistent version.
+          case "$v" in
+            [0-9]*) echo "latest is $v"; echo "version=$v" >> "$GITHUB_OUTPUT"; echo "ok=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "no promoted release yet ('$v'); nothing to check"; echo "ok=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # The LIVE deployed script (curl'd from mmux.org, not the repo copy) + full smoke, with a
+      # couple of retries so a transient blip doesn't trip the auto-yank below on a healthy release.
+      - name: Install via mmux.org/install.sh + smoke
+        if: steps.v.outputs.ok == 'true'
+        shell: bash
+        env:
+          MMUX_BIN_DIR: ${{ runner.temp }}/bin
+        run: |
+          for i in 1 2 3; do curl -fsSL https://mmux.org/install.sh | sh && break || { echo "retry $i"; sleep $((i*5)); }; done
+          sh ci/smoke.sh "$MMUX_BIN_DIR/mmux" "${{ steps.v.outputs.version }}"
+
+      - name: Install via the live Homebrew tap
+        if: matrix.kind == 'mac' && steps.v.outputs.ok == 'true'
+        run: |
+          for i in 1 2 3; do brew install marvinvr/mmux/mmux && break || { echo "retry $i"; sleep $((i*5)); }; done
+          mmux --version | grep -q "mmux ${{ steps.v.outputs.version }}"
+
+      - name: Distro portability (live script)
+        if: matrix.kind == 'linux' && steps.v.outputs.ok == 'true'
+        shell: bash
+        env:
+          MMUX_INSTALL_URL: https://mmux.org/install.sh
+        run: bash ci/verify-distros.sh "${{ steps.v.outputs.version }}"
+
+  # If any live channel broke, pull the current release from distribution automatically.
+  yank-on-failure:
+    needs: healthcheck
+    if: failure()
+    uses: ./.github/workflows/yank.yml
+    secrets: inherit
+    with:
+      reason: "Scheduled distribution healthcheck failed"

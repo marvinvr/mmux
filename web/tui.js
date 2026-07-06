@@ -1879,6 +1879,30 @@
   }
 
   /* =====================================================================
+   * Install-method tabs (§11): .install-tab[data-tab] toggles which
+   * .install-row[data-panel] is shown. Script is the default; only one
+   * panel is ever visible, so the section stays a single command line.
+   * ===================================================================== */
+  function wireInstallTabs() {
+    var tabs = document.querySelectorAll(".install-tab[data-tab]");
+    if (!tabs.length) return;
+    Array.prototype.forEach.call(tabs, function (tab) {
+      tab.addEventListener("click", function () {
+        var name = tab.getAttribute("data-tab");
+        Array.prototype.forEach.call(tabs, function (t) {
+          var on = t === tab;
+          t.classList.toggle("is-active", on);
+          t.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        var panels = document.querySelectorAll(".install-row[data-panel]");
+        Array.prototype.forEach.call(panels, function (p) {
+          p.hidden = p.getAttribute("data-panel") !== name;
+        });
+      });
+    });
+  }
+
+  /* =====================================================================
    * Smooth-scroll nav anchors (§11). Respect reduced-motion.
    * ===================================================================== */
   function wireNavAnchors() {
@@ -1912,6 +1936,7 @@
     scrollDriver.init();    // scrubs the scenes across #tw
     sandboxDriver.start();  // makes #tw-how (the "how it works" terminal) playable
     wireCopyButtons();
+    wireInstallTabs();
     wireNavAnchors();
   }
 

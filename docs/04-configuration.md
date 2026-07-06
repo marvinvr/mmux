@@ -116,7 +116,7 @@ session goes away.
 | `processes` | list | [Process](#process) definitions you start/stop and watch. |
 | `git-panel` | map | [Git panel](#git-panel) settings. |
 | `notifications` | map | [Notification](05-notifications.md) settings. |
-| `auto-update` | map | [Self-update](#auto-update) settings (Homebrew installs only). |
+| `auto-update` | map | [Self-update](#auto-update) settings (Homebrew + script-installed binaries). |
 | `linked-projects` | list of paths | Other project directories to open together in one sidebar — not just clones, any related project. Honored **only** in the launch directory's config. |
 
 ### Agent
@@ -173,32 +173,42 @@ auto-update:
 
 ## Auto-Update
 
-When mmux was installed with Homebrew (the only install path it ships today), it keeps itself
-current in the background:
+When mmux was installed a way it can update — via the [install script](02-installation.md#install-script-recommended)
+or [Homebrew](02-installation.md#homebrew-macos) — it keeps an eye out for new releases in the
+background. Two behaviors, depending on how it was installed:
 
-- **On startup, and every 6 hours** thereafter (sessions can run for days), it checks for a newer
-  release. The timer runs from each session's startup, so independent sessions stagger their checks
-  rather than all hitting the tap at once. First it cheaply notices if a **sibling mmux session
-  already upgraded** the on-disk
-  binary; otherwise it checks the [tap formula](https://github.com/marvinvr/homebrew-mmux) with a
-  single lightweight request — it does **not** run `brew update`.
-- **If a newer version exists, it installs it in the background** (`brew update` + `brew upgrade
-  mmux`). This only swaps the on-disk binary; nothing you're running is disturbed.
-- **Once the update is staged, a quiet `↻ restart to update` badge** appears in the bottom-right.
-  Press **`U`** (in the sidebar) or click the badge to restart **in place** onto the new version —
-  no need to quit and relaunch. It's never automatic, so a long task is yours to interrupt when
+**On startup, and every 6 hours** thereafter (sessions can run for days), it checks for a newer
+release. The timer runs from each session's startup, so independent sessions stagger their checks.
+The version check follows the GitHub [`releases/latest`](https://github.com/marvinvr/mmux/releases/latest)
+redirect — a single lightweight request, no API token. It first cheaply notices if a **sibling mmux
+session already upgraded** the on-disk binary and skips straight to offering the restart.
+
+- **Script-installed binaries update themselves silently.** When a newer version exists, mmux
+  downloads the release tarball and swaps the binary in place (its own file is user-writable), then
+  shows a quiet `↻ restart to update` badge in the bottom-right. Nothing you're running is
+  disturbed.
+- **Homebrew installs ask first.** mmux can't swap a brew-managed binary out from under brew, so it
+  shows an `↻ update available` badge instead. Press **`U`** (or click it) and confirm, and mmux runs
+  `brew upgrade mmux` for you in the background; once it's done, the badge becomes `↻ restart to
+  update`. (If you run `brew upgrade mmux` yourself in another terminal, mmux notices and offers the
+  restart too.)
+
+Either way:
+
+- **Applying is never automatic.** Press **`U`** (in the sidebar) or click the badge to restart **in
+  place** onto the new version — no need to quit and relaunch. A long task is yours to interrupt when
   convenient.
-- **To check or apply on demand,** open the [About card](03-usage.md#the-about-card) with **`?`**:
-  it shows the running version and the live update status, with `c` to check now and `u` to apply a
-  staged update.
+- **To check or apply on demand,** open the [About card](03-usage.md#the-about-card) with **`?`**: it
+  shows the running version and the live update status, with `c` to check now and `u` to apply.
 - **The restart brings your work back.** Replacing the running process ends the live panes, but the
   new one restores them the same way reopening a directory does — Claude/Codex agents resume their
   conversation, terminals reopen where you left them — so applying an update doesn't cost you your
   place. See [Session restore](03-usage.md#detaching-reattaching-and-the-attach-picker).
 
-It is **inert** for non-Homebrew installs (e.g. `cargo install`) and dev builds — no badge, no
-network calls. Turn it off per-project or globally with `auto-update: { enabled: false }`, or for a
-single run with the `MMUX_NO_UPDATE` environment variable.
+It is **inert** for unmanaged installs — source builds (`cargo install`), binaries in a location you
+can't write, and dev builds — with no badge and no network calls. Turn it off per-project or globally
+with `auto-update: { enabled: false }`, or for a single run with the `MMUX_NO_UPDATE` environment
+variable.
 
 ## Linked Projects
 

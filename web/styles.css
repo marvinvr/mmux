@@ -356,6 +356,15 @@ section {
   white-space: nowrap;
   overflow-x: auto;
 }
+/* quiet backlink under the hero command: the alternative install methods live in #install */
+.hero-install-alt {
+  display: block;
+  margin: .8rem auto 0;
+  font-size: .82rem;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.hero-install-alt:hover { color: var(--green-bright); }
 
 .hero-meta {
   display: flex;
@@ -1180,6 +1189,33 @@ section {
  * install — single command, brew only
  * ========================================================================== */
 #install { text-align: center; }
+/* install-method tabs: script (default) + Homebrew. One panel shown at a time, so the
+ * section never shows more than a single command line. Toggled by tui.js (§11). */
+.install-tabs {
+  display: inline-flex;
+  gap: .3rem;
+  margin-bottom: .9rem;
+  padding: .25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.install-tab {
+  font: inherit;
+  font-size: .85rem;
+  color: var(--text-2);
+  padding: .35rem .9rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.install-tab:hover { color: var(--text); }
+.install-tab.is-active {
+  color: var(--bg);
+  background: var(--green);
+  font-weight: 600;
+}
 .install-row {
   display: inline-flex;
   align-items: center;
@@ -1189,6 +1225,12 @@ section {
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
   max-width: 100%;
+}
+.install-note {
+  margin: 1rem auto 0;
+  max-width: 34rem;
+  font-size: .85rem;
+  color: var(--text-2);
 }
 .install-row-prompt { color: var(--green); font-weight: 700; }
 .install-row-cmd {

@@ -339,9 +339,10 @@ impl App {
         }
     }
 
-    /// Keys for the "About mmux" card: `c` runs a manual update check, `u` applies a
-    /// staged one (restarts in place), and Esc/`q`/`?` close it. Both update actions are
-    /// guarded inside their handlers, so they're harmless no-ops when nothing's pending.
+    /// Keys for the "About mmux" card: `c` runs a manual update check, `u` applies an
+    /// update (restarts in place for a staged one, or confirms the `brew upgrade` for a
+    /// brew install), and Esc/`q`/`?` close it. Both update actions are guarded inside
+    /// their handlers, so they're harmless no-ops when nothing's pending.
     fn about_key(&mut self, k: KeyEvent) {
         match k.code {
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => self.overlay = None,

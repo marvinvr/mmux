@@ -5,15 +5,14 @@ methods, see [Installation](02-installation.md).
 
 ## 1. Install
 
-```sh
-brew install marvinvr/mmux/mmux
-```
-
-Or build from source with [Rust](https://rustup.rs):
+macOS & Linux (arm64 & x86_64):
 
 ```sh
-cargo install --path .
+curl -fsSL https://mmux.org/install.sh | sh
 ```
+
+On macOS you can use Homebrew instead (`brew install marvinvr/mmux/mmux`), or build from source
+with [Rust](https://rustup.rs) (`cargo install --path .`).
 
 mmux needs **tmux** on your `PATH`. The [git panel](03-usage.md#the-git-panel) uses the `git`
 CLI, and the [Ctrl+P file picker](03-usage.md#the-file-picker) opens files in your `$EDITOR`.

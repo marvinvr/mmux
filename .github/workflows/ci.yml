@@ -1,0 +1,60 @@
+# Runs on every push to main and every pull request. Everything here is lightweight enough
+# to run per-commit, and everything runs in parallel: lint, tests, the four native-arch
+# build+smoke jobs (via the reusable _build.yml), and a non-blocking TUI boot test. This is
+# what catches an arch/musl/exec break on the commit that caused it — not weeks later at a tag.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Shell only. We deliberately don't gate on `cargo fmt`/`clippy` — this codebase doesn't
+  # enforce rustfmt (its style is hand-tuned), so a formatter gate would fail spuriously.
+  lint:
+    name: lint (shell)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck + syntax
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          fail=0
+          for f in ci/*.sh web/install.sh .github/scripts/*.sh; do
+            echo "== $f =="
+            if head -1 "$f" | grep -q bash; then bash -n "$f"; else sh -n "$f"; fi
+            # warning+ only — info/style notes (e.g. SC2329 on trap-invoked functions) are noise.
+            shellcheck --severity=warning "$f" || fail=1
+          done
+          exit $fail
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+
+  build:
+    name: build+smoke
+    uses: ./.github/workflows/_build.yml
+
+  boot-test:
+    name: boot-test (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true # TTY tests are flake-prone; a signal, not a gate (yet)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: cargo build --locked
+      - run: sh ci/boot-test.sh target/debug/mmux

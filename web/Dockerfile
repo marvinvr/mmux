@@ -12,6 +12,9 @@ COPY assets/ /usr/share/nginx/html/assets/
 # banner.txt as the plain-text answer nginx serves to curl/wget on `/`.
 COPY robots.txt sitemap.xml llms.txt banner.txt /usr/share/nginx/html/
 
+# The install script, served at a stable URL: `curl -fsSL https://mmux.org/install.sh | sh`.
+COPY install.sh /usr/share/nginx/html/
+
 # Fingerprint the assets: rename each to <name>.<contenthash>.<ext> and rewrite
 # the quoted references in index.html to match. This is what makes the 1y
 # `immutable` cache in nginx.conf safe — a changed file gets a new hash, hence a

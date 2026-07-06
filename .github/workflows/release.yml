@@ -1,16 +1,20 @@
 name: Release
 
-# Publishes a release and bumps the Homebrew formula whenever a version tag is
-# pushed, e.g.:
+# Tag-driven, e.g.:
 #
-#   git tag v0.1.1
-#   git push origin v0.1.1
+#   git tag v0.1.1 && git push origin v0.1.1
 #
-# 1. `build` compiles a release binary for each target and uploads it as an artifact.
-# 2. `release` creates the GitHub Release (binaries attached), then rewrites the
-#    formula in the marvinvr/homebrew-mmux tap to point at the per-platform binaries
-#    (with a source-build fallback for platforms we don't ship), and commits it over
-#    SSH using a deploy key (secret TAP_DEPLOY_KEY) scoped to that tap only.
+# The release is STAGED, verified, and only then distributed:
+#
+#   build+smoke ─► publish-prerelease ─► verify ─► promote
+#     (×4 arches)   (assets, NOT latest)  (×N)     (latest + Homebrew tap bump)
+#                                           └─ any leg fails ─► notify; never promoted
+#
+# Because the release is created as a prerelease, GitHub's `releases/latest` keeps pointing
+# at the previous good version — so install.sh, the in-app self-updater, and Homebrew are all
+# untouched until `promote` runs. A release that fails verification is simply never promoted:
+# no distribution, nothing to roll back. (For something that breaks AFTER going live, see
+# healthcheck.yml + yank.yml.)
 
 on:
   push:
@@ -18,70 +22,145 @@ on:
       - "v*"
 
 permissions:
-  contents: write # create the GitHub Release on this repo
+  contents: write # create/edit the GitHub Release
+  issues: write # open a failure issue
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false # don't ship a partial set of binaries if one target breaks
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest # cross-compiled on the arm runner (universal Apple toolchain)
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    uses: ./.github/workflows/_build.yml
+    with:
+      upload: true
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
-
-      - name: Package
-        run: tar -czf "mmux-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" mmux
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mmux-${{ matrix.target }}
-          path: mmux-${{ matrix.target }}.tar.gz
-          if-no-files-found: error
-
-  release:
+  publish-prerelease:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-
-      - name: Create GitHub Release
+      - name: Checksums
+        run: cd dist && sha256sum *.tar.gz > checksums.txt
+      - name: Create staged prerelease
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          prerelease: true # keeps it out of `releases/latest` until promoted
+          make_latest: "false"
           generate_release_notes: true
 
+  verify:
+    needs: publish-prerelease
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # arm
+            kind: mac
+          - os: macos-13 # intel
+            kind: mac
+          - os: ubuntu-latest # x86_64
+            kind: linux
+          - os: ubuntu-24.04-arm # arm64
+            kind: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: v
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # The real user path: run the repo's install.sh, pinned to this staged release (the
+      # prerelease isn't `latest` yet, so we pin via MMUX_VERSION), then smoke the result.
+      - name: Install via install.sh (pinned) + smoke
+        shell: bash
+        env:
+          MMUX_VERSION: ${{ steps.v.outputs.version }}
+          MMUX_BIN_DIR: ${{ runner.temp }}/bin
+        run: |
+          # Retry: the freshly-published release assets can take a moment to propagate.
+          for i in 1 2 3; do sh web/install.sh && break || { echo "retry $i"; sleep $((i*5)); }; done
+          sh ci/smoke.sh "$MMUX_BIN_DIR/mmux" "$MMUX_VERSION"
+
+      # Prove the Homebrew formula installs and passes its test block BEFORE it reaches the
+      # tap: render it against the real published asset URLs/shas and install from the local
+      # file. Exercises the url, sha256, codesign step, and the formula's own `test do`.
+      - name: Verify Homebrew formula (local)
+        if: matrix.kind == 'mac'
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            url="https://github.com/marvinvr/mmux/releases/download/$TAG/mmux-$t.tar.gz"
+            for i in 1 2 3; do curl -fsSL -o "dist/mmux-$t.tar.gz" "$url" && break || { echo "retry $i"; sleep $((i*5)); }; done
+          done
+          DIST=dist TAG="$TAG" TEMPLATE=.github/homebrew/mmux.rb OUT="$RUNNER_TEMP/mmux.rb" \
+            bash .github/scripts/render-formula.sh
+          # Installs from the rendered formula: exercises the real url + sha256 + the macOS
+          # codesign install step. The version check is exactly what the formula's own
+          # `test do` block asserts, so we run it directly rather than via `brew test`.
+          brew install --formula "$RUNNER_TEMP/mmux.rb"
+          mmux --version | grep -q "mmux ${{ steps.v.outputs.version }}"
+
+      # Prove the static musl binary runs on Alpine (musl, no glibc) and old glibc, at this
+      # runner's architecture.
+      - name: Verify musl portability across distros
+        if: matrix.kind == 'linux'
+        shell: bash
+        env:
+          MMUX_VERSION: ${{ steps.v.outputs.version }}
+        run: bash ci/verify-distros.sh "$MMUX_VERSION"
+
+  promote:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      # Flip the verified release to the real latest — install.sh + self-update pick it up.
+      - name: Promote release to latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false --prerelease=false --latest
       - name: Load tap deploy key
         uses: webfactory/ssh-agent@v0.9.1
         with:
           ssh-private-key: ${{ secrets.TAP_DEPLOY_KEY }}
-
       - name: Bump Homebrew formula
         env:
           TAG: ${{ github.ref_name }}
           GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
         run: bash .github/scripts/bump-formula.sh
+
+  # Fires if the build, publish, or verify stage failed — i.e. the release was NOT promoted,
+  # so users are unaffected. Opens an issue assigned to the maintainer.
+  notify-failure:
+    needs: [build, publish-prerelease, verify]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --repo "${{ github.repository }}" \
+            --title "Release ${GITHUB_REF_NAME} failed verification — not distributed" \
+            --assignee marvinvr \
+            --body "Automated verification for **${GITHUB_REF_NAME}** failed, so it was **not promoted** to \`latest\` and the Homebrew tap was **not** updated. install.sh, the in-app self-updater, and \`brew\` all still serve the previous good release — users are unaffected.
+
+          Failed run: ${RUN_URL}
+
+          Once fixed, cut a new patch tag; the staged prerelease for ${GITHUB_REF_NAME} can be deleted from the Releases page."

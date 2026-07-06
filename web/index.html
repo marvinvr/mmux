@@ -22,7 +22,7 @@
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="mmux — persistent terminals for your coding agents. Install with: brew install marvinvr/mmux/mmux">
+  <meta property="og:image:alt" content="mmux — persistent terminals for your coding agents. Install with: curl -fsSL https://mmux.org/install.sh | sh">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="mmux — persistent terminals for your coding agents">
   <meta name="twitter:description" content="A terminal multiplexer for AI coding agents and dev processes — one rust binary, sessions that survive closing the terminal or dropping ssh.">
@@ -109,9 +109,10 @@
 
       <div class="hero-install">
         <span class="hero-install-prompt" aria-hidden="true">$</span>
-        <code class="hero-install-cmd">brew install marvinvr/mmux/mmux</code>
-        <button type="button" class="copy" data-copy="brew install marvinvr/mmux/mmux">copy</button>
+        <code class="hero-install-cmd">curl -fsSL https://mmux.org/install.sh | sh</code>
+        <button type="button" class="copy" data-copy="curl -fsSL https://mmux.org/install.sh | sh">copy</button>
       </div>
+      <a class="hero-install-alt" href="#install">macOS, Linux &amp; arm — or install with Homebrew ↓</a>
 
       <ul class="hero-meta">
         <li class="hero-chip">runs in any terminal</li>
@@ -277,17 +278,31 @@ linked-projects:
     </section>
 
     <!-- =================================================================== -->
-    <!-- §4.6 install — single command CTA, brew ONLY                        -->
+    <!-- §4.6 install — one-line CTA; script default, Homebrew behind a tab   -->
     <!-- =================================================================== -->
     <section id="install">
       <p class="kicker">// get it</p>
       <h2 class="section-h2">install in <span class="grad">one line.</span></h2>
 
-      <div class="install-row">
+      <!-- tabs: script is the default; Homebrew is the macOS alternative. The panels
+           reuse the copy chip; tui.js (§11) toggles which one is shown. -->
+      <div class="install-tabs" role="tablist" aria-label="install method">
+        <button type="button" class="install-tab is-active" role="tab" aria-selected="true" data-tab="script">script</button>
+        <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="brew">Homebrew</button>
+      </div>
+
+      <div class="install-row" data-panel="script">
+        <span class="install-row-prompt" aria-hidden="true">$</span>
+        <code class="install-row-cmd">curl -fsSL https://mmux.org/install.sh | sh</code>
+        <button type="button" class="copy" data-copy="curl -fsSL https://mmux.org/install.sh | sh">copy</button>
+      </div>
+      <div class="install-row" data-panel="brew" hidden>
         <span class="install-row-prompt" aria-hidden="true">$</span>
         <code class="install-row-cmd">brew install marvinvr/mmux/mmux</code>
         <button type="button" class="copy" data-copy="brew install marvinvr/mmux/mmux">copy</button>
       </div>
+
+      <p class="install-note">the script installs on macOS &amp; Linux (arm64 &amp; x86_64) and keeps itself up to date. Homebrew is the macOS alternative.</p>
 
       <p class="install-then">then, in any project directory: <code class="install-then-cmd">mmux</code></p>
 

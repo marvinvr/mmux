@@ -224,33 +224,48 @@ runs on the UI thread) and re-encoded/re-rasterized only when the pane's cell si
 
 ## Self-Update
 
-`update.rs` keeps a Homebrew-installed mmux current without interrupting your work, and
-`restore.rs` + `app/persist.rs` make *applying* an update feel like nothing happened. It splits
+`update.rs` keeps mmux current without interrupting your work, and `restore.rs` +
+`app/persist.rs` make *applying* an update feel like nothing happened. It serves the two managed
+install paths — Homebrew and the `mmux.org/install.sh` native binary — from one flow that splits
 cleanly along the inner/outer grain:
 
-- **Check + install are automatic and invisible.** A check runs at startup and every 6 hours
-  thereafter (timed from each session's startup, so independent sessions stagger their checks). It
-  first does a cheap *local* test — run the on-disk binary (`brew --prefix` symlink) with
-  `--version` and compare to ours — so when a **sibling session already upgraded** the binary
-  while we keep running the old code, we jump straight to "ready" without touching the network.
-  Otherwise it `curl`s the tap formula (`brew` can't see a new release without a global `brew
-  update`) and compares its `version`. A newer formula gates the heavier install (`brew update` +
-  `brew upgrade mmux`). Everything runs on throwaway threads reporting over an `mpsc` channel
-  drained in `tick()` — the same shape as the git panel's pull/push jobs. Replacing the on-disk
-  binary while mmux runs is safe: brew relinks the symlink, the running process keeps its inode.
+- **One version check for both.** A check runs at startup and every 6 hours thereafter (timed from
+  each session's startup, so independent sessions stagger their checks). It first does a cheap
+  *local* test — run the on-disk binary (the `resolve_exe` path) with `--version` and compare to
+  ours — so when a **sibling session already upgraded** the binary while we keep running the old
+  code, we jump straight to "ready" without touching the network. Otherwise it follows the GitHub
+  `releases/latest` redirect and reads the version off the resulting `…/releases/tag/vX.Y.Z` URL —
+  a plain web redirect, so no REST API rate limit and no token. (The release tag and the tap
+  formula version are bumped from the same CI run, so one source serves both kinds.)
+- **Staging depends on the install kind** (`install_kind` classifies it in the worker):
+  - **Self-managed** (a stamped release binary — `MMUX_RELEASE` is baked in by CI — in a
+    user-writable dir): mmux downloads the tarball for its target, extracts it into a temp dir
+    *beside* the live binary, re-signs it on macOS, and `rename`s it over the running file. The
+    rename is atomic (same filesystem) and safe while running (the kernel keeps the old inode). It
+    goes straight to `UpdateState::Ready`, silently.
+  - **Homebrew** (`is_brew_managed`: the exe lives under `$(brew --prefix)`): mmux can't swap a
+    Cellar binary without desyncing brew's bookkeeping, so a found update parks in
+    `UpdateState::Available` and waits. Applying it opens a confirm that runs `brew upgrade mmux`
+    for the user (letting brew's implicit auto-update find the freshly-pushed formula), then lands
+    on `Ready`.
+
+  Everything runs on throwaway threads reporting over an `mpsc` channel drained in `tick()` — the
+  same shape as the git panel's pull/push jobs.
 - **Applying is user-gated.** Running the *new* code means replacing the inner process, which
-  necessarily ends the live panes. So the `UpdateState::Ready` step only lights a quiet
-  bottom-right footer badge; pressing `U` or clicking it sets `App.restart`, and `run()` — after
-  restoring the terminal — `exec`s the freshly-installed binary **in place** (via the stable
-  `brew --prefix` symlink, since `current_exe()` may point into a Cellar dir brew has already
-  pruned). Same PID, so tmux keeps the pane and the new TUI just redraws; `MMUX_INNER`/`MMUX_DIR`
-  are inherited through the exec. The ended panes come back on startup like any other reopen — see
+  necessarily ends the live panes. So `UpdateState::Ready` only lights a quiet bottom-right footer
+  badge; pressing `U` or clicking it sets `App.restart`, and `run()` — after restoring the terminal
+  — `exec`s the freshly-installed binary **in place**. `resolve_exe` picks the target: the stable
+  `brew --prefix` symlink for a brew install (since `current_exe()` may point into a pruned Cellar
+  dir), else `current_exe()` — the path we just swapped the new binary onto. Same PID, so tmux
+  keeps the pane and the new TUI just redraws; `MMUX_INNER`/`MMUX_DIR` are inherited through the
+  exec. The ended panes come back on startup like any other reopen — see
   [Session Restore](#session-restore) — so applying an update isn't disruptive.
 
-The updater is inert for non-brew installs (`is_brew_managed` fails) and dev builds, and is gated
-by `auto-update` config + the `MMUX_NO_UPDATE` env var. Because `is_brew_managed` needs a
-subprocess (`brew --prefix`), it's tested in the worker, not the synchronous `permitted` gate — so
-a permitted non-brew build optimistically enters `Checking`, and the worker reports back
+The updater is inert for unmanaged installs — source builds (no `MMUX_RELEASE` stamp), binaries in
+a dir the user can't write, and dev builds — and is gated by `auto-update` config + the
+`MMUX_NO_UPDATE` env var. Because classifying the install needs subprocesses/filesystem probes
+(`brew --prefix`, a write test), it's done in the worker, not the synchronous `permitted` gate — so
+a permitted but unmanaged build optimistically enters `Checking`, and the worker reports back
 `NotManaged` to settle it into the terminal `UpdateState::Unsupported` (no badge; the About card
 reads "self-update off"). See [Configuration → Auto-Update](04-configuration.md#auto-update).
 

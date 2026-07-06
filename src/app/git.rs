@@ -789,6 +789,9 @@ pub(crate) enum Confirmed {
     /// Soft-reset HEAD to `hash` (`git reset --soft`) — move the tip back, keep the later
     /// changes staged. Recoverable, but rewrites the branch, so it's gated behind confirm.
     SoftReset { hash: String },
+    /// Run `brew upgrade mmux` to apply the offered self-update on a Homebrew install
+    /// (see [`App::start_brew_upgrade`](super::App::start_brew_upgrade)).
+    BrewUpgrade { version: String },
 }
 
 impl Overlay {
@@ -1016,6 +1019,7 @@ impl App {
                 Some(Err(e)) => self.flash_git(first_line(&e)),
                 None => {}
             },
+            Confirmed::BrewUpgrade { version } => self.start_brew_upgrade(version),
         }
     }
 

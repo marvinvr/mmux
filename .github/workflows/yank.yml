@@ -1,0 +1,93 @@
+# Pull a release from distribution — for something that breaks AFTER it went live (caught by
+# the scheduled healthcheck, or run by hand). It demotes the release to a prerelease, which
+# makes GitHub's `releases/latest` fall back to the previous good version — instantly fixing
+# install.sh and the in-app self-updater with no rebuild — and reverts the Homebrew tap.
+name: Yank release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to yank (blank = current latest)"
+        required: false
+      reason:
+        description: "Why it's being yanked"
+        required: false
+        default: "Manual yank"
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: false
+      reason:
+        type: string
+        required: false
+        default: "Automated yank"
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  yank:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: t
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName)"
+          fi
+          echo "Yanking $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # Demote → GitHub recomputes `latest` to the previous non-prerelease. install.sh and
+      # the self-updater both follow that redirect, so they revert immediately.
+      - name: Demote release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ steps.t.outputs.tag }}" --repo "${{ github.repository }}" --prerelease
+
+      - name: Load tap deploy key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.TAP_DEPLOY_KEY }}
+
+      # Revert the most recent tap commit (the formula bump for this version). Best-effort:
+      # if there's nothing to revert, that's fine.
+      - name: Revert Homebrew tap
+        env:
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
+        run: |
+          git clone git@github.com:marvinvr/homebrew-mmux.git tap
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git revert --no-edit HEAD; then
+            git push origin HEAD:main
+            echo "Reverted the tap's latest formula commit."
+          else
+            echo "Nothing to revert on the tap."
+          fi
+
+      - name: Open tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          gh issue create --repo "${{ github.repository }}" \
+            --title "Yanked ${{ steps.t.outputs.tag }} from distribution" \
+            --assignee marvinvr \
+            --body "**${{ steps.t.outputs.tag }}** was pulled from distribution.
+
+          Reason: ${REASON}
+
+          Done automatically:
+          - the GitHub release was demoted to a prerelease, so \`releases/latest\` (and therefore install.sh + the in-app self-updater) fell back to the previous good version;
+          - the Homebrew tap's latest formula commit was reverted.
+
+          Next: investigate, then cut a fixed patch release."

@@ -37,8 +37,8 @@ pub struct Config {
     /// ignored, so a shared config can never expand recursively. See [`Config::load_workspace`].
     #[serde(default, rename = "linked-projects")]
     pub linked_projects: Vec<String>,
-    /// Background self-update (Homebrew installs only). `None`/unset ⇒ enabled; see
-    /// [`AutoUpdateConfig`] and [`crate::update`].
+    /// Background self-update (Homebrew + native-binary installs). `None`/unset ⇒ enabled;
+    /// see [`AutoUpdateConfig`] and [`crate::update`].
     #[serde(default, rename = "auto-update")]
     pub auto_update: Option<AutoUpdateConfig>,
     /// The directory the config was loaded from. Relative `cwd`s resolve against this.
@@ -64,13 +64,16 @@ pub struct GitPanelConfig {
     pub enabled: bool,
 }
 
-/// Settings for background self-update (only acts on Homebrew installs). When enabled
-/// and mmux was installed via brew, it checks for a newer release on startup and every 6
-/// hours, installs it in the background, and shows a quiet "restart to update" badge.
+/// Settings for background self-update (acts on Homebrew and the mmux.org script's native
+/// binary installs). When enabled, it checks for a newer release on startup and every 6
+/// hours. A native-binary install downloads and stages it in the background, then shows a
+/// quiet "restart to update" badge; a Homebrew install shows "update available" and applies
+/// it with `brew upgrade mmux` once you confirm.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AutoUpdateConfig {
-    /// Master switch (default: true). The updater is also inert for non-brew installs
-    /// and dev builds, and can be turned off for a single run with `MMUX_NO_UPDATE`.
+    /// Master switch (default: true). The updater is also inert for unmanaged installs
+    /// (source builds, root-owned locations) and dev builds, and can be turned off for a
+    /// single run with `MMUX_NO_UPDATE`.
     #[serde(default = "default_true")]
     pub enabled: bool,
 }

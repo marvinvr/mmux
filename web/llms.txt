@@ -22,22 +22,25 @@ attention dot on the sidebar row and raises a native desktop notification, even 
 
 ## Install
 
-Homebrew (recommended — a Homebrew install keeps itself up to date in the background):
+Recommended (macOS & Linux, arm64 & x86_64) — the script installs a prebuilt binary to
+`~/.local/bin` and keeps itself up to date in the background:
 
 ```
-brew install marvinvr/mmux/mmux
+curl -fsSL https://mmux.org/install.sh | sh
 ```
 
-From source with Rust: `cargo install --path .`. Then run `mmux` in any project directory.
-`mmux init` runs an interactive setup (agents, start commands, linked projects); `mmux attach`
-rejoins a running session from anywhere; `mmux check` prints the effective merged config; and
-`mmux docs` prints a self-contained setup guide.
+On macOS you can install with Homebrew instead (`brew install marvinvr/mmux/mmux`); a brew
+install notifies you of updates and applies them with one confirmation. From source with Rust:
+`cargo install --path .`. Then run `mmux` in any project directory. `mmux init` runs an
+interactive setup (agents, start commands, linked projects); `mmux attach` rejoins a running
+session from anywhere; `mmux check` prints the effective merged config; and `mmux docs` prints
+a self-contained setup guide.
 
 ## Documentation
 
 - [Overview](https://github.com/marvinvr/mmux/blob/main/docs/00-overview.md): what mmux is and the problem it solves
 - [Quick Start](https://github.com/marvinvr/mmux/blob/main/docs/01-quick-start.md): first run, init, attach
-- [Installation](https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md): Homebrew, prebuilt binaries, the macOS code-signing note
+- [Installation](https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md): the install script, Homebrew, prebuilt binaries, the macOS code-signing note
 - [Usage](https://github.com/marvinvr/mmux/blob/main/docs/03-usage.md): the interface, every keybinding, the git panel, the mouse
 - [Configuration](https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md): the YAML schema, the global + per-project merge, linked projects, auto-update
 - [Notifications](https://github.com/marvinvr/mmux/blob/main/docs/05-notifications.md): bells, notification escapes, desktop notifications over SSH

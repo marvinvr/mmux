@@ -1,0 +1,80 @@
+# Reusable build + per-arch smoke test. Called by ci.yml (every commit) and release.yml
+# (every tag). Each target builds on its OWN native-arch runner — macOS arm/Intel and Linux
+# arm/x86 — so the same job that produces a binary can immediately run it (no cross-compiling,
+# no QEMU). Static musl builds on Linux run on any distro regardless of glibc. Every build is
+# stamped MMUX_RELEASE=1 — the marker the in-app self-updater requires (see src/update.rs).
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      upload:
+        description: "Upload the tarballs as artifacts (release does; CI doesn't need to)."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # show every arch's result, not just the first failure
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14 # Apple silicon
+          - target: x86_64-apple-darwin
+            os: macos-13 # last Intel macOS runner
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest # native x86_64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm # native arm64 runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # musl-gcc for the host arch. Pure-Rust musl builds usually link self-contained, but
+      # pinning the linker is deterministic; only the matching var is used per runner.
+      - name: Install musl toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+        env:
+          MMUX_RELEASE: "1"
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+
+      - name: Package
+        run: tar -czf "mmux-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" mmux
+
+      # The gate: extract the shipped tarball, relocate + (macOS) re-sign it exactly as an
+      # install would, then run the shared smoke test on the native runner. A binary that
+      # can't run on its own platform fails here — before it can ever be published.
+      - name: Smoke test the artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          workdir="$(mktemp -d)"
+          tar -xzf "mmux-${{ matrix.target }}.tar.gz" -C "$workdir"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            codesign --force --sign - "$workdir/mmux"   # avoids the relocated-binary "Killed: 9"
+          fi
+          sh ci/smoke.sh "$workdir/mmux" "$version"
+
+      - name: Upload artifact
+        if: ${{ inputs.upload }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmux-${{ matrix.target }}
+          path: mmux-${{ matrix.target }}.tar.gz
+          if-no-files-found: error

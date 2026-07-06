@@ -69,8 +69,8 @@ See [Architecture](06-architecture.md) for how the two halves fit together.
 ## Recommended Reading Order
 
 1. **[Quick Start](01-quick-start.md)** — install and open your first session in under a minute.
-2. **[Installation](02-installation.md)** — prerequisites, Homebrew, building from source, the
-   macOS code-signing gotcha.
+2. **[Installation](02-installation.md)** — prerequisites, the install script, Homebrew, building
+   from source, the macOS code-signing gotcha.
 3. **[Usage](03-usage.md)** — the interface tour, every keybinding, the mouse, and the git panel.
 4. **[Configuration](04-configuration.md)** — `mmux.yaml`, the global/project merge, and linked
    projects.

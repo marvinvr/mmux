@@ -6,7 +6,7 @@
   ███  ██  ██  ███     side by side in one window that survives closed
   ███  ██  ██  ███     terminals and dropped ssh. one rust binary.
   ████████████████
-  ████████████████     install:   brew install marvinvr/mmux/mmux
+  ████████████████     install:   curl -fsSL https://mmux.org/install.sh | sh
                        then:      mmux        (in any project directory)
 
   https://mmux.org  ·  https://github.com/marvinvr/mmux  ·  GPLv3

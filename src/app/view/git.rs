@@ -428,8 +428,14 @@ pub(crate) fn render_about(
                 Style::default().fg(Color::Gray),
                 Some("c check"),
             ),
+            // Brew install with an update pending confirmation — `u` runs `brew upgrade`.
+            UpdateState::Available(v) => (
+                format!("↻ v{v} available"),
+                Style::default().fg(super::theme::ATTN).add_modifier(Modifier::BOLD),
+                Some("u update"),
+            ),
             UpdateState::Installing(v) => (
-                format!("↻ downloading v{v}…"),
+                format!("↻ installing v{v}…"),
                 Style::default().fg(Color::Gray),
                 None,
             ),
@@ -438,10 +444,10 @@ pub(crate) fn render_about(
                 Style::default().fg(super::theme::ATTN).add_modifier(Modifier::BOLD),
                 Some("u restart to update"),
             ),
-            // A check ran and found this isn't a Homebrew install — self-update can't act,
+            // A check ran and found this isn't a managed install — self-update can't act,
             // so there's no `c` to offer. Same wording as the synchronous off-build case.
             UpdateState::Unsupported => (
-                "self-update off (not a Homebrew install)".into(),
+                "self-update off (unmanaged install)".into(),
                 Style::default().fg(Color::DarkGray),
                 None,
             ),

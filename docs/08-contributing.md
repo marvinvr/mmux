@@ -54,18 +54,63 @@ cell/selection geometry (`cell_at`, `Selection::ordered`), the `pane.rs` mouse-s
 the `picker.rs` fuzzy score, `notify.rs` escape formatting, `config.rs` (the project-over-global
 `merge` precedence and the comment-preserving YAML splicer), `git::parse_change` porcelain parsing
 plus the changed-files tree, `tmux::session_name` hashing, `agent.rs` session-id parsing,
-`update.rs` version comparison, and the `wizard.rs` YAML builders. The PTY/TUI layers are verified
-by hand by the maintainer.
+`update.rs` version comparison + release-redirect parsing, and the `wizard.rs` YAML builders. The
+PTY/TUI layers are verified by hand by the maintainer — with one automated exception below.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and every PR, all jobs in parallel:
+
+- **`lint`** — `shellcheck` + a shebang-aware syntax check over `ci/*.sh`, `web/install.sh`, and
+  `.github/scripts/*.sh`. (No `cargo fmt`/`clippy` gate — this codebase's style is hand-tuned, so a
+  formatter gate would fail spuriously.)
+- **`test`** — `cargo test`.
+- **`build+smoke`** — the reusable `.github/workflows/_build.yml`: builds the release binary for
+  all four shipped targets, **each on its own native-arch runner** (macOS arm `macos-14` / Intel
+  `macos-13`, Linux x86 `ubuntu-latest` / arm64 `ubuntu-24.04-arm`), then runs `ci/smoke.sh` on the
+  binary it just built — relocated and (macOS) re-signed exactly as an install would, so the
+  "does it actually execute on this platform" question is answered on every commit, not just at a
+  tag. Linux targets are static musl builds (run on any distro regardless of glibc). Builds are
+  stamped `MMUX_RELEASE=1` — the marker the self-updater checks (see `src/update.rs`).
+- **`boot-test`** (non-blocking) — `ci/boot-test.sh` boots the real TUI under a pseudo-terminal
+  (`mmux --inner` inside a throwaway tmux session) and asserts it renders a frame without panicking.
+  Kept `continue-on-error` because TTY tests are flake-prone; it's a signal, not a gate.
+
+`ci/smoke.sh <binary> <version>` is the shared smoke test reused everywhere: it exercises only the
+non-TTY subcommands (`--version` must match, `--help`, `docs`, and `check` on a valid vs. invalid
+config), which is enough to catch essentially every distribution break.
 
 ## Release
 
-Releases are tag-driven. Pushing a `v*` tag (e.g. `git tag v0.1.4 && git push origin v0.1.4`)
-runs `.github/workflows/release.yml`, which:
+Releases are tag-driven, and **staged**: a tag is verified on real per-platform runners before it's
+distributed, so a broken build never reaches users. Pushing a `v*` tag (e.g.
+`git tag v0.1.4 && git push origin v0.1.4`) runs `.github/workflows/release.yml`:
 
-1. builds a release binary for each target (`aarch64-apple-darwin`, `x86_64-apple-darwin`,
-   `x86_64-unknown-linux-gnu`);
-2. creates the GitHub Release with the tarballs attached;
-3. rewrites the formula in the `marvinvr/homebrew-mmux` tap to point at the new binaries.
+1. **`build`** — the same reusable `_build.yml` (four native-arch builds + smoke), uploading the
+   tarballs as artifacts.
+2. **`publish-prerelease`** — attaches the tarballs + a `checksums.txt` and creates the GitHub
+   Release as a **prerelease**. GitHub's `releases/latest` excludes prereleases, so install.sh, the
+   in-app self-updater, and Homebrew all keep serving the previous version at this point.
+3. **`verify`** (parallel, per platform) — installs the staged release the way a user would and
+   smoke-tests it: `web/install.sh` pinned to the tag on each runner; on macOS, the Homebrew formula
+   is rendered against the real asset URLs/shas and `brew install --formula`'d + `brew test`'d
+   locally (proving it before it touches the tap); on Linux, `ci/verify-distros.sh` runs the
+   installer inside Alpine (musl, no glibc), Ubuntu 20.04 (old glibc), Debian, and Fedora containers.
+4. **`promote`** — only if every verify leg passed: flips the release to `latest` and pushes the
+   `marvinvr/homebrew-mmux` tap formula bump (macOS binaries; Linux installs via the script, so the
+   tap builds Linux from source). This is the single point where the new version becomes live.
+5. **`notify-failure`** — if build/publish/verify failed (so nothing was promoted), opens an issue
+   assigned to the maintainer. Users are unaffected; fix forward with a new patch tag.
+
+The formula render is shared by `.github/scripts/render-formula.sh` (used by both the verify job's
+local test and `bump-formula.sh`'s tap push).
+
+**Post-release safety net.** `.github/workflows/healthcheck.yml` runs weekly (and on demand),
+re-installing the *current* `latest` via the LIVE `mmux.org/install.sh` and Homebrew tap across all
+platforms + distro containers. If a live channel has rotted, it auto-invokes
+`.github/workflows/yank.yml`, which demotes the release to a prerelease — so `releases/latest` (and
+therefore install.sh + the self-updater) fall back to the last good version with no rebuild — and
+reverts the tap. `yank.yml` can also be run manually (`workflow_dispatch`) against any tag.
 
 `mmux.yaml` also defines a "Build (all platforms)" process for producing `dist/` binaries
 locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).

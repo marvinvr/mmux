@@ -34,7 +34,8 @@ here and nowhere else.
 - **Panes show REAL, legible content.** The Claude scene is the real Claude Code welcome + session
   shape; Codex the real boxed banner; the shell a real zsh + cargo run; vite the real banner; the
   git panel mirrors `src/app/view/git.rs`. No placeholder/abstract content, ever (§8).
-- **Install is ONE command:** `brew install marvinvr/mmux/mmux`. No cargo, no from-source.
+- **Install is ONE command:** `curl -fsSL https://mmux.org/install.sh | sh` (the hero). The
+  `#install` section adds a Homebrew tab as the macOS alternative — no cargo, no from-source.
 - **`prefers-reduced-motion`** fully honored (no scrub/typing/streaming; land on finished states).
 - **Accessible:** landmarks, heading order, keyboard operable, visible focus, AA contrast,
   decorative bits `aria-hidden`, a visually-hidden live region for the sandbox.
@@ -94,8 +95,9 @@ Phones keep only the brand + github.
 The **`.hero-mark`** — the brand tile SVG at `clamp(60px, 8.5vw, 92px)`, `crispEdges` — then
 kicker `a terminal multiplexer for AI agents`, the wordmark **mmux** (display face) + blinking
 block caret, tagline **persistent terminals for your coding agents.**, the sub line, the single
-install row (`$ brew install marvinvr/mmux/mmux` + copy), three chips, and the scroll cue. Kept
-compact so the demo window's title bar peeks above the fold on a ~900px-tall viewport.
+install row (`$ curl -fsSL https://mmux.org/install.sh | sh` + copy) with a quiet backlink to the
+`#install` section, three chips, and the scroll cue. Kept compact so the demo window's title bar
+peeks above the fold on a ~900px-tall viewport.
 
 ### 4.3 `<section id="demo">` — the centerpiece
 A tall scroll track (`min-height: 950vh`); a sticky stage pins the terminal window while captions
@@ -116,8 +118,10 @@ kicker `// try it`, h2 **go on, type into it.** The lede tells the visitor it's 
 `.how-points` (one window / always there / anywhere).
 
 ### 4.6 `<section id="install">`
-kicker `// get it`, h2 **install in one line.** The brew row + copy, `then, in any project
-directory: mmux`, ghost buttons → github + the docs. Brew ONLY.
+kicker `// get it`, h2 **install in one line.** A `.install-tabs` strip (`script` default +
+`Homebrew`) toggles which `.install-row[data-panel]` shows — one command line at a time, reusing
+the copy chip (toggle in tui.js §11). A short `.install-note`, then `then, in any project
+directory: mmux`, ghost buttons → github + the docs. Script default, Homebrew alternative; no cargo.
 
 ### 4.7 `<footer class="site-footer">`
 `mmux · GPLv3 · github · docs · built by marvinvr`.
@@ -345,7 +349,8 @@ web/
       box-drawing as site structure.
 - [ ] The terminal is a mac window hosting a faithful ratatui TUI; every pane shows real,
       syntax-colored content per §8 — including the linked-projects scene.
-- [ ] Install shows ONLY the brew line (hero + install).
+- [ ] Hero shows the one-line script install; the `#install` section tabs it (script default,
+      Homebrew alternative). No cargo / from-source on the page.
 - [ ] Scroll demo scrubs 10 scenes; the closer plays
       disconnect → reattach and rests on the green frame.
 - [ ] Sandbox is click/keyboard-playable, focus-trapped only while engaged, escapable, announced

@@ -30,7 +30,7 @@ use view::Regions;
 use crate::config::{Config, NotifyConfig, NotifyMechanism, Workspace};
 use crate::notify::{self, Note};
 use crate::pane::Notify;
-use crate::update::{self, UpdateMsg};
+use crate::update::{self, InstallKind, UpdateMsg};
 use anyhow::Result;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
@@ -57,19 +57,24 @@ pub(crate) enum Focus {
 }
 
 /// Background self-update progress, surfaced as the quiet bottom-right footer badge.
-/// Driven by [`crate::update`]: a check runs at startup (and every few hours after); a
-/// found update is installed in the background; the badge then invites an in-place restart
-/// to apply it.
+/// Driven by [`crate::update`]: a check runs at startup (and every few hours after). A
+/// self-managed (native binary) install downloads a found update in the background and goes
+/// straight to `Ready`; a Homebrew install parks in `Available` until the user confirms the
+/// `brew upgrade`. Either way the badge then invites an in-place restart to apply it.
 pub(crate) enum UpdateState {
     /// Nothing known/in flight. The periodic timer may start a check from here.
     Idle,
     /// A version check is running.
     Checking,
-    /// A newer `version` is installing via brew in the background.
+    /// A newer `version` exists but needs the user to act — only a Homebrew install rests
+    /// here (self-managed installs auto-download instead). Applying it opens the confirm
+    /// that runs `brew upgrade mmux`.
+    Available(String),
+    /// A newer `version` is being downloaded/installed in the background.
     Installing(String),
     /// `version` is installed and staged; the badge offers the restart.
     Ready(String),
-    /// Not a Homebrew install, so self-update can't act here. Terminal: the periodic
+    /// Not a managed install, so self-update can't act here. Terminal: the periodic
     /// re-check and the About card's `c` only fire from `Idle`, so we never spin on it.
     Unsupported,
 }
@@ -142,9 +147,10 @@ pub(crate) struct App {
     in_tmux: bool,                          // wrap notification OSCs in tmux passthrough?
     last_notified: HashMap<String, Instant>, // per-session throttle, keyed by name
 
-    // Background self-update (brew installs only). Workers report check/install results
-    // over `update_rx`, drained in `tick`; the badge reflects `update`. `restart` is set
-    // when the user applies a staged update, unwinding the loop into an in-place re-exec.
+    // Background self-update (Homebrew + native-binary installs). Workers report
+    // check/install results over `update_rx`, drained in `tick`; the badge reflects
+    // `update`. `restart` is set when the user applies a staged update, unwinding the
+    // loop into an in-place re-exec.
     update: UpdateState,
     update_tx: Sender<UpdateMsg>,
     update_rx: Receiver<UpdateMsg>,
@@ -327,12 +333,19 @@ impl App {
     fn poll_update(&mut self) {
         while let Ok(msg) = self.update_rx.try_recv() {
             match msg {
-                // A newer version exists — stage it immediately in the background; the
-                // badge appears once it's installed (Ready), not before.
-                UpdateMsg::Available(v) => {
-                    update::spawn_install(self.update_tx.clone(), v.clone());
-                    self.update = UpdateState::Installing(v);
-                }
+                // A newer version exists. A self-managed install stages it immediately in
+                // the background (the badge appears once it's Ready). A brew install can't
+                // be swapped underneath brew, so it parks in `Available` and waits for the
+                // user to confirm the `brew upgrade` (see `apply_update`).
+                UpdateMsg::Available { version, kind } => match kind {
+                    InstallKind::SelfManaged => {
+                        update::spawn_install(self.update_tx.clone(), version.clone(), kind);
+                        self.update = UpdateState::Installing(version);
+                    }
+                    InstallKind::Brew => {
+                        self.update = UpdateState::Available(version);
+                    }
+                },
                 // Installed and ready: light the badge and announce it once via the flash.
                 UpdateMsg::Installed(v) => {
                     self.flash = Some((
@@ -361,7 +374,7 @@ impl App {
                         self.update = UpdateState::Idle;
                     }
                 }
-                // Not a brew install: settle into the terminal `Unsupported` state so the
+                // Not a managed install: settle into the terminal `Unsupported` state so the
                 // About card reads "self-update off" instead of an eternal "checking…".
                 // Silent — no flash, no badge — since there's nothing the user can do.
                 UpdateMsg::NotManaged => {
@@ -382,12 +395,35 @@ impl App {
         }
     }
 
-    /// Apply a staged update by restarting into the freshly-installed binary. Only acts
-    /// once the update is [`UpdateState::Ready`]; sets the flag the event loop unwinds on
-    /// to perform the in-place re-exec (which necessarily ends the live panes).
+    /// Act on the current update, if any. A staged update ([`UpdateState::Ready`]) restarts
+    /// in place onto the new binary (sets the flag the event loop unwinds on to re-exec —
+    /// which necessarily ends the live panes). A brew update pending confirmation
+    /// ([`UpdateState::Available`]) opens the confirm that runs `brew upgrade mmux`.
+    /// Harmless in any other state. Shared by the About card `u`, the sidebar `U`, and the
+    /// footer badge click.
     pub(crate) fn apply_update(&mut self) {
-        if matches!(self.update, UpdateState::Ready(_)) {
-            self.restart = true;
+        match &self.update {
+            UpdateState::Ready(_) => self.restart = true,
+            UpdateState::Available(v) => {
+                let v = v.clone();
+                self.overlay = Some(git::Overlay::confirm(
+                    "Update mmux",
+                    format!("Update to v{v}? This runs `brew upgrade mmux` for you."),
+                    "y update · n cancel",
+                    git::Confirmed::BrewUpgrade { version: v },
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    /// Run the confirmed `brew upgrade mmux` in the background (from the `Available` confirm
+    /// in [`apply_update`](Self::apply_update)). Guarded on the state so a stale confirm is a
+    /// no-op; the result flows back through [`poll_update`](Self::poll_update) to `Ready`.
+    pub(crate) fn start_brew_upgrade(&mut self, version: String) {
+        if matches!(self.update, UpdateState::Available(_)) {
+            update::spawn_install(self.update_tx.clone(), version.clone(), InstallKind::Brew);
+            self.update = UpdateState::Installing(version);
         }
     }
 
@@ -407,8 +443,8 @@ impl App {
 
     /// Whether self-update is even on the table for this build — the cheap, synchronous
     /// gate the About popup uses to decide whether to offer the check. This is the config
-    /// / dev-build / opt-out test only; the Homebrew-managed check is the worker's job, so
-    /// a permitted non-brew build still reads as updatable here until a check says otherwise.
+    /// / dev-build / opt-out test only; the install-kind check is the worker's job, so a
+    /// permitted but unmanaged build still reads as updatable here until a check says otherwise.
     pub(crate) fn can_self_update(&self) -> bool {
         update::permitted(self.root_cfg().auto_update_enabled())
     }

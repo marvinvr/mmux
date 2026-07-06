@@ -297,13 +297,24 @@ impl App {
         (spans, btns, x)
     }
 
-    /// The bottom-right self-update badge: a faint "updating…" while brew runs in the
-    /// background, then a clickable "↻ restart to update" once the new binary is staged.
-    /// Deliberately quiet — present and discoverable, never modal or alarming. A click
-    /// (or `U` in the sidebar) restarts in place onto the new version.
+    /// The bottom-right self-update badge: a clickable "update available" (brew installs,
+    /// awaiting confirmation), a faint "updating…" while the new binary is fetched, then a
+    /// clickable "↻ restart to update" once it's staged. Deliberately quiet — present and
+    /// discoverable, never modal or alarming. A click (or `U` in the sidebar) applies it —
+    /// confirming the brew upgrade, or restarting in place onto a staged version.
     fn render_update_badge(&mut self, f: &mut Frame, area: Rect) {
         use super::UpdateState;
         let (text, style, clickable) = match &self.update {
+            // A brew update the user hasn't applied yet: clicking opens the confirm that
+            // runs `brew upgrade mmux` (see `apply_update`).
+            UpdateState::Available(v) => (
+                format!(" ↻ update available → v{v} "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
+                true,
+            ),
             UpdateState::Installing(v) => (
                 format!(" ↻ updating to v{v}… "),
                 Style::default().fg(Color::DarkGray),
