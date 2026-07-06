@@ -1226,6 +1226,10 @@ section {
   border-radius: var(--radius);
   max-width: 100%;
 }
+/* Required: `display: inline-flex` above beats the UA `[hidden] { display: none }`, so the
+   inactive panel stays visible without this (same pattern as .tw-panel[hidden] etc.). This
+   is what makes the script/Homebrew tab toggle actually hide the other panel. */
+.install-row[hidden] { display: none; }
 .install-note {
   margin: 1rem auto 0;
   max-width: 34rem;
