@@ -118,10 +118,11 @@ kicker `// try it`, h2 **go on, type into it.** The lede tells the visitor it's 
 `.how-points` (one window / always there / anywhere).
 
 ### 4.6 `<section id="install">`
-kicker `// get it`, h2 **install in one line.** A `.install-tabs` strip (`script` default +
-`Homebrew`) toggles which `.install-row[data-panel]` shows — one command line at a time, reusing
-the copy chip (toggle in tui.js §11). A short `.install-note`, then `then, in any project
-directory: mmux`, ghost buttons → github + the docs. Script default, Homebrew alternative; no cargo.
+kicker `// get it`, h2 **install in one line.** A centered `.install-tabs` strip (`script` default
++ `Homebrew`) sits on its own line above the command and toggles which `.install-row[data-panel]`
+shows — one command line at a time, reusing the copy chip (toggle in tui.js §11). Then `then, in any
+project directory: mmux`, ghost buttons → github + the docs. Script default, Homebrew alternative;
+no cargo.
 
 ### 4.7 `<footer class="site-footer">`
 `mmux · GPLv3 · github · docs · built by marvinvr`.
