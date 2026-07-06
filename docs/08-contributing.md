@@ -73,8 +73,10 @@ PTY/TUI layers are verified by hand by the maintainer — with one automated exc
   tag. Linux targets are static musl builds (run on any distro regardless of glibc). Builds are
   stamped `MMUX_RELEASE=1` — the marker the self-updater checks (see `src/update.rs`).
 - **`boot-test`** (non-blocking) — `ci/boot-test.sh` boots the real TUI under a pseudo-terminal
-  (`mmux --inner` inside a throwaway tmux session) and asserts it renders a frame without panicking.
-  Kept `continue-on-error` because TTY tests are flake-prone; it's a signal, not a gate.
+  (`mmux --inner` inside a throwaway tmux session). It fails on an observed panic, and **skips**
+  (with diagnostics) if it can't drive a frame — some headless CI PTYs never report pane content
+  back, so "no frame" isn't treated as a failure. Kept `continue-on-error` regardless; it's a
+  signal, not a gate. It renders fully when run locally.
 
 `ci/smoke.sh <binary> <version>` is the shared smoke test reused everywhere: it exercises only the
 non-TTY subcommands (`--version` must match, `--help`, `docs`, and `check` on a valid vs. invalid
