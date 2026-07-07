@@ -8,9 +8,9 @@
 //!
 //! Listing and preview are deliberately fork-free: repo-ness is a `.git` existence
 //! check and the branch is read straight from `.git/HEAD`, so browsing never shells out
-//! to `git`. State lives in [`Overlay::LinkProject`](super::git::Overlay); keys in
-//! [`App::linkbrowse_key`](super::input); drawn by
-//! [`view::git::render_linkbrowse`](super::view).
+//! to `git`. State lives in [`Overlay::LinkProject`](super::overlay::Overlay); keys in
+//! [`App::linkbrowse_key`](super::overlay); drawn by
+//! [`view::overlay::render_linkbrowse`](super::view).
 
 use crate::config;
 use std::path::{Path, PathBuf};

@@ -2,6 +2,7 @@
 //! footer, and the panel button. Per-pane drawing lives in the submodules.
 
 mod git;
+mod overlay;
 mod pane;
 mod sidebar;
 pub(crate) mod theme;
@@ -186,10 +187,10 @@ impl App {
         // everything. The About card reads live update state, so it's drawn from a method
         // with `&self` access rather than the stateless `render_overlay`.
         match self.overlay.as_ref() {
-            Some(super::git::Overlay::About) => {
-                self.regions.links = git::render_about(f, content, &self.update, self.can_self_update());
+            Some(super::overlay::Overlay::About) => {
+                self.regions.links = overlay::render_about(f, content, &self.update, self.can_self_update());
             }
-            Some(ov) => git::render_overlay(f, content, ov),
+            Some(ov) => overlay::render_overlay(f, content, ov),
             None => {}
         }
 

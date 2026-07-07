@@ -5,7 +5,7 @@
 //! fuzzy-filters them as you type. Enter opens the highlighted file in an editor pane —
 //! mirroring the user's shell `fe` widget (`rg | fzf -> micro`), except both the listing
 //! and the fuzzy ranking are built in. The picker is held in
-//! [`Overlay::Picker`](super::git::Overlay) and rendered by `view::git::render_picker`.
+//! [`Overlay::Picker`](super::overlay::Overlay) and rendered by `view::overlay::render_picker`.
 
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};

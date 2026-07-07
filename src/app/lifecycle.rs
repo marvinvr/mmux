@@ -1,8 +1,9 @@
 //! Session lifecycle driven from the sidebar: spawning new agents/terminals,
 //! the start/stop/restart key actions, and the live config reload.
 
-use super::git::{first_line, GitPanel, Overlay};
+use super::git::{first_line, GitPanel};
 use super::linkbrowse::LinkBrowser;
+use super::overlay::{Confirmed, Overlay};
 use super::nav::Nav;
 use super::picker::Picker;
 use super::procform::ProcForm;
@@ -158,7 +159,7 @@ impl App {
         }
         let (pi, name) = (self.sessions[i].project, self.sessions[i].name.clone());
         if let Some(def) = self.projects[pi].cfg.processes.iter().find(|p| p.name == name) {
-            self.overlay = Some(super::git::Overlay::edit_process(pi, def));
+            self.overlay = Some(Overlay::edit_process(pi, def));
         }
     }
 
@@ -171,11 +172,11 @@ impl App {
             return;
         }
         let (pi, name) = (self.sessions[i].project, self.sessions[i].name.clone());
-        self.overlay = Some(super::git::Overlay::confirm(
+        self.overlay = Some(Overlay::confirm(
             "Delete process",
             format!("Remove “{name}” from mmux.yaml?"),
             "y delete · n cancel",
-            super::git::Confirmed::DeleteProcess { project: pi, name },
+            Confirmed::DeleteProcess { project: pi, name },
         ));
     }
 
@@ -386,7 +387,7 @@ impl App {
                         title,
                         format!("“{name}” is still running. Closing it stops the {noun} and drops it."),
                         "y close · n cancel",
-                        super::git::Confirmed::CloseSession {
+                        Confirmed::CloseSession {
                             project: self.sessions[i].project,
                             name,
                         },

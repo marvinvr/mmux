@@ -5,7 +5,7 @@
 //! (`~/.mmux/config.yaml`), the natural home for agents you reuse across projects.
 //!
 //! One model, three front-ends: the in-TUI popup (sidebar `a` — driven by
-//! [`agentmgr_key`](crate::app) and drawn by `view::git::render_agentmgr`), the terminal
+//! [`agentmgr_key`](crate::app) and drawn by `view::overlay::render_agentmgr`), the terminal
 //! `mmux agents` picker, and the `mmux init` agent step (both in [`crate::wizard`]). Any
 //! non-preset agents configured by hand are preserved untouched (kept in
 //! [`AgentManager::custom`] and re-emitted on save); the manager only ever adds, drops,

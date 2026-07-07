@@ -15,6 +15,7 @@ mod keymap;
 mod lifecycle;
 mod linkbrowse;
 mod nav;
+mod overlay;
 mod persist;
 pub(crate) mod picker;
 mod procform;
@@ -22,7 +23,8 @@ mod session;
 mod view;
 
 pub(crate) use session::{Kind, Recipe, Session, Status};
-use git::{first_line, DiffView, GitPanel, JobDone, Overlay};
+use git::{first_line, DiffView, GitPanel, JobDone};
+use overlay::Overlay;
 use input::Selection;
 use nav::Nav;
 use view::Regions;
@@ -285,6 +287,24 @@ impl App {
         self.flash = Some((msg.into(), Instant::now()));
     }
 
+    /// Flash the first line of an active-panel op's result (Ok or Err alike). No-op when
+    /// there's no active panel. Use for ops whose Ok payload is itself the message to show.
+    /// Here (not in [`git`]) so the overlay handlers in [`overlay`] can reach it too — a
+    /// sibling module can't see another's private items, but a descendant of `app` can.
+    fn flash_result(&mut self, r: Option<Result<String, String>>) {
+        if let Some(res) = r {
+            let (Ok(s) | Err(s)) = res;
+            self.flash(first_line(&s));
+        }
+    }
+
+    /// Flash only on error (silent on success). For ops returning `Result<(), String>`.
+    fn flash_err(&mut self, r: Option<Result<(), String>>) {
+        if let Some(Err(e)) = r {
+            self.flash(first_line(&e));
+        }
+    }
+
     /// Per-loop housekeeping. First follow the selection — the project of the
     /// selected row becomes active, so its git panel is the one shown. Then drain
     /// any finished background pull/push jobs (flashing the result) and give the
@@ -406,11 +426,11 @@ impl App {
             UpdateState::Ready(_) => self.restart = true,
             UpdateState::Available(v) => {
                 let v = v.clone();
-                self.overlay = Some(git::Overlay::confirm(
+                self.overlay = Some(overlay::Overlay::confirm(
                     "Update mmux",
                     format!("Update to v{v}? This runs `brew upgrade mmux` for you."),
                     "y update · n cancel",
-                    git::Confirmed::BrewUpgrade { version: v },
+                    overlay::Confirmed::BrewUpgrade { version: v },
                 ));
             }
             _ => {}
@@ -452,7 +472,7 @@ impl App {
     /// Open the "About mmux" card (the `?` key / footer chip). Stateless overlay; its
     /// content is read live from `self.update` when drawn.
     pub(crate) fn open_about(&mut self) {
-        self.overlay = Some(git::Overlay::About);
+        self.overlay = Some(overlay::Overlay::About);
     }
 
     /// Drain every pane's captured notifications and return the escape bytes to

@@ -22,6 +22,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::highlight::Highlighter;
+use super::overlay::{Confirmed, Overlay};
 use super::App;
 
 /// How often the visible panel re-reads git state (picks up commits an agent makes
@@ -754,127 +755,6 @@ fn step(cursor: usize, len: usize, delta: i32) -> usize {
     (cursor as i32 + delta).clamp(0, len as i32 - 1) as usize
 }
 
-/// A modal over the whole UI: either a one-line text prompt (commit message /
-/// new-branch name) or a yes/no confirmation (destructive discard). While open it eats
-/// every key (see [`App::overlay_key`](super::input)).
-pub(crate) enum Overlay {
-    Prompt {
-        title: &'static str,
-        buf: String,
-        kind: PromptKind,
-    },
-    Confirm {
-        title: &'static str,
-        body: String,
-        /// The footer hint line, e.g. `"y discard · n cancel"` — wording varies per action.
-        hint: &'static str,
-        action: Confirmed,
-    },
-    /// The Ctrl+P fuzzy file picker (state in [`super::picker`]).
-    Picker(super::picker::Picker),
-    /// The "About mmux" card: version, the project's home/source links, and a live
-    /// self-update status with the keys to check / apply. Stateless — it reads
-    /// [`App::update`](super::App) at render time (see [`view::git::render_about`]).
-    About,
-    /// The "+ New Process" guided form (state in [`super::procform`]).
-    NewProcess(super::procform::ProcForm),
-    /// The "Link another project" directory browser (state in [`super::linkbrowse`]).
-    LinkProject(super::linkbrowse::LinkBrowser),
-    /// The agent manager (sidebar `a`): toggle the built-in harnesses on/off and flip
-    /// danger mode, then write them to the global config (state in [`crate::agentmgr`]).
-    Agents(crate::agentmgr::AgentManager),
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum PromptKind {
-    /// A commit-message prompt. `push` carries whether submitting should also kick off a
-    /// background push: the prompt starts `false` (⏎ commits), and `Ctrl+⏎` upgrades it to
-    /// commit-&-push.
-    Commit { push: bool },
-    NewBranch,
-}
-
-/// The deferred action a [`Overlay::Confirm`] runs when accepted.
-#[derive(Clone)]
-pub(crate) enum Confirmed {
-    /// Discard all changes under this pathspec (a file, a dir, or `.` for everything).
-    Discard { path: String },
-    /// Quit mmux. The inner tmux session ends with it, killing every running pane,
-    /// so this is gated behind the modal whenever anything is still alive.
-    Quit,
-    /// Delete the named process from project `project`'s `mmux.yaml` (and stop any live
-    /// instance), then reload. See [`App::delete_process`](super::App::delete_process).
-    DeleteProcess { project: usize, name: String },
-    /// Close the still-running agent/terminal named `name` in project `project` — kills
-    /// its pane and drops the row. Identified by name (not index) so it survives a prune
-    /// while the modal is open. See [`App::close_named_session`](super::App::close_named_session).
-    CloseSession { project: usize, name: String },
-    /// Revert the commit `hash` (`git revert --no-edit`) — a new commit undoing it.
-    Revert { hash: String },
-    /// Soft-reset HEAD to `hash` (`git reset --soft`) — move the tip back, keep the later
-    /// changes staged. Recoverable, but rewrites the branch, so it's gated behind confirm.
-    SoftReset { hash: String },
-    /// Run `brew upgrade mmux` to apply the offered self-update on a Homebrew install
-    /// (see [`App::start_brew_upgrade`](super::App::start_brew_upgrade)).
-    BrewUpgrade { version: String },
-}
-
-impl Overlay {
-    pub(crate) fn commit() -> Overlay {
-        Overlay::Prompt {
-            title: "Commit message",
-            buf: String::new(),
-            kind: PromptKind::Commit { push: false },
-        }
-    }
-
-    pub(crate) fn new_branch(prefill: String) -> Overlay {
-        Overlay::Prompt {
-            title: "New branch",
-            buf: prefill,
-            kind: PromptKind::NewBranch,
-        }
-    }
-
-    pub(crate) fn confirm(
-        title: &'static str,
-        body: String,
-        hint: &'static str,
-        action: Confirmed,
-    ) -> Overlay {
-        Overlay::Confirm { title, body, hint, action }
-    }
-
-    /// The pre-quit confirmation. Quitting tears down the inner tmux session, stopping
-    /// every running pane — but reopening the directory restores the agents/terminals
-    /// (see [`crate::restore`]), so this is a calm heads-up, not a danger gate. Detach
-    /// (offered right in the modal) keeps everything running live, uninterrupted.
-    pub(crate) fn quit() -> Overlay {
-        Overlay::Confirm {
-            title: "Quit mmux?",
-            body: "This stops all your agents, terminals, and processes.\n\
-                   Detach instead to keep them running in the background."
-                .into(),
-            hint: "y quit · d detach · n cancel",
-            action: Confirmed::Quit,
-        }
-    }
-
-    pub(crate) fn new_process(project: usize) -> Overlay {
-        Overlay::NewProcess(super::procform::ProcForm::new(project))
-    }
-
-    /// The process form pre-filled to edit `def` (see [`super::procform::ProcForm::edit`]).
-    pub(crate) fn edit_process(project: usize, def: &crate::config::ProcessDef) -> Overlay {
-        Overlay::NewProcess(super::procform::ProcForm::edit(project, def))
-    }
-
-    /// The agent manager, seeded from the presets + the current global config.
-    pub(crate) fn agents() -> Overlay {
-        Overlay::Agents(crate::agentmgr::AgentManager::new())
-    }
-}
-
 /// First line of a (possibly multi-line) git message — keeps the footer flash to
 /// one line. Shared with [`App::tick`](super::App::tick) for job results.
 pub(crate) fn first_line(s: &str) -> String {
@@ -980,71 +860,6 @@ impl App {
 
     pub(crate) fn git_newbranch_prompt(&mut self) {
         self.overlay = Some(Overlay::new_branch(String::new()));
-    }
-
-    /// Apply a submitted text prompt: commit the index, or create+switch a branch.
-    pub(crate) fn overlay_submit(&mut self, kind: PromptKind, buf: String) {
-        let buf = buf.trim().to_string();
-        if buf.is_empty() {
-            return;
-        }
-        match kind {
-            PromptKind::Commit { push } => match self.active_git_mut().map(|g| g.commit(&buf)) {
-                Some(Ok(s)) if push => {
-                    // Commit landed — chain a background push (its result overwrites this
-                    // flash from `tick` when the network op returns).
-                    self.git_start("push");
-                    self.flash(format!("{} · pushing…", first_line(&s)));
-                }
-                Some(Ok(s)) => self.flash(first_line(&s)),
-                Some(Err(e)) => self.flash(first_line(&e)),
-                _ => {}
-            },
-            PromptKind::NewBranch => match self.active_git_mut().map(|g| g.create_branch(&buf)) {
-                Some(Ok(())) => self.flash(format!("switched to {buf}")),
-                Some(Err(e)) => self.flash(first_line(&e)),
-                _ => {}
-            },
-        }
-    }
-
-    /// Run an accepted [`Overlay::Confirm`] action (called after the modal closes).
-    pub(crate) fn overlay_confirm(&mut self, action: Confirmed) {
-        match action {
-            Confirmed::Discard { path } => match self.active_git_mut().map(|g| g.discard(&path)) {
-                Some(Ok(())) => self.flash(format!("discarded {path}")),
-                Some(Err(e)) => self.flash(first_line(&e)),
-                None => {}
-            },
-            Confirmed::Quit => self.should_quit = true,
-            Confirmed::DeleteProcess { project, name } => self.delete_process(project, &name),
-            Confirmed::CloseSession { project, name } => self.close_named_session(project, &name),
-            Confirmed::Revert { hash } => {
-                let r = self.active_git_mut().map(|g| g.revert(&hash));
-                self.flash_result(r);
-            }
-            Confirmed::SoftReset { hash } => {
-                let r = self.active_git_mut().map(|g| g.soft_reset(&hash));
-                self.flash_result(r);
-            }
-            Confirmed::BrewUpgrade { version } => self.start_brew_upgrade(version),
-        }
-    }
-
-    /// Flash the first line of an active-panel op's result (Ok or Err alike). No-op when
-    /// there's no active panel. Use for ops whose Ok payload is itself the message to show.
-    fn flash_result(&mut self, r: Option<Result<String, String>>) {
-        if let Some(res) = r {
-            let (Ok(s) | Err(s)) = res;
-            self.flash(first_line(&s));
-        }
-    }
-
-    /// Flash only on error (silent on success). For ops returning `Result<(), String>`.
-    fn flash_err(&mut self, r: Option<Result<(), String>>) {
-        if let Some(Err(e)) = r {
-            self.flash(first_line(&e));
-        }
     }
 
     /// Open (or replace) the centre-pane diff preview for the file under the Changes

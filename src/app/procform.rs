@@ -4,8 +4,8 @@
 //! stop command → review), then the collected values are written to the project's `mmux.yaml` by
 //! [`App::finish_new_process`](super::App) — appended for a new process, spliced in
 //! place for an edit (see [`ProcForm::edit`]). Keys are driven in
-//! [`App::procform_key`](super::input) and it's drawn in
-//! [`view::git::render_procform`](super::view).
+//! [`App::procform_key`](super::overlay) and it's drawn in
+//! [`view::overlay::render_procform`](super::view).
 
 /// Which field the form is editing. `Review` is the final screen: it shows the
 /// gathered values and toggles autostart before writing.
