@@ -215,7 +215,7 @@ impl App {
             return;
         }
 
-        let bar = Style::default().fg(Color::Black).bg(Color::Cyan);
+        let bar = Style::default().fg(theme::FOOTER_FG).bg(theme::FOOTER_BG);
         let (left, right) = self.footer_segments();
 
         // Left cluster: a leading pad space, then the segments from the left edge.
@@ -256,9 +256,9 @@ impl App {
         start_x: u16,
         y: u16,
     ) -> (Vec<Span<'static>>, Vec<(Rect, FooterAction)>, u16) {
-        let bar = Style::default().fg(Color::Black).bg(Color::Cyan); // separators, label text
+        let bar = Style::default().fg(theme::FOOTER_FG).bg(theme::FOOTER_BG); // separators, label text
         let key = bar.add_modifier(Modifier::BOLD); // the shortcut glyph pops
-        let dim = Style::default().fg(Color::Rgb(0, 70, 75)).bg(Color::Cyan); // braces + hints
+        let dim = Style::default().fg(theme::FOOTER_BRACE).bg(theme::FOOTER_BG); // braces + hints
         let mut spans: Vec<Span<'static>> = Vec::new();
         let mut btns: Vec<(Rect, FooterAction)> = Vec::new();
         let mut x = start_x;

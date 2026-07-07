@@ -2,7 +2,8 @@
 //! built by [`App::nav_row`], so adding a row kind is a single match arm.
 
 use super::theme::{
-    agent_glyph_style, badge, entry_line, header, project_header, status_style, SPINNER,
+    agent_glyph_style, badge, entry_line, header, project_header, status_style, ACTIVE_BORDER,
+    IDLE_BORDER, SPINNER,
 };
 use crate::app::nav::Nav;
 use crate::app::session::Kind;
@@ -47,7 +48,7 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled(" Projects ", Style::default().fg(Color::Gray)))
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(IDLE_BORDER));
         let inner = block.inner(area);
         f.render_widget(block, area);
         if inner.width == 0 || inner.height == 0 {
@@ -102,7 +103,7 @@ impl App {
             } else {
                 Style::default().fg(Color::Gray)
             };
-            let border = if active { Color::Cyan } else { Color::DarkGray };
+            let border = if active { ACTIVE_BORDER } else { IDLE_BORDER };
             let block = Block::default()
                 .borders(Borders::ALL)
                 .title(Span::styled(format!(" {name} "), title_style))
@@ -132,20 +133,14 @@ impl App {
     fn project_lines(&self, pi: usize, nav: &[Nav], width: u16) -> (Vec<Line<'static>>, Vec<(u16, usize)>) {
         let mut lines: Vec<Line<'static>> = Vec::new();
         let mut rows: Vec<(u16, usize)> = Vec::new();
-        self.push_proj_section(&mut lines, &mut rows, "AGENTS", true, nav, width, move |app, n| match n {
-            Nav::NewAgent(p, _) => p == pi,
-            Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Agent,
-            _ => false,
+        self.push_proj_section(&mut lines, &mut rows, "AGENTS", true, nav, width, move |app, n| {
+            section_matches(app, n, pi, Kind::Agent)
         });
-        self.push_proj_section(&mut lines, &mut rows, "TERMINAL", false, nav, width, move |app, n| match n {
-            Nav::NewTerminal(p) => p == pi,
-            Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Terminal,
-            _ => false,
+        self.push_proj_section(&mut lines, &mut rows, "TERMINAL", false, nav, width, move |app, n| {
+            section_matches(app, n, pi, Kind::Terminal)
         });
-        self.push_proj_section(&mut lines, &mut rows, "PROCESSES", false, nav, width, move |app, n| match n {
-            Nav::NewProcess(p) => p == pi,
-            Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Process,
-            _ => false,
+        self.push_proj_section(&mut lines, &mut rows, "PROCESSES", false, nav, width, move |app, n| {
+            section_matches(app, n, pi, Kind::Process)
         });
         (lines, rows)
     }
@@ -179,7 +174,7 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(format!(" {title} "))
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(IDLE_BORDER));
         let inner = block.inner(area);
         f.render_widget(block, area);
 
@@ -200,20 +195,14 @@ impl App {
                 lines.push(project_header(&self.projects[pi].cfg.display_name(), pi == self.active, inner.width));
                 y += 1;
             }
-            self.section(&mut lines, &mut y, "AGENTS", true, &nav, inner.width, move |app, n| match n {
-                Nav::NewAgent(p, _) => p == pi,
-                Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Agent,
-                _ => false,
+            self.section(&mut lines, &mut y, "AGENTS", true, &nav, inner.width, move |app, n| {
+                section_matches(app, n, pi, Kind::Agent)
             });
-            self.section(&mut lines, &mut y, "TERMINAL", false, &nav, inner.width, move |app, n| match n {
-                Nav::NewTerminal(p) => p == pi,
-                Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Terminal,
-                _ => false,
+            self.section(&mut lines, &mut y, "TERMINAL", false, &nav, inner.width, move |app, n| {
+                section_matches(app, n, pi, Kind::Terminal)
             });
-            self.section(&mut lines, &mut y, "PROCESSES", false, &nav, inner.width, move |app, n| match n {
-                Nav::NewProcess(p) => p == pi,
-                Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == Kind::Process,
-                _ => false,
+            self.section(&mut lines, &mut y, "PROCESSES", false, &nav, inner.width, move |app, n| {
+                section_matches(app, n, pi, Kind::Process)
             });
         }
         // In compact mode the git panel is also a sidebar entry.
@@ -363,6 +352,20 @@ impl App {
                 entry_line("+ Link another project", sel, Style::default().fg(fg), None, false, width)
             }
         }
+    }
+}
+
+/// Does nav entry `n` belong in project `pi`'s `kind` section? The launcher row for that
+/// kind (`+ New …`) plus every session of that project and kind. This is the one matcher
+/// shared by the single- and multi-project sidebar layouts (which otherwise track rows in
+/// different coordinate systems).
+fn section_matches(app: &App, n: Nav, pi: usize, kind: Kind) -> bool {
+    match n {
+        Nav::NewAgent(p, _) if kind == Kind::Agent => p == pi,
+        Nav::NewTerminal(p) if kind == Kind::Terminal => p == pi,
+        Nav::NewProcess(p) if kind == Kind::Process => p == pi,
+        Nav::Session(i) => app.sessions[i].project == pi && app.sessions[i].kind == kind,
+        _ => false,
     }
 }
 

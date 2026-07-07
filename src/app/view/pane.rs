@@ -22,9 +22,9 @@ impl App {
         let nav = self.current_nav();
         let focus = self.focus;
         let border = if focus == Focus::Terminal {
-            Color::Magenta
+            theme::FOCUS_BORDER
         } else {
-            Color::DarkGray
+            theme::IDLE_BORDER
         };
         // A git diff preview re-titles the pane (file path + ±counts); otherwise the
         // usual session/launcher name. Navigation lives entirely in the footer now, so
@@ -90,7 +90,7 @@ impl App {
         let hits = match self.active_git() {
             Some(g) => super::git::render_git(f, area, g, focused),
             None => {
-                let border = if focused { Color::Magenta } else { Color::DarkGray };
+                let border = if focused { theme::FOCUS_BORDER } else { theme::IDLE_BORDER };
                 let block = Block::default()
                     .borders(Borders::ALL)
                     .title(" git ")
@@ -134,15 +134,7 @@ impl App {
                 continue;
             }
             let row = sr as u16;
-            let (c0, c1) = if lo == hi {
-                (sc, ec)
-            } else if line == lo {
-                (sc, last)
-            } else if line == hi {
-                (0, ec)
-            } else {
-                (0, last)
-            };
+            let (c0, c1) = sel_span(lo, hi, sc, ec, line, last);
             for col in c0..=c1.min(last) {
                 if let Some(cell) = buf.cell_mut((inner.x + col, inner.y + row)) {
                     cell.set_style(style);
@@ -178,15 +170,7 @@ impl App {
                 continue;
             }
             // Column span on this line: full content for the middle, open at the edges.
-            let (a, b) = if lo == hi {
-                (sc, ec)
-            } else if i == lo {
-                (sc, len - 1)
-            } else if i == hi {
-                (0, ec)
-            } else {
-                (0, len - 1)
-            };
+            let (a, b) = sel_span(lo, hi, sc, ec, i, len - 1);
             let (a, b) = (a.min(len - 1), b.min(len - 1));
             let row = inner.y + sr as u16;
             for k in a..=b {
@@ -266,6 +250,23 @@ impl App {
             Some(Nav::Link) => "Press Enter to link another project into the workspace.".into(),
             None => "No agents or processes configured.\nEdit mmux.yaml and reopen.".into(),
         }
+    }
+}
+
+/// The column span `[start, end]` to highlight on row `cur` of a drag selection running
+/// from `(lo, sc)` to `(hi, ec)`: the whole row (open to `end`) on interior rows, clipped
+/// to the actual endpoint on the first/last row, and exactly `sc..=ec` on a single-row
+/// drag. Both painters (scrollback pane + diff pager) share this; they differ only in what
+/// `end` and `cur` mean, which they compute themselves.
+fn sel_span(lo: i32, hi: i32, sc: u16, ec: u16, cur: i32, end: u16) -> (u16, u16) {
+    if lo == hi {
+        (sc, ec)
+    } else if cur == lo {
+        (sc, end)
+    } else if cur == hi {
+        (0, ec)
+    } else {
+        (0, end)
     }
 }
 
@@ -386,11 +387,7 @@ fn diff_line(l: &DiffLine, width: u16, gutter: usize) -> Line<'static> {
             format!(" ▸ {}", l.text),
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
         )]);
-        let pad = (width as usize).saturating_sub(line.width());
-        if pad > 0 {
-            line.spans.push(Span::raw(" ".repeat(pad)));
-        }
-        line.style = Style::default().bg(theme::DIFF_FILE_BG);
+        theme::fill_row_bg(&mut line, width, theme::DIFF_FILE_BG);
         return line;
     }
     // Hunk header: a quiet blue divider, indented to line up with the code column
@@ -423,11 +420,7 @@ fn diff_line(l: &DiffLine, width: u16, gutter: usize) -> Line<'static> {
     if let Some(bg) = bg {
         // Pad to the full pane width so the tint spans the whole row (a `Line`'s
         // background otherwise stops at the last character), matching the sidebar bars.
-        let pad = (width as usize).saturating_sub(line.width());
-        if pad > 0 {
-            line.spans.push(Span::raw(" ".repeat(pad)));
-        }
-        line.style = Style::default().bg(bg);
+        theme::fill_row_bg(&mut line, width, bg);
     }
     line
 }

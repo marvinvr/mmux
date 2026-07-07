@@ -24,6 +24,26 @@ pub(crate) const DIFF_HUNK: Color = Color::Rgb(88, 166, 255);
 /// blue-gray bar so each file's start reads as a section break.
 pub(crate) const DIFF_FILE_BG: Color = Color::Rgb(33, 43, 60);
 
+/// The selected-row highlight bar: a dark blue-gray that spans the whole row (see
+/// [`fill_row_bg`]). Shared by the sidebar rows, the git panel's boxes, and the link
+/// browser so "this is the one" reads the same everywhere.
+pub(crate) const SELECTION_BG: Color = Color::Rgb(45, 45, 60);
+/// The active project header's full-width highlight bar — a touch bluer/brighter than
+/// [`SELECTION_BG`] so the heading still reads as a heading, not just another row.
+pub(crate) const ACTIVE_HEADER_BG: Color = Color::Rgb(40, 40, 70);
+
+/// Border accents. Magenta marks the focused pane / git section, cyan the active
+/// sidebar project box, dim gray everything idle.
+pub(crate) const FOCUS_BORDER: Color = Color::Magenta;
+pub(crate) const ACTIVE_BORDER: Color = Color::Cyan;
+pub(crate) const IDLE_BORDER: Color = Color::DarkGray;
+
+/// The footer bar's palette: black text on a cyan bar, with the braces/hints dimmed to
+/// a muted teal so the shortcut keys (kept at full contrast) pop against them.
+pub(crate) const FOOTER_BG: Color = Color::Cyan;
+pub(crate) const FOOTER_FG: Color = Color::Black;
+pub(crate) const FOOTER_BRACE: Color = Color::Rgb(0, 70, 75);
+
 pub(crate) fn status_style(s: Status) -> Style {
     match s {
         Status::Running => Style::default().fg(Color::Green),
@@ -96,6 +116,18 @@ pub(crate) fn header(t: &str) -> Line<'static> {
     ))
 }
 
+/// Pad `line` with trailing spaces out to `width` and set its background to `bg`, so a
+/// highlight/tint spans the whole row rather than stopping at the last character (a
+/// `Line`'s background otherwise ends with its text). The one place the selection bars
+/// and diff tints agree, so the padding math lives here once.
+pub(crate) fn fill_row_bg(line: &mut Line<'static>, width: u16, bg: Color) {
+    let pad = (width as usize).saturating_sub(line.width());
+    if pad > 0 {
+        line.spans.push(Span::raw(" ".repeat(pad)));
+    }
+    line.style = Style::default().bg(bg);
+}
+
 /// A workspace project header — the heading above a project's AGENTS/TERMINAL/
 /// PROCESSES groups (only shown when the workspace has more than one project). The
 /// active project (the one whose panel is shown) gets a full-width highlight bar;
@@ -107,11 +139,7 @@ pub(crate) fn project_header(name: &str, active: bool, width: u16) -> Line<'stat
         Style::default().fg(fg).add_modifier(Modifier::BOLD),
     ));
     if active {
-        let pad = width.saturating_sub(line.width() as u16);
-        if pad > 0 {
-            line.spans.push(Span::raw(" ".repeat(pad as usize)));
-        }
-        line.style = Style::default().bg(Color::Rgb(40, 40, 70));
+        fill_row_bg(&mut line, width, ACTIVE_HEADER_BG);
     }
     line
 }
@@ -152,11 +180,7 @@ pub(crate) fn entry_line(
     if selected {
         // Pad with trailing spaces so the highlight bar fills the whole row width
         // rather than stopping at the end of the text.
-        let pad = width.saturating_sub(line.width() as u16);
-        if pad > 0 {
-            line.spans.push(Span::raw(" ".repeat(pad as usize)));
-        }
-        line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+        fill_row_bg(&mut line, width, SELECTION_BG);
     }
     line
 }

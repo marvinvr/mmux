@@ -85,6 +85,43 @@ fn boxed(title: String, active: bool) -> Block<'static> {
         .border_style(Style::default().fg(border))
 }
 
+/// The shared skeleton of the three panel boxes (Changes / Branches / Commits): draw the
+/// bordered box, bail if it collapsed, show `empty` when the collection is empty, else
+/// window over `len` items around `cursor` so the selection stays on screen — building
+/// each visible row via `row` and registering its screen `y` in `hit` for click routing.
+fn render_box<F>(
+    f: &mut Frame,
+    area: Rect,
+    title: String,
+    active: bool,
+    len: usize,
+    cursor: usize,
+    empty: &str,
+    hit: &mut Vec<(u16, usize)>,
+    mut row: F,
+) where
+    F: FnMut(usize, bool, u16) -> Line<'static>,
+{
+    let block = boxed(title, active);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    if len == 0 {
+        f.render_widget(dim_line(empty), inner);
+        return;
+    }
+    let (start, count) = window(len, cursor, inner.height as usize);
+    let mut lines = Vec::with_capacity(count);
+    for off in 0..count {
+        let i = start + off;
+        lines.push(row(i, active && i == cursor, inner.width));
+        hit.push((inner.y + off as u16, i));
+    }
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
 fn render_changes(
     f: &mut Frame,
     area: Rect,
@@ -97,35 +134,13 @@ fn render_changes(
     if let Some(b) = git.busy {
         title.push_str(&format!("· {b} "));
     }
-    let block = boxed(title, active);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-    if git.rows.is_empty() {
-        f.render_widget(dim_line("  working tree clean"), inner);
-        return;
-    }
-    // Window over the precomputed tree so the cursor's row stays on screen. Every row
-    // (dir / file) is selectable, so every visible one is registered for clicks.
-    let (start, count) = window(git.rows.len(), git.cursor, inner.height as usize);
-    let mut lines = Vec::with_capacity(count);
-    for off in 0..count {
-        let i = start + off;
-        let selected = active && i == git.cursor;
-        let line = match &git.rows[i] {
-            TreeRow::Dir { label, depth, staged, .. } => {
-                node_row(label, *depth, *staged, selected, inner.width)
-            }
-            TreeRow::File { idx, depth } => {
-                file_row(&git.files[*idx], *depth, selected, inner.width)
-            }
-        };
-        lines.push(line);
-        hit.push((inner.y + off as u16, i));
-    }
-    f.render_widget(Paragraph::new(lines), inner);
+    // Every tree row (dir / file) is selectable, so every visible one is registered.
+    render_box(f, area, title, active, git.rows.len(), git.cursor, "  working tree clean", hit, |i, selected, w| {
+        match &git.rows[i] {
+            TreeRow::Dir { label, depth, staged, .. } => node_row(label, *depth, *staged, selected, w),
+            TreeRow::File { idx, depth } => file_row(&git.files[*idx], *depth, selected, w),
+        }
+    });
 }
 
 fn render_branches(
@@ -136,24 +151,9 @@ fn render_branches(
     hit: &mut Vec<(u16, usize)>,
 ) {
     let active = focused && git.section == Section::Branches;
-    let block = boxed(" Branches ".into(), active);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-    if git.branches.is_empty() {
-        f.render_widget(dim_line("  no branches"), inner);
-        return;
-    }
-    let (start, count) = window(git.branches.len(), git.branch_cursor, inner.height as usize);
-    let mut lines = Vec::with_capacity(count);
-    for off in 0..count {
-        let i = start + off;
-        lines.push(branch_row(&git.branches[i], active && i == git.branch_cursor, inner.width));
-        hit.push((inner.y + off as u16, i));
-    }
-    f.render_widget(Paragraph::new(lines), inner);
+    render_box(f, area, " Branches ".into(), active, git.branches.len(), git.branch_cursor, "  no branches", hit, |i, selected, w| {
+        branch_row(&git.branches[i], selected, w)
+    });
 }
 
 fn render_commits(
@@ -164,36 +164,16 @@ fn render_commits(
     hit: &mut Vec<(u16, usize)>,
 ) {
     let active = focused && git.section == Section::Commits;
-    let block = boxed(" Commits ".into(), active);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-    if git.log.is_empty() {
-        f.render_widget(dim_line("  no commits"), inner);
-        return;
-    }
-    // Window over the log so the cursor stays on screen, and register each visible row.
-    let (start, count) = window(git.log.len(), git.commit_cursor, inner.height as usize);
-    let mut lines = Vec::with_capacity(count);
-    for off in 0..count {
-        let i = start + off;
-        lines.push(commit_row(&git.log[i], active && i == git.commit_cursor, inner.width));
-        hit.push((inner.y + off as u16, i));
-    }
-    f.render_widget(Paragraph::new(lines), inner);
+    render_box(f, area, " Commits ".into(), active, git.log.len(), git.commit_cursor, "  no commits", hit, |i, selected, w| {
+        commit_row(&git.log[i], selected, w)
+    });
 }
 
 /// Pad a selected row with trailing spaces and paint the highlight background so the
 /// selection bar spans the full column width (matching the sidebar's `entry_line`),
 /// rather than stopping at the end of the name.
 fn fill_selection(line: &mut Line<'static>, width: u16) {
-    let pad = width.saturating_sub(line.width() as u16);
-    if pad > 0 {
-        line.spans.push(Span::raw(" ".repeat(pad as usize)));
-    }
-    line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+    super::theme::fill_row_bg(line, width, super::theme::SELECTION_BG);
 }
 
 /// A directory row: selection bar, indentation, an aggregate staging checkbox, then the
@@ -325,6 +305,17 @@ fn window(len: usize, cursor: usize, rows: usize) -> (usize, usize) {
     }
     let start = cursor.saturating_sub(rows / 2).min(len - rows);
     (start, rows)
+}
+
+/// The scroll offset that keeps row `sel` visible in a `height`-row list window: 0 until
+/// the selection would fall past the bottom, then just enough to pin it to the last row.
+/// The modal pickers (link browser / file picker) share this simple top-anchored scroll.
+fn list_scroll(sel: usize, height: usize) -> usize {
+    if height > 0 && sel >= height {
+        sel + 1 - height
+    } else {
+        0
+    }
 }
 
 // ---- overlay: the commit / new-branch text prompt ----
@@ -494,14 +485,7 @@ pub(crate) fn render_about(
     let widest = lines.iter().map(|l| l.width()).max().unwrap_or(0);
     let w = (widest as u16 + 4).clamp(24, 64);
     let h = lines.len() as u16 + 2;
-    let rect = centered(area, w, h);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" About mmux ")
-        .border_style(Style::default().fg(Color::Cyan));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let inner = modal_frame(f, area, w, h, " About mmux ", Color::Cyan);
     if inner.width == 0 || inner.height == 0 {
         return Vec::new();
     }
@@ -529,14 +513,7 @@ pub(crate) fn render_about(
 fn render_linkbrowse(f: &mut Frame, area: Rect, b: &LinkBrowser) {
     let w = area.width.saturating_sub(6).clamp(30, 86);
     let h = area.height.saturating_sub(4).clamp(12, 24);
-    let rect = centered(area, w, h);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Link a project ")
-        .border_style(Style::default().fg(Color::Magenta));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let inner = modal_frame(f, area, w, h, " Link a project ", Color::Magenta);
     if inner.width == 0 || inner.height < 8 {
         return;
     }
@@ -573,7 +550,7 @@ fn render_linkbrowse(f: &mut Frame, area: Rect, b: &LinkBrowser) {
 
     // The directory list, scrolled to keep the selection on screen.
     let sel = b.sel();
-    let scroll = if list_h > 0 && sel >= list_h { sel + 1 - list_h } else { 0 };
+    let scroll = list_scroll(sel, list_h);
     let mut lines: Vec<Line> = Vec::new();
     if b.count() == 0 {
         lines.push(Line::from(Span::styled(
@@ -649,11 +626,7 @@ fn linkrow(e: &DirEntry, selected: bool, width: u16) -> Line<'static> {
         Span::styled(tag, Style::default().fg(Color::DarkGray)),
     ]);
     if selected {
-        let p = width.saturating_sub(line.width() as u16);
-        if p > 0 {
-            line.spans.push(Span::raw(" ".repeat(p as usize)));
-        }
-        line.style = Style::default().bg(Color::Rgb(45, 45, 60));
+        super::theme::fill_row_bg(&mut line, width, super::theme::SELECTION_BG);
     }
     line
 }
@@ -699,14 +672,7 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
     let w = area.width.saturating_sub(6).clamp(40, 68);
     // Intro + blank + one line per row + blank + hint, inside the two borders.
     let h = (m.rows.len() as u16 + 6).min(area.height);
-    let rect = centered(area, w, h);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Agents ")
-        .border_style(Style::default().fg(Color::Magenta));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let inner = modal_frame(f, area, w, h, " Agents ", Color::Magenta);
     if inner.width == 0 || inner.height < 3 {
         return;
     }
@@ -769,16 +735,10 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
 fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let w = area.width.saturating_sub(6).clamp(34, 72);
     let h = 13u16.min(area.height);
-    let rect = centered(area, w, h);
     // Same form for adding and editing; the title and the Review verb reflect which.
     let editing = form.edit.is_some();
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(if editing { " Edit process " } else { " New process " })
-        .border_style(Style::default().fg(Color::Magenta));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let title = if editing { " Edit process " } else { " New process " };
+    let inner = modal_frame(f, area, w, h, title, Color::Magenta);
     if inner.width == 0 || inner.height < 3 {
         return;
     }
@@ -884,14 +844,7 @@ fn field_line(label: &str, value: &str) -> Line<'static> {
 fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
     let w = area.width.saturating_sub(6).clamp(24, 90);
     let h = area.height.saturating_sub(4).clamp(6, 20);
-    let rect = centered(area, w, h);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Open file ")
-        .border_style(Style::default().fg(Color::Magenta));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let inner = modal_frame(f, area, w, h, " Open file ", Color::Magenta);
     if inner.width == 0 || inner.height < 3 {
         return;
     }
@@ -915,7 +868,7 @@ fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
 
     // Scroll the list so the selection stays on screen.
     let sel = p.sel();
-    let scroll = if list_h > 0 && sel >= list_h { sel + 1 - list_h } else { 0 };
+    let scroll = list_scroll(sel, list_h);
     let mut lines: Vec<Line> = Vec::new();
     for row in scroll..(scroll + list_h) {
         let Some(path) = p.path_at(row) else { break };
@@ -968,14 +921,7 @@ fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str, hint: &str
     let w = (widest as u16 + 4).clamp(20, 64);
     // Body lines + a blank spacer + the hint, wrapped in the two borders.
     let h = body_lines.len() as u16 + 4;
-    let rect = centered(area, w, h);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!(" {title} "))
-        .border_style(Style::default().fg(Color::Red));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let inner = modal_frame(f, area, w, h, format!(" {title} "), Color::Red);
     if inner.width == 0 || inner.height == 0 {
         return;
     }
@@ -993,14 +939,7 @@ fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str, hint: &str
 
 fn render_prompt(f: &mut Frame, area: Rect, title: &str, buf: &str, kind: PromptKind) {
     let w = area.width.saturating_sub(8).min(60).max(20);
-    let rect = centered(area, w, 4);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!(" {title} "))
-        .border_style(Style::default().fg(Color::Magenta));
-    let inner = block.inner(rect);
-    f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
+    let inner = modal_frame(f, area, w, 4, format!(" {title} "), Color::Magenta);
     if inner.width == 0 || inner.height == 0 {
         return;
     }
@@ -1029,6 +968,29 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
         width: w,
         height: h,
     }
+}
+
+/// The shared chrome of every modal overlay: center a `w`×`h` box in `area`, then draw
+/// its titled, `border`-colored frame over a cleared background and return the inner
+/// rect. Each caller keeps its own min-size guard on that inner and fills the body — the
+/// guards differ per modal, so they stay at the call sites.
+fn modal_frame<'a>(
+    f: &mut Frame,
+    area: Rect,
+    w: u16,
+    h: u16,
+    title: impl Into<Line<'a>>,
+    border: Color,
+) -> Rect {
+    let rect = centered(area, w, h);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(border));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    inner
 }
 
 /// Trim `s` from the left to fit `max` columns, prefixing `…` so the useful tail
