@@ -71,6 +71,11 @@ jobs:
     continue-on-error: true
     timeout-minutes: 30
     steps:
+      # The Windows runner's git defaults to core.autocrlf=true, which rewrites our shell
+      # scripts (ci/boot-test.sh) to CRLF on checkout — and dash inside WSL then dies on the
+      # trailing \r ("set: Illegal option -"). Keep line endings exactly as committed (LF).
+      - name: Keep LF line endings on checkout
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - name: Set up WSL (Ubuntu)
         uses: Vampire/setup-wsl@v7
