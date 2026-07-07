@@ -280,9 +280,11 @@ impl App {
             },
             Some(Overlay::Prompt { buf, kind, .. }) => match k.code {
                 KeyCode::Esc => Act::Close,
-                // ⏎ submits as-is; Ctrl+⏎ on a commit prompt upgrades it to commit-&-push
-                // (needs a terminal that reports the modifier — see `run`'s keyboard
-                // enhancement flags).
+                // ⏎ submits as-is; Ctrl+⏎ on a commit prompt upgrades it to commit-&-push —
+                // but that needs a terminal that reports the modifier (see `run`'s keyboard
+                // enhancement flags), and tmux drops it unless server-wide extended-keys is
+                // on, which we don't touch. So Ctrl+P (below) is the always-reliable path:
+                // a plain control byte that survives tmux on any terminal.
                 KeyCode::Enter => {
                     let kind = match kind {
                         PromptKind::Commit { push } => PromptKind::Commit { push: *push || ctrl },
@@ -290,11 +292,20 @@ impl App {
                     };
                     Act::Submit(kind, buf.clone())
                 }
+                // Ctrl+P: reliable commit-&-push (no-op on a non-commit prompt).
+                KeyCode::Char('p') if ctrl => match kind {
+                    PromptKind::Commit { .. } => {
+                        Act::Submit(PromptKind::Commit { push: true }, buf.clone())
+                    }
+                    _ => Act::None,
+                },
                 KeyCode::Backspace => {
                     buf.pop();
                     Act::None
                 }
-                KeyCode::Char(c) => {
+                // Type printable keys; swallow other control chords so they don't land in
+                // the buffer (Ctrl+P is handled above).
+                KeyCode::Char(c) if !ctrl => {
                     buf.push(c);
                     Act::None
                 }
