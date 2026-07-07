@@ -58,3 +58,39 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y tmux
       - run: cargo build --locked
       - run: sh ci/boot-test.sh target/debug/mmux
+
+  # Same boot smoke, but under a real WSL2 distro (wsl-version defaults to 2) running inside a
+  # Windows runner — the one place we exercise the platform we advertise on the site. It proves
+  # the Linux binary builds, boots, and renders a frame under WSL. It CANNOT test the bits that
+  # are actually WSL-specific — OSC 52 clipboard and OSC 9/777 notifications reaching Windows
+  # Terminal — because no Windows terminal is on the receiving end in CI. Non-blocking, like the
+  # native boot-test: WSL-in-CI + TTY is doubly flake-prone, so it's a signal, not a gate.
+  wsl-boot-test:
+    name: boot-test (WSL, non-blocking)
+    runs-on: windows-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up WSL (Ubuntu)
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-24.04
+      - name: build + boot-test inside WSL
+        shell: wsl-bash {0}
+        run: |
+          set -eu
+          # wsl-bash starts in the distro's home, NOT the checkout, and building on the /mnt
+          # drvfs mount is painfully slow — so translate the Windows workspace path (e.g.
+          # D:\a\mmux\mmux) to its /mnt mount and copy the tree onto the WSL-native filesystem.
+          ws="/mnt/$(echo '${{ github.workspace }}' | tr -d ':' | tr '\\' '/' | tr '[:upper:]' '[:lower:]')"
+          cp -a "$ws" "$HOME/mmux-src"
+          cd "$HOME/mmux-src"
+          # The default user is root (no sudo), and fresh WSL Ubuntu ships no compiler — the
+          # native runners get one preinstalled, so this mirrors the boot-test above's `apt` line.
+          apt-get update
+          apt-get install -y tmux build-essential curl ca-certificates
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          . "$HOME/.cargo/env"
+          cargo build --locked
+          sh ci/boot-test.sh target/debug/mmux
