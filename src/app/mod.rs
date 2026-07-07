@@ -577,7 +577,7 @@ pub fn run(ws: Workspace) -> Result<()> {
     // release/repeat events, so inner-pane key forwarding (`encode_key`) is unchanged.
     // A terminal that doesn't support it ignores the CSI (and, over the tmux jail, so
     // does a client without extended-keys passthrough) — there `Ctrl+⏎` just falls back
-    // to a plain ⏎, with the `C` / `[c&push]` path always available. Popped on teardown.
+    // to a plain ⏎ (a commit without the push). Popped on teardown.
     let _ = execute!(
         out,
         PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)

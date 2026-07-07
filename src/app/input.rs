@@ -182,7 +182,6 @@ impl App {
             KeyCode::Char('d') => self.git_discard_prompt(),
             KeyCode::Char('s') => self.git_stash(),
             KeyCode::Char('c') => self.git_commit_prompt(),
-            KeyCode::Char('C') => self.git_commit_push_prompt(),
             KeyCode::Char('n') => self.git_newbranch_prompt(),
             KeyCode::Char('p') => self.git_start("pull"),
             KeyCode::Char('P') => self.git_start("push"),
@@ -283,7 +282,7 @@ impl App {
                 KeyCode::Esc => Act::Close,
                 // ⏎ submits as-is; Ctrl+⏎ on a commit prompt upgrades it to commit-&-push
                 // (needs a terminal that reports the modifier — see `run`'s keyboard
-                // enhancement flags; the `C` prompt / footer button is the fallback).
+                // enhancement flags).
                 KeyCode::Enter => {
                     let kind = match kind {
                         PromptKind::Commit { push } => PromptKind::Commit { push: *push || ctrl },
@@ -679,7 +678,6 @@ impl App {
             FooterAction::GitDiscard => self.git_discard_prompt(),
             FooterAction::GitStash => self.git_stash(),
             FooterAction::GitCommit => self.git_commit_prompt(),
-            FooterAction::GitCommitPush => self.git_commit_push_prompt(),
             FooterAction::GitNewBranch => self.git_newbranch_prompt(),
             FooterAction::GitPull => self.git_start("pull"),
             FooterAction::GitPush => self.git_start("push"),

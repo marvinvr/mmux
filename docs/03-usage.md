@@ -148,7 +148,6 @@ Focus the panel with `Tab` (or click it), then:
 | `v` | Preview the selected file's / commit's diff in the main pane (press again to close) |
 | `a` | Stage all changes (press again to unstage all) |
 | `c` | Commit (opens a message prompt; `Ctrl+⏎` there commits **and** pushes) |
-| `C` | Commit & push (same prompt, but a plain `⏎` commits and pushes) |
 | `n` | New branch (opens a name prompt; creates and switches) |
 | `d` | Discard the selected path (destructive — asks for confirmation) |
 | `s` | Stash (`git stash push -u`, includes untracked; recover with `git stash pop`) |
@@ -167,8 +166,8 @@ In the **Commits** box these keys act on the selected commit:
 | `u` | Uncommit to here (`git reset --soft`; asks to confirm — later commits become staged changes) |
 
 Staging is whole-file or whole-directory (or `a` for the whole repo) — there is no hunk staging.
-Committing with nothing staged stages everything first. Commit & push (`C`, or `Ctrl+⏎` from the
-commit prompt) commits and then kicks off the same background push as `P` — the push result is
+Committing with nothing staged stages everything first. Commit & push (`Ctrl+⏎` from the commit
+prompt) commits and then kicks off the same background push as `P` — the push result is
 flashed when it returns. Pull and push never block the UI; a second press while one is in flight is
 ignored. Revert and uncommit go through a confirmation and refresh the panel; neither loses work
 (revert adds a commit, uncommit keeps the changes staged). The panel re-reads git state on a short

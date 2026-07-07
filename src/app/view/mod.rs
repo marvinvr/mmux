@@ -87,8 +87,6 @@ pub(crate) enum FooterAction {
     GitDiscard,
     GitStash,
     GitCommit,
-    /// Open the commit prompt in commit-&-push mode (⏎ commits and pushes).
-    GitCommitPush,
     GitNewBranch,
     GitPull,
     GitPush,
@@ -450,7 +448,6 @@ impl App {
                         v.extend([
                             Seg::btn("s", "stash", GitStash),
                             Seg::btn("c", "commit", GitCommit),
-                            Seg::btn("C", "c&push", GitCommitPush),
                             Seg::btn("n", "branch", GitNewBranch),
                             Seg::btn("p", "pull", GitPull),
                             Seg::btn("P", "push", GitPush),

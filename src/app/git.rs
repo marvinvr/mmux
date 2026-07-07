@@ -762,9 +762,8 @@ pub(crate) enum Overlay {
 #[derive(Clone, Copy)]
 pub(crate) enum PromptKind {
     /// A commit-message prompt. `push` carries whether submitting should also kick off a
-    /// background push: the plain `c` prompt starts `false` (⏎ commits, `Ctrl+⏎` upgrades
-    /// to commit-&-push), while the dedicated `C` / `[c&push]` prompt starts `true` so a
-    /// plain ⏎ commits *and* pushes.
+    /// background push: the prompt starts `false` (⏎ commits), and `Ctrl+⏎` upgrades it to
+    /// commit-&-push.
     Commit { push: bool },
     NewBranch,
 }
@@ -800,16 +799,6 @@ impl Overlay {
             title: "Commit message",
             buf: String::new(),
             kind: PromptKind::Commit { push: false },
-        }
-    }
-
-    /// The commit-&-push prompt: same message entry, but a plain ⏎ commits *and* kicks
-    /// off a background push. Opened by `C` / the `[c&push]` footer button.
-    pub(crate) fn commit_push() -> Overlay {
-        Overlay::Prompt {
-            title: "Commit & push",
-            buf: String::new(),
-            kind: PromptKind::Commit { push: true },
         }
     }
 
@@ -962,10 +951,6 @@ impl App {
 
     pub(crate) fn git_commit_prompt(&mut self) {
         self.overlay = Some(Overlay::commit());
-    }
-
-    pub(crate) fn git_commit_push_prompt(&mut self) {
-        self.overlay = Some(Overlay::commit_push());
     }
 
     pub(crate) fn git_newbranch_prompt(&mut self) {
