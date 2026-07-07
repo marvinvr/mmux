@@ -469,19 +469,55 @@ impl App {
         }
     }
 
-    /// Kill an agent/terminal session and drop it from the sidebar entirely.
+    /// Kill an agent/terminal session and drop it from the sidebar entirely, then
+    /// land the cursor sensibly within the same section.
+    ///
+    /// Closing a tab lands on the row that *slides into* the freed slot — the next
+    /// sibling of the same kind (agent/terminal) in this project, so the cursor moves
+    /// *down*, not back up. Special cases, in order:
+    /// - **Last of its section** (no sibling below): fall back to the previous sibling
+    ///   above it, since there's nothing below to slide up.
+    /// - **Only one of its section** (no siblings at all): land on the section's
+    ///   launcher just above the now-empty block — the last `+ New <agent>` row for
+    ///   agents, or the `+ New Terminal` row for terminals.
     fn close_session(&mut self, i: usize) {
-        // Where the closed row sits *now*, so we can land on the row before it.
-        // Selection is positional: leaving `sel` put would slide the cursor onto
-        // whatever row slips into the freed slot (the *next* one), so step back to
-        // the *previous* row — closing a tab jumps back, not forward. Derived from
-        // the closed row's own position (not `sel`) so it's right whoever calls us.
-        let pos = self.build_nav().iter().position(|n| *n == Nav::Session(i));
+        let proj = self.sessions[i].project;
+        let kind = self.sessions[i].kind;
+        // Siblings of the same section (project + kind), in sidebar order — which is
+        // just their order in `self.sessions` (see `push_sessions`).
+        let siblings: Vec<usize> = self
+            .sessions
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.project == proj && s.kind == kind)
+            .map(|(j, _)| j)
+            .collect();
+        let at = siblings.iter().position(|&j| j == i).unwrap_or(0);
+        // Pick the target as a `Nav` identity so it survives the removal below.
+        let target = if at + 1 < siblings.len() {
+            Nav::Session(siblings[at + 1]) // the sibling that slides up into this slot
+        } else if at > 0 {
+            Nav::Session(siblings[at - 1]) // last of the section — step to the previous
+        } else {
+            // Section is now empty: land on its launcher, the row just above the block.
+            match kind {
+                Kind::Agent => Nav::NewAgent(proj, self.projects[proj].cfg.agents.len().saturating_sub(1)),
+                _ => Nav::NewTerminal(proj),
+            }
+        };
         self.sessions[i].kill();
         self.sessions.remove(i);
-        let navlen = self.build_nav().len();
-        let target = pos.unwrap_or(self.sel).saturating_sub(1);
-        self.sel = target.min(navlen.saturating_sub(1));
+        // Session indices above `i` shifted down by one; a below-sibling target was one
+        // of them, so re-point it. Launcher targets are index-free and unaffected.
+        let target = match target {
+            Nav::Session(j) if j > i => Nav::Session(j - 1),
+            other => other,
+        };
+        let nav = self.build_nav();
+        self.sel = nav
+            .iter()
+            .position(|n| *n == target)
+            .unwrap_or_else(|| self.sel.min(nav.len().saturating_sub(1)));
         // Hand focus back to the sidebar (the closed row's pane is gone).
         self.focus = Focus::Sidebar;
     }
