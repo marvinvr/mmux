@@ -296,15 +296,10 @@ fn split_command(input: &str) -> Option<(String, Vec<String>)> {
 /// The global `~/.mmux/config.yaml`: just the agents, plus a commented panel hint.
 fn build_global_yaml(agents: &[Agent]) -> String {
     let mut s = String::new();
-    s.push_str("# mmux global config (~/.mmux/config.yaml).\n");
-    s.push_str("# Agents here are available in EVERY project. A project's mmux.yaml can\n");
-    s.push_str("# override or add to them by name.\n");
-    s.push_str("# Full guide: run `mmux docs`, or visit https://mmux.org.\n\n");
+    s.push_str(config::GLOBAL_HEADER);
     s.push_str("agents:\n");
     s.push_str(&agent_items(agents));
-    s.push_str("\n# A git panel is shown automatically in every git repo. To disable it:\n");
-    s.push_str("# git-panel:\n");
-    s.push_str("#   enabled: false\n");
+    s.push_str(config::GLOBAL_GIT_PANEL_HINT);
     s
 }
 
@@ -320,35 +315,29 @@ fn build_local_yaml(
     linked: &[String],
 ) -> String {
     let mut s = String::new();
-    s.push_str("# mmux workspace config.\n");
-    s.push_str("# Run `mmux` in this directory to open (or reattach to) the session.\n");
-    s.push_str("# New here? Run `mmux docs` for the full guide, or visit https://mmux.org.\n\n");
+    s.push_str(config::PROJECT_HEADER);
+    s.push('\n');
     s.push_str(&format!("name: {}\n\n", yaml_scalar(name)));
 
     // Agents
     if agents_elsewhere {
         s.push_str("# Your agents live in the global config (~/.mmux/config.yaml). Add a\n");
         s.push_str("# project-only agent here to extend or override them by name:\n");
-        s.push_str("# agents:\n");
-        s.push_str("#   - name: Claude\n#     cmd: claude\n#     args: [\"--dangerously-skip-permissions\"]\n\n");
+        s.push_str(config::PROJECT_AGENTS_EXAMPLE);
     } else if !agents.is_empty() {
-        s.push_str("# Agents: interactive programs you spawn on demand from the sidebar.\n");
+        s.push_str(config::PROJECT_AGENTS_COMMENT);
         s.push_str("agents:\n");
         s.push_str(&agent_items(agents));
         s.push('\n');
     } else {
-        s.push_str("# Agents: interactive programs you spawn on demand from the sidebar.\n");
-        s.push_str("# agents:\n");
-        s.push_str("#   - name: Claude\n#     cmd: claude\n#     args: [\"--dangerously-skip-permissions\"]\n\n");
+        s.push_str(config::PROJECT_AGENTS_COMMENT);
+        s.push_str(config::PROJECT_AGENTS_EXAMPLE);
     }
 
     // Processes
-    s.push_str("# Processes: commands you start/stop and watch. cwd is relative to this file.\n");
-    s.push_str("# An optional `stop:` shell line (e.g. docker compose down) runs in that dir when\n");
-    s.push_str("# the process is stopped or mmux quits — handy for tearing down what it started.\n");
+    s.push_str(config::PROJECT_PROCESSES_COMMENT);
     if procs.is_empty() {
-        s.push_str("# processes:\n");
-        s.push_str("#   - name: Dev server\n#     cmd: npm\n#     args: [\"run\", \"dev\"]\n#     autostart: false\n#     # stop: docker compose down\n\n");
+        s.push_str(config::PROJECT_PROCESSES_EXAMPLE);
     } else {
         s.push_str("processes:\n");
         s.push_str(&process_items(procs));
@@ -356,13 +345,9 @@ fn build_local_yaml(
     }
 
     // Linked projects
-    s.push_str("# Linked projects: other projects to show alongside this one in the same\n");
-    s.push_str("# workspace — any directories you want grouped together (extra clones, a\n");
-    s.push_str("# related repo, a service), each its own sidebar group. One level deep,\n");
-    s.push_str("# de-duplicated by path.\n");
+    s.push_str(config::PROJECT_LINKED_COMMENT);
     if linked.is_empty() {
-        s.push_str("# linked-projects:\n");
-        s.push_str("#   - ../myproject2\n");
+        s.push_str(config::PROJECT_LINKED_EXAMPLE);
     } else {
         s.push_str("linked-projects:\n");
         for l in linked {
@@ -373,13 +358,17 @@ fn build_local_yaml(
 }
 
 /// The `- name:/cmd:/args:` block items for an agents list (indented two spaces).
-/// YAML styling is shared with the runtime config writer (see [`crate::config`]).
+/// Rendered by the runtime config writer's [`config::render_agent_item`] so the wizard
+/// and the in-TUI agent manager emit byte-identical items from one place.
 fn agent_items(agents: &[Agent]) -> String {
     let mut s = String::new();
     for a in agents {
-        s.push_str(&format!("  - name: {}\n", yaml_scalar(&a.name)));
-        s.push_str(&format!("    cmd: {}\n", yaml_scalar(&a.cmd)));
-        s.push_str(&format!("    args: {}\n", yaml_args(&a.args)));
+        let draft = config::AgentDraft {
+            name: a.name.clone(),
+            cmd: a.cmd.clone(),
+            args: a.args.clone(),
+        };
+        s.push_str(&config::render_agent_item(&draft, 2));
     }
     s
 }
