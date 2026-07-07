@@ -1,30 +1,31 @@
-//! State for the agent manager — the modal raised from the sidebar with `a`. It lists
-//! every built-in harness ([`crate::config::PRESETS`]) as a toggleable row, tracking
-//! which are configured and whether each runs in danger mode, then writes the chosen
-//! set to the **global** config (`~/.mmux/config.yaml`) — the natural home for agents
-//! you reuse across projects. Keys are driven in [`App::agentmgr_key`](super::input),
-//! it's drawn by [`view::git::render_agentmgr`](super::view), and applying it is
-//! [`App::apply_agent_manager`](super::App) (write + reload).
+//! Shared state for managing the built-in agent harnesses ([`crate::config::PRESETS`]).
+//! It lists every preset as a toggleable row — tracking which are configured, whether
+//! each runs in danger mode, and whether the command is on `PATH` — and produces the
+//! [`AgentDraft`](crate::config::AgentDraft) list to write to the **global** config
+//! (`~/.mmux/config.yaml`), the natural home for agents you reuse across projects.
 //!
-//! Non-preset agents you configured globally by hand are preserved untouched (kept in
+//! One model, three front-ends: the in-TUI popup (sidebar `a` — driven by
+//! [`agentmgr_key`](crate::app) and drawn by `view::git::render_agentmgr`), the terminal
+//! `mmux agents` picker, and the `mmux init` agent step (both in [`crate::wizard`]). Any
+//! non-preset agents configured by hand are preserved untouched (kept in
 //! [`AgentManager::custom`] and re-emitted on save); the manager only ever adds, drops,
 //! or re-flags the presets it knows.
 
 use crate::config;
 
-/// One preset's row in the manager. `args` carries the agent's current CLI args so a
-/// toggle preserves anything hand-added — danger is just the preset's flag being
-/// present or not, flipped in place by [`Row::toggle_danger`].
+/// One preset's row. `args` carries the agent's current CLI args so a toggle preserves
+/// anything hand-added — danger is just the preset's flag being present or not, flipped
+/// in place by [`Row::toggle_danger`].
 pub(crate) struct Row {
     pub name: &'static str,
     pub cmd: &'static str,
     pub blurb: &'static str,
     /// The preset's danger flag, if it has one (every shipped preset does).
     pub danger_flag: Option<&'static str>,
-    /// Whether this agent is configured in the global config (shown/spawnable).
+    /// Whether this agent is configured (shown/spawnable).
     pub enabled: bool,
     /// Whether the agent's command was found on `PATH` — a hint that enabling it will
-    /// actually launch. Probed once when the manager opens (see [`on_path`]).
+    /// actually launch. Probed once when the manager is built (see [`on_path`]).
     pub installed: bool,
     /// The agent's args — seeded from the existing config entry, else empty.
     pub args: Vec<String>,
@@ -37,7 +38,7 @@ impl Row {
     }
 
     /// Flip danger mode: add or remove the preset's flag, leaving any other args be.
-    fn toggle_danger(&mut self) {
+    pub(crate) fn toggle_danger(&mut self) {
         let Some(f) = self.danger_flag else { return };
         if self.args.iter().any(|a| a == f) {
             self.args.retain(|a| a != f);
@@ -49,7 +50,7 @@ impl Row {
 
 pub(crate) struct AgentManager {
     pub rows: Vec<Row>,
-    /// Non-preset global agents to carry through untouched on save.
+    /// Non-preset agents to carry through untouched on save.
     pub custom: Vec<config::AgentDraft>,
     pub cursor: usize,
 }
@@ -57,7 +58,8 @@ pub(crate) struct AgentManager {
 impl AgentManager {
     /// Build the manager from the presets and the *global* config's current agents: a
     /// row per preset (enabled + args seeded from the matching global entry, if any),
-    /// plus any non-preset global agents stashed in `custom` to re-emit verbatim.
+    /// plus any non-preset global agents stashed in `custom` to re-emit verbatim. Used
+    /// by the in-TUI popup and `mmux agents` (both edit an existing global config).
     pub(crate) fn new() -> AgentManager {
         let current = config::global_agents();
         let rows = config::PRESETS
@@ -83,6 +85,28 @@ impl AgentManager {
         AgentManager { rows, custom, cursor: 0 }
     }
 
+    /// A first-run manager for `mmux init`: a row per preset with **installed ones
+    /// pre-checked** (a sensible default when there's no config to read yet) and no
+    /// custom agents. Reads nothing from disk.
+    pub(crate) fn fresh() -> AgentManager {
+        let rows = config::PRESETS
+            .iter()
+            .map(|p| {
+                let installed = on_path(p.cmd);
+                Row {
+                    name: p.name,
+                    cmd: p.cmd,
+                    blurb: p.blurb,
+                    danger_flag: p.danger,
+                    enabled: installed,
+                    installed,
+                    args: Vec::new(),
+                }
+            })
+            .collect();
+        AgentManager { rows, custom: Vec::new(), cursor: 0 }
+    }
+
     pub(crate) fn move_cursor(&mut self, delta: i32) {
         let len = self.rows.len() as i32;
         if len == 0 {
@@ -100,6 +124,15 @@ impl AgentManager {
     pub(crate) fn toggle_danger(&mut self) {
         if let Some(r) = self.rows.get_mut(self.cursor) {
             r.toggle_danger();
+        }
+    }
+
+    /// Select all rows, or clear them all if every row is already selected — the
+    /// terminal picker's `a` shortcut for "all / none".
+    pub(crate) fn toggle_all(&mut self) {
+        let all_on = self.rows.iter().all(|r| r.enabled);
+        for r in &mut self.rows {
+            r.enabled = !all_on;
         }
     }
 
@@ -129,7 +162,7 @@ impl AgentManager {
 
 /// Whether `cmd` resolves to a runnable file — an explicit path checked directly, else
 /// a bare name looked up across `$PATH` (the shell's own resolution). Just a display
-/// hint in the manager, so it's best-effort: a false negative only dims a `✓`.
+/// hint, so it's best-effort: a false negative only dims a `✓`.
 fn on_path(cmd: &str) -> bool {
     use std::path::Path;
     if cmd.contains('/') {
@@ -167,6 +200,19 @@ mod tests {
         r.toggle_danger();
         assert!(!r.danger());
         assert_eq!(r.args, vec!["--keep"]); // hand-added arg survives
+    }
+
+    #[test]
+    fn toggle_all_selects_then_clears() {
+        let mut m = AgentManager {
+            rows: vec![row("A", true, &[]), row("B", false, &[])],
+            custom: vec![],
+            cursor: 0,
+        };
+        m.toggle_all(); // not all on → turn all on
+        assert!(m.rows.iter().all(|r| r.enabled));
+        m.toggle_all(); // all on → turn all off
+        assert!(m.rows.iter().all(|r| !r.enabled));
     }
 
     #[test]

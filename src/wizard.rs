@@ -19,15 +19,23 @@
 //! [`run_agents`] is a third entry point (`mmux agents`): an agents-only re-run that
 //! edits the global config in place — the command-line twin of the in-TUI agent manager.
 //!
-//! The agents offered are [`crate::config::PRESETS`], shared with the in-TUI agent
-//! manager so both stay in step. The pure half (`parse_selection` + `split_command` +
+//! The agents step is an inline, arrow-navigable checkbox picker over the built-in
+//! [`crate::agentmgr::AgentManager`] (shared with the in-TUI popup and `mmux agents`, so
+//! all three stay in step) — no full-screen takeover. The pure half (`split_command` +
 //! the `build_*` YAML formatters) is unit-tested
 //! and hand-formats commented YAML to match `config::STARTER`'s voice — we don't
 //! derive `Serialize`, which would emit `null`s and drop the comments. The
 //! interactive half is thin stdin/stdout prompting and never runs without a TTY.
 
+use crate::agentmgr::AgentManager;
 use crate::config::{self, yaml_args, yaml_scalar};
 use anyhow::{Context, Result};
+use ratatui::crossterm::{
+    cursor::MoveToPreviousLine,
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
 
@@ -106,57 +114,16 @@ pub fn run_agents() -> Result<()> {
     let Some(path) = config::global_config_target() else {
         anyhow::bail!("can't locate ~/.mmux (is HOME set?)");
     };
-    let current = config::global_agents();
-
     println!("\n{}", bold("Manage agents"));
     println!("{}", dim(&format!("Built-in AI coding harnesses, saved to {}.", pretty(&path))));
-    println!("{}", dim("A green [x] marks the ones you already have configured."));
-    for (i, p) in config::PRESETS.iter().enumerate() {
-        let on = current.iter().any(|a| a.name == p.name);
-        let mark = if on { "[x]" } else { "[ ]" };
-        println!("  {}) {} {:<9} {}", i + 1, mark, p.name, dim(&format!("— {}", p.blurb)));
+    // Seeded from the current global config (its agents pre-checked); custom agents are
+    // preserved on save. Cancel leaves the file untouched.
+    let mut m = AgentManager::new();
+    if !select_agents(&mut m)? {
+        println!("{}", dim("No changes."));
+        return Ok(());
     }
-
-    // Default the picker to whatever's already on (Enter keeps it), or all on first run.
-    let enabled: Vec<usize> = config::PRESETS
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| current.iter().any(|a| a.name == p.name))
-        .map(|(i, _)| i + 1)
-        .collect();
-    let default = if enabled.is_empty() {
-        "all".to_string()
-    } else {
-        enabled.iter().map(usize::to_string).collect::<Vec<_>>().join(",")
-    };
-    let picked = ask("Which agents? (numbers e.g. 1,3 · 'all' · 'none')", Some(&default))?;
-    let idxs = parse_selection(&picked);
-
-    // Danger defaults to on when a currently-configured preset already carries its flag,
-    // so re-running and pressing Enter doesn't silently drop danger mode.
-    let current_danger = config::PRESETS.iter().any(|p| {
-        p.danger.is_some_and(|f| {
-            current.iter().any(|a| a.name == p.name && a.args.iter().any(|x| x == f))
-        })
-    });
-    let danger = if idxs.is_empty() {
-        false
-    } else {
-        confirm("Run them in danger mode (skip permission/approval prompts)?", current_danger)?
-    };
-
-    // Chosen presets, then any hand-added (non-preset) agents preserved verbatim.
-    let mut drafts: Vec<config::AgentDraft> = idxs
-        .iter()
-        .map(|&i| {
-            let p = &config::PRESETS[i];
-            config::AgentDraft { name: p.name.to_string(), cmd: p.cmd.to_string(), args: p.danger_args(danger) }
-        })
-        .collect();
-    for a in current.into_iter().filter(|a| config::preset_by_name(&a.name).is_none()) {
-        drafts.push(config::AgentDraft { name: a.name, cmd: a.cmd, args: a.args });
-    }
-
+    let drafts = m.drafts();
     config::write_agents(&path, &drafts).with_context(|| format!("writing {}", pretty(&path)))?;
     println!("\n{}", bold("Done."));
     println!("  • {} {}", pretty(&path), dim(&format!("({} agent(s) configured)", drafts.len())));
@@ -164,61 +131,103 @@ pub fn run_agents() -> Result<()> {
     Ok(())
 }
 
+// ── interactive agent picker ─────────────────────────────────────────────────
+//
+// An inline checkbox list, NOT a full-screen takeover: we raw-mode the terminal, print
+// the rows in place, and redraw just those N lines on each keypress (cursor up N →
+// clear-to-end → reprint). The surrounding prompt output (the "Agents" header, earlier
+// answers) stays put in the scrollback. Shared by `mmux init` and `mmux agents`.
+
+/// Drive an [`AgentManager`] as an interactive checkbox picker in the terminal. ↑/↓ or
+/// `j`/`k` move, `space` toggles an agent, `d` flips its danger flag, `a` selects
+/// all/none, ⏎ confirms, Esc/`q`/Ctrl-C cancels. Returns whether the user confirmed (⏎)
+/// rather than cancelled. Raw mode is always restored before returning, even on error.
+fn select_agents(m: &mut AgentManager) -> Result<bool> {
+    if m.rows.is_empty() {
+        return Ok(true);
+    }
+    // These two lines are static context above the redrawn rows.
+    println!("{}", dim("↑↓ move · space toggle · d danger · a all · ⏎ done · esc skip"));
+    println!("{}", dim("A green ✓ marks the harnesses found on your PATH."));
+    let height = m.rows.len() as u16;
+    let mut out = io::stdout();
+    enable_raw_mode()?;
+    let result = agent_select_loop(&mut out, m, height);
+    let _ = disable_raw_mode();
+    println!(); // land the cursor below the (final, still-visible) rows
+    result
+}
+
+/// The picker's key loop: draw the rows, read one key, apply it, repeat until the user
+/// confirms or cancels. The final rows stay on screen showing the chosen state.
+fn agent_select_loop(out: &mut io::Stdout, m: &mut AgentManager, height: u16) -> Result<bool> {
+    let mut first = true;
+    loop {
+        draw_agent_rows(out, m, height, first)?;
+        first = false;
+        match event::read()? {
+            Event::Key(k) if k.kind == KeyEventKind::Press => match (k.code, k.modifiers) {
+                (KeyCode::Up, _) | (KeyCode::Char('k'), _) => m.move_cursor(-1),
+                (KeyCode::Down, _) | (KeyCode::Char('j'), _) => m.move_cursor(1),
+                (KeyCode::Char(' '), _) => m.toggle_enabled(),
+                (KeyCode::Char('d'), _) => m.toggle_danger(),
+                (KeyCode::Char('a'), _) => m.toggle_all(),
+                (KeyCode::Enter, _) => return Ok(true),
+                (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => return Ok(false),
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(false),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+/// Redraw the `height` checkbox rows in place: on every pass but the first, step the
+/// cursor back up over them and clear to the end, then reprint. Each row is
+/// `‹cursor› [x] ✓ Name   danger  blurb`, coloured by state.
+fn draw_agent_rows(out: &mut io::Stdout, m: &AgentManager, height: u16, first: bool) -> Result<()> {
+    if !first {
+        execute!(out, MoveToPreviousLine(height))?;
+    }
+    execute!(out, Clear(ClearType::FromCursorDown))?;
+    for (i, r) in m.rows.iter().enumerate() {
+        let selected = i == m.cursor;
+        let marker = if selected { "› " } else { "  " };
+        let checkbox = if r.enabled { paint(GREEN, "[x]") } else { dim("[ ]") };
+        let install = if r.installed { paint(GREEN, "✓") } else { " ".to_string() };
+        let name = format!("{:<10}", r.name);
+        let name = if selected {
+            paint(CYAN_BOLD, &name)
+        } else if r.enabled {
+            name
+        } else {
+            dim(&name)
+        };
+        // Fixed-width danger cell so the blurbs line up whether or not it's shown.
+        let danger = if r.danger() { paint(YELLOW, "danger") } else { "      ".to_string() };
+        let blurb = dim(&format!("  {}", r.blurb));
+        // Raw mode: rows need an explicit carriage-return + line-feed.
+        write!(out, "{marker}{checkbox} {install} {name} {danger}{blurb}\r\n")?;
+    }
+    out.flush()?;
+    Ok(())
+}
+
 // ── interactive sections ────────────────────────────────────────────────────
 
 fn ask_agents() -> Result<Vec<Agent>> {
     header("Agents");
-    println!("{}", dim("Interactive AI coding agents you spawn from the sidebar. Pick any —"));
-    println!("{}", dim("you can add or remove them later from the sidebar (press a)."));
-    for (i, p) in config::PRESETS.iter().enumerate() {
-        println!("  {}) {:<9} {}", i + 1, p.name, dim(&format!("— {}", p.blurb)));
+    println!("{}", dim("Interactive AI coding agents you spawn from the sidebar."));
+    // A fresh picker with installed harnesses pre-checked (see AgentManager::fresh).
+    let mut m = AgentManager::fresh();
+    if !select_agents(&mut m)? {
+        return Ok(Vec::new()); // esc → skip agents for now (add them later with `a`)
     }
-    let picked = ask("Which agents? (numbers e.g. 1,3 · 'all' · 'none')", Some("all"))?;
-    let idxs = parse_selection(&picked);
-    if idxs.is_empty() {
-        return Ok(Vec::new());
-    }
-    // One question for the whole set — the same danger flag is applied to each chosen
-    // agent (each preset knows its own flag).
-    let danger = confirm("Run them in danger mode (skip permission/approval prompts)?", false)?;
-    let out = idxs
-        .iter()
-        .map(|&i| {
-            let p = &config::PRESETS[i];
-            Agent { name: p.name.to_string(), cmd: p.cmd.to_string(), args: p.danger_args(danger) }
-        })
-        .collect();
-    Ok(out)
-}
-
-/// Parse the agent picker's answer into preset indices (0-based, de-duplicated, in the
-/// order typed). Accepts comma/space-separated 1-based numbers *or* preset names;
-/// empty/`all`/`*` selects every preset, `none`/`skip`/`-` selects none. Unknown or
-/// out-of-range tokens are ignored. Pure — unit-tested.
-fn parse_selection(input: &str) -> Vec<usize> {
-    let t = input.trim();
-    let lower = t.to_ascii_lowercase();
-    let n = config::PRESETS.len();
-    if t.is_empty() || lower == "all" || lower == "*" {
-        return (0..n).collect();
-    }
-    if lower == "none" || lower == "skip" || lower == "-" {
-        return Vec::new();
-    }
-    let mut out: Vec<usize> = Vec::new();
-    for tok in t.split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()) {
-        let idx = tok
-            .parse::<usize>()
-            .ok()
-            .and_then(|num| num.checked_sub(1))
-            .or_else(|| config::PRESETS.iter().position(|p| p.name.eq_ignore_ascii_case(tok)));
-        if let Some(i) = idx {
-            if i < n && !out.contains(&i) {
-                out.push(i);
-            }
-        }
-    }
-    out
+    Ok(m
+        .drafts()
+        .into_iter()
+        .map(|d| Agent { name: d.name, cmd: d.cmd, args: d.args })
+        .collect())
 }
 
 fn ask_processes() -> Result<Vec<Process>> {
@@ -527,6 +536,16 @@ fn dim(text: &str) -> String {
     if color() { format!("\x1b[2m{text}\x1b[0m") } else { text.to_string() }
 }
 
+/// SGR colour codes for the interactive picker rows.
+const GREEN: &str = "32";
+const YELLOW: &str = "33";
+const CYAN_BOLD: &str = "1;36";
+
+/// Wrap `text` in the SGR `code` (only when stdout is a terminal), for the picker.
+fn paint(code: &str, text: &str) -> String {
+    if color() { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_string() }
+}
+
 fn header(text: &str) {
     println!("\n{}", bold(text));
 }
@@ -538,25 +557,6 @@ mod tests {
 
     fn agent(name: &str, cmd: &str, args: &[&str]) -> Agent {
         Agent { name: name.into(), cmd: cmd.into(), args: args.iter().map(|s| s.to_string()).collect() }
-    }
-
-    #[test]
-    fn parse_selection_reads_numbers_names_and_keywords() {
-        let n = crate::config::PRESETS.len();
-        // Empty / all / * → everything.
-        assert_eq!(parse_selection(""), (0..n).collect::<Vec<_>>());
-        assert_eq!(parse_selection("all"), (0..n).collect::<Vec<_>>());
-        // none / skip → nothing.
-        assert!(parse_selection("none").is_empty());
-        assert!(parse_selection("skip").is_empty());
-        // Numbers are 1-based; order is preserved and duplicates dropped.
-        assert_eq!(parse_selection("1,3"), vec![0, 2]);
-        assert_eq!(parse_selection("3 1 3"), vec![2, 0]);
-        // Names (case-insensitive) resolve to their preset index.
-        assert_eq!(parse_selection("claude"), vec![0]);
-        assert_eq!(parse_selection("Codex, Claude"), vec![1, 0]);
-        // Unknown / out-of-range tokens are ignored, not errors.
-        assert!(parse_selection("99, bogus").is_empty());
     }
 
     #[test]

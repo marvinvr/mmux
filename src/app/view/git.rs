@@ -9,7 +9,7 @@
 //! wrapper that owns the per-frame hit [`Regions`](super::Regions) lives in
 //! [`super::pane`] and stores the row maps [`render_git`] returns.
 
-use crate::app::agentmgr::AgentManager;
+use crate::agentmgr::AgentManager;
 use crate::app::git::{GitPanel, Overlay, PromptKind, Section};
 use crate::app::UpdateState;
 use crate::app::linkbrowse::{DirEntry, LinkBrowser, Preview};

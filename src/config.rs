@@ -102,17 +102,6 @@ pub struct AgentPreset {
     pub blurb: &'static str,
 }
 
-impl AgentPreset {
-    /// The danger flag as a one-element args vector when `danger` is on, else empty —
-    /// the args this preset contributes to its [`AgentDraft`].
-    pub fn danger_args(&self, danger: bool) -> Vec<String> {
-        match (danger, self.danger) {
-            (true, Some(flag)) => vec![flag.to_string()],
-            _ => Vec::new(),
-        }
-    }
-}
-
 /// The agent harnesses mmux offers out of the box. Every one ships a documented
 /// danger-mode flag; add new harnesses here and they appear in both the wizard and
 /// the in-TUI agent manager automatically. Flags verified against each tool's CLI.
@@ -1480,13 +1469,13 @@ mod tests {
     }
 
     #[test]
-    fn preset_danger_args_toggle() {
+    fn presets_are_well_formed() {
         let claude = preset_by_name("Claude").unwrap();
-        assert_eq!(claude.danger_args(true), vec!["--dangerously-skip-permissions"]);
-        assert!(claude.danger_args(false).is_empty());
+        assert_eq!(claude.cmd, "claude");
+        assert_eq!(claude.danger, Some("--dangerously-skip-permissions"));
         assert!(preset_by_name("Nope").is_none());
-        // Every shipped preset has a danger flag.
-        assert!(PRESETS.iter().all(|p| p.danger.is_some()));
+        // Every shipped preset has a command and a danger flag.
+        assert!(PRESETS.iter().all(|p| !p.cmd.is_empty() && p.danger.is_some()));
     }
 
     #[test]

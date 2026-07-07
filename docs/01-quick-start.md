@@ -25,11 +25,12 @@ mmux init
 ```
 
 `mmux init` is an interactive wizard: it offers the built-in agent presets — Claude, Codex,
-Gemini, Amp, opencode, and Grok — as a multi-select with one optional "danger" mode question (skip
-permission prompts) applied to all you pick, asks for any start commands you want to watch, and
-lets you list other projects you want in the same workspace as [linked projects](04-configuration.md#linked-projects).
-On a machine with no global config yet, your agents are saved to `~/.mmux/config.yaml` so they
-are available in every project; the rest goes in this project's `mmux.yaml`.
+Gemini, Amp, opencode, and Grok — as an **inline checkbox picker** you arrow through (`space` to
+toggle, `d` to flip danger mode, `⏎` to confirm; installed ones start checked), asks for any start
+commands you want to watch, and lets you list other projects you want in the same workspace as
+[linked projects](04-configuration.md#linked-projects). On a machine with no global config yet,
+your agents are saved to `~/.mmux/config.yaml` so they are available in every project; the rest
+goes in this project's `mmux.yaml`.
 
 To change your agents later, run **`mmux agents`** (the same picker, agents only) or press **`a`**
 in the sidebar — both write to the global config and take effect on the next open / reload.

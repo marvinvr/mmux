@@ -758,8 +758,8 @@ pub(crate) enum Overlay {
     /// The "Link another project" directory browser (state in [`super::linkbrowse`]).
     LinkProject(super::linkbrowse::LinkBrowser),
     /// The agent manager (sidebar `a`): toggle the built-in harnesses on/off and flip
-    /// danger mode, then write them to the global config (state in [`super::agentmgr`]).
-    Agents(super::agentmgr::AgentManager),
+    /// danger mode, then write them to the global config (state in [`crate::agentmgr`]).
+    Agents(crate::agentmgr::AgentManager),
 }
 
 #[derive(Clone, Copy)]
@@ -848,7 +848,7 @@ impl Overlay {
 
     /// The agent manager, seeded from the presets + the current global config.
     pub(crate) fn agents() -> Overlay {
-        Overlay::Agents(super::agentmgr::AgentManager::new())
+        Overlay::Agents(crate::agentmgr::AgentManager::new())
     }
 }
 

@@ -1,4 +1,5 @@
 mod agent;
+mod agentmgr;
 mod app;
 mod clipboard;
 mod cli;

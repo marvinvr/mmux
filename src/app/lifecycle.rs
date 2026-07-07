@@ -86,7 +86,7 @@ impl App {
     /// sidebar reflects them immediately (new launchers appear, dropped ones vanish; a
     /// project that also defines an agent still wins the merge). A write failure is
     /// flashed and the overlay simply closes. Called from [`agentmgr_key`](super::input).
-    pub(crate) fn apply_agent_manager(&mut self, m: &super::agentmgr::AgentManager) {
+    pub(crate) fn apply_agent_manager(&mut self, m: &crate::agentmgr::AgentManager) {
         let Some(path) = config::global_config_target() else {
             self.flash = Some(("can't locate ~/.mmux (is HOME set?)".into(), Instant::now()));
             return;

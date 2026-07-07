@@ -135,10 +135,10 @@ session goes away.
 **Built-in presets.** mmux ships presets for the common harnesses — **Claude** (`claude`),
 **Codex** (`codex`), **Gemini** (`gemini`), **Amp** (`amp`), **opencode** (`opencode`), and
 **Grok** (`grok`, xAI's Grok Build) — each with the flag that opts it out of permission/approval
-prompts ("danger mode"). The
-[`mmux init`](01-quick-start.md#2-set-up-a-project) wizard offers them as a multi-select and asks
-once whether to run them in danger mode; whatever you pick seeds your **global** config so it's
-available everywhere.
+prompts ("danger mode"). The [`mmux init`](01-quick-start.md#2-set-up-a-project) wizard offers them
+as an **inline checkbox picker** — arrow keys to move, `space` to toggle, `d` to flip danger mode,
+`a` for all/none, `⏎` to confirm (installed harnesses start pre-checked) — and whatever you pick
+seeds your **global** config so it's available everywhere.
 
 **Managing agents.** Two ways, both editing the **global** `~/.mmux/config.yaml` (the natural home
 for agents you reuse across projects) and preserving any non-preset agents you added by hand:
@@ -147,8 +147,9 @@ for agents you reuse across projects) and preserving any non-preset agents you a
   a checkbox, a `danger` tag, and a green `✓` on the ones found on your `PATH` (purely a hint — you
   can enable any of them). `space` toggles an agent on/off, `d` flips its danger flag, `⏎` saves and
   [reloads](#live-reload) so the sidebar updates immediately.
-- **From the terminal:** run **`mmux agents`** — the same picker as the setup wizard, agents only.
-  It takes effect the next time you open mmux (or press `R` inside it).
+- **From the terminal:** run **`mmux agents`** — the same inline checkbox picker as the setup
+  wizard (arrow keys · `space` · `d` · `a` · `⏎`), agents only. It takes effect the next time you
+  open mmux (or press `R` inside it).
 
 ### Process
 
