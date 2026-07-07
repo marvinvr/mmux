@@ -45,6 +45,34 @@ pub(crate) struct JobDone {
     pub result: Result<String, String>,
 }
 
+/// The two backgrounded remote ops. One place ties each to its busy-label, its
+/// `JobDone.verb` tag, and the `git` fn it runs — the string used to be spelled out
+/// separately in `git_start` and `start_job`.
+pub(crate) enum RemoteOp {
+    Pull,
+    Push,
+}
+impl RemoteOp {
+    fn label(&self) -> &'static str {
+        match self {
+            RemoteOp::Pull => "pulling…",
+            RemoteOp::Push => "pushing…",
+        }
+    }
+    fn verb(&self) -> &'static str {
+        match self {
+            RemoteOp::Pull => "pull",
+            RemoteOp::Push => "push",
+        }
+    }
+    fn run(&self, dir: &std::path::Path) -> Result<String, String> {
+        match self {
+            RemoteOp::Pull => git::pull(dir),
+            RemoteOp::Push => git::push(dir),
+        }
+    }
+}
+
 pub(crate) struct GitPanel {
     pub dir: PathBuf,
     pub branch: String,
@@ -262,15 +290,15 @@ impl GitPanel {
 
     /// Kick off a background pull/push. A no-op if one is already running, so a
     /// double-tap can't launch two.
-    pub(crate) fn start_job(&mut self, verb: &'static str, f: fn(&Path) -> Result<String, String>) {
+    pub(crate) fn start_job(&mut self, op: RemoteOp) {
         if self.busy.is_some() {
             return;
         }
-        self.busy = Some(if verb == "pull" { "pulling…" } else { "pushing…" });
+        self.busy = Some(op.label());
         let tx = self.tx.clone();
         let dir = self.dir.clone();
         thread::spawn(move || {
-            let _ = tx.send(JobDone { verb, result: f(&dir) });
+            let _ = tx.send(JobDone { verb: op.verb(), result: op.run(&dir) });
         });
     }
 
@@ -551,13 +579,8 @@ fn hunk_new_start(header: &str) -> Option<u32> {
 
 /// The number of decimal digits in `n` (so `0` and `9` are one wide, `10` two).
 fn digits(n: u32) -> usize {
-    let mut n = n / 10;
-    let mut d = 1;
-    while n > 0 {
-        n /= 10;
-        d += 1;
-    }
-    d
+    // `checked_ilog10` is `None` for 0; the `unwrap_or(0)` maps that to a single digit.
+    n.checked_ilog10().unwrap_or(0) as usize + 1
 }
 
 /// The image extensions we inline-preview — kept in step with the decoders enabled on
@@ -895,15 +918,13 @@ impl App {
     }
 
     pub(crate) fn git_toggle_stage(&mut self) {
-        if let Some(Err(e)) = self.active_git_mut().map(|g| g.toggle_selected()) {
-            self.flash_git(first_line(&e));
-        }
+        let r = self.active_git_mut().map(|g| g.toggle_selected());
+        self.flash_err(r);
     }
 
     pub(crate) fn git_toggle_all(&mut self) {
-        if let Some(Err(e)) = self.active_git_mut().map(|g| g.toggle_all()) {
-            self.flash_git(first_line(&e));
-        }
+        let r = self.active_git_mut().map(|g| g.toggle_all());
+        self.flash_err(r);
     }
 
     /// Switch to the branch under the Branches cursor (no-op if already current).
@@ -920,18 +941,17 @@ impl App {
 
     pub(crate) fn git_switch(&mut self, name: &str) {
         match self.active_git_mut().map(|g| g.switch(name)) {
-            Some(Ok(())) => self.flash_git(format!("switched to {name}")),
-            Some(Err(e)) => self.flash_git(first_line(&e)),
+            Some(Ok(())) => self.flash(format!("switched to {name}")),
+            Some(Err(e)) => self.flash(first_line(&e)),
             _ => {}
         }
     }
 
-    /// Kick off a background pull (`verb == "pull"`) or push.
+    /// Kick off a background pull (`verb == "pull"`) or push (any other value).
     pub(crate) fn git_start(&mut self, verb: &'static str) {
-        let f: fn(&Path) -> Result<String, String> =
-            if verb == "pull" { git::pull } else { git::push };
+        let op = if verb == "pull" { RemoteOp::Pull } else { RemoteOp::Push };
         if let Some(g) = self.active_git_mut() {
-            g.start_job(verb, f);
+            g.start_job(op);
         }
     }
 
@@ -950,11 +970,8 @@ impl App {
 
     /// Stash everything (recoverable with `git stash pop`), flashing the outcome.
     pub(crate) fn git_stash(&mut self) {
-        match self.active_git_mut().map(|g| g.stash()) {
-            Some(Ok(s)) => self.flash_git(first_line(&s)),
-            Some(Err(e)) => self.flash_git(first_line(&e)),
-            None => {}
-        }
+        let r = self.active_git_mut().map(|g| g.stash());
+        self.flash_result(r);
     }
 
     pub(crate) fn git_commit_prompt(&mut self) {
@@ -977,15 +994,15 @@ impl App {
                     // Commit landed — chain a background push (its result overwrites this
                     // flash from `tick` when the network op returns).
                     self.git_start("push");
-                    self.flash_git(format!("{} · pushing…", first_line(&s)));
+                    self.flash(format!("{} · pushing…", first_line(&s)));
                 }
-                Some(Ok(s)) => self.flash_git(first_line(&s)),
-                Some(Err(e)) => self.flash_git(first_line(&e)),
+                Some(Ok(s)) => self.flash(first_line(&s)),
+                Some(Err(e)) => self.flash(first_line(&e)),
                 _ => {}
             },
             PromptKind::NewBranch => match self.active_git_mut().map(|g| g.create_branch(&buf)) {
-                Some(Ok(())) => self.flash_git(format!("switched to {buf}")),
-                Some(Err(e)) => self.flash_git(first_line(&e)),
+                Some(Ok(())) => self.flash(format!("switched to {buf}")),
+                Some(Err(e)) => self.flash(first_line(&e)),
                 _ => {}
             },
         }
@@ -995,29 +1012,39 @@ impl App {
     pub(crate) fn overlay_confirm(&mut self, action: Confirmed) {
         match action {
             Confirmed::Discard { path } => match self.active_git_mut().map(|g| g.discard(&path)) {
-                Some(Ok(())) => self.flash_git(format!("discarded {path}")),
-                Some(Err(e)) => self.flash_git(first_line(&e)),
+                Some(Ok(())) => self.flash(format!("discarded {path}")),
+                Some(Err(e)) => self.flash(first_line(&e)),
                 None => {}
             },
             Confirmed::Quit => self.should_quit = true,
             Confirmed::DeleteProcess { project, name } => self.delete_process(project, &name),
             Confirmed::CloseSession { project, name } => self.close_named_session(project, &name),
-            Confirmed::Revert { hash } => match self.active_git_mut().map(|g| g.revert(&hash)) {
-                Some(Ok(s)) => self.flash_git(first_line(&s)),
-                Some(Err(e)) => self.flash_git(first_line(&e)),
-                None => {}
-            },
-            Confirmed::SoftReset { hash } => match self.active_git_mut().map(|g| g.soft_reset(&hash)) {
-                Some(Ok(s)) => self.flash_git(first_line(&s)),
-                Some(Err(e)) => self.flash_git(first_line(&e)),
-                None => {}
-            },
+            Confirmed::Revert { hash } => {
+                let r = self.active_git_mut().map(|g| g.revert(&hash));
+                self.flash_result(r);
+            }
+            Confirmed::SoftReset { hash } => {
+                let r = self.active_git_mut().map(|g| g.soft_reset(&hash));
+                self.flash_result(r);
+            }
             Confirmed::BrewUpgrade { version } => self.start_brew_upgrade(version),
         }
     }
 
-    fn flash_git(&mut self, msg: String) {
-        self.flash = Some((msg, Instant::now()));
+    /// Flash the first line of an active-panel op's result (Ok or Err alike). No-op when
+    /// there's no active panel. Use for ops whose Ok payload is itself the message to show.
+    fn flash_result(&mut self, r: Option<Result<String, String>>) {
+        if let Some(res) = r {
+            let (Ok(s) | Err(s)) = res;
+            self.flash(first_line(&s));
+        }
+    }
+
+    /// Flash only on error (silent on success). For ops returning `Result<(), String>`.
+    fn flash_err(&mut self, r: Option<Result<(), String>>) {
+        if let Some(Err(e)) = r {
+            self.flash(first_line(&e));
+        }
     }
 
     /// Open (or replace) the centre-pane diff preview for the file under the Changes
@@ -1059,7 +1086,7 @@ impl App {
             .map(|c| if full { c.hash.clone() } else { c.short.clone() });
         if let Some(hash) = hash {
             crate::clipboard::copy(&hash);
-            self.flash_git(format!("copied {hash}"));
+            self.flash(format!("copied {hash}"));
         }
     }
 
@@ -1074,9 +1101,9 @@ impl App {
         match msg {
             Some(Ok(m)) if !m.is_empty() => {
                 crate::clipboard::copy(&m);
-                self.flash_git("copied commit message".into());
+                self.flash("copied commit message");
             }
-            Some(Err(e)) => self.flash_git(first_line(&e)),
+            Some(Err(e)) => self.flash(first_line(&e)),
             _ => {}
         }
     }

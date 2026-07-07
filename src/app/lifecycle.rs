@@ -76,7 +76,7 @@ impl App {
     /// than opening a manager that has nowhere to save.
     pub(crate) fn open_agent_manager(&mut self) {
         if config::global_config_target().is_none() {
-            self.flash = Some(("can't locate ~/.mmux (is HOME set?)".into(), Instant::now()));
+            self.flash("can't locate ~/.mmux (is HOME set?)");
             return;
         }
         self.overlay = Some(Overlay::agents());
@@ -88,16 +88,16 @@ impl App {
     /// flashed and the overlay simply closes. Called from [`agentmgr_key`](super::input).
     pub(crate) fn apply_agent_manager(&mut self, m: &crate::agentmgr::AgentManager) {
         let Some(path) = config::global_config_target() else {
-            self.flash = Some(("can't locate ~/.mmux (is HOME set?)".into(), Instant::now()));
+            self.flash("can't locate ~/.mmux (is HOME set?)");
             return;
         };
         let drafts = m.drafts();
         if let Err(e) = config::write_agents(&path, &drafts) {
-            self.flash = Some((format!("couldn't save agents — {e}"), Instant::now()));
+            self.flash(format!("couldn't save agents — {e}"));
             return;
         }
         self.reload();
-        self.flash = Some((format!("agents updated — {} configured", drafts.len()), Instant::now()));
+        self.flash(format!("agents updated — {} configured", drafts.len()));
         self.focus = Focus::Sidebar;
     }
 
@@ -126,13 +126,13 @@ impl App {
             None => crate::config::append_process(&path, &draft),
         };
         if let Err(e) = res {
-            self.flash = Some((format!("couldn't save process — {e}"), Instant::now()));
+            self.flash(format!("couldn't save process — {e}"));
             return;
         }
         // Pull the edited/new entry into the live session list, then select it.
         self.reload();
         let verb = if form.edit.is_some() { "updated" } else { "added" };
-        self.flash = Some((format!("{verb} process “{}”", draft.name), Instant::now()));
+        self.flash(format!("{verb} process “{}”", draft.name));
         if let Some(i) = self.sessions.iter().position(|s| {
             s.project == pi && s.kind == Kind::Process && s.name == draft.name
         }) {
@@ -194,11 +194,11 @@ impl App {
         }
         let path = crate::config::project_config_path(&self.projects[pi].cfg.dir);
         if let Err(e) = crate::config::remove_process(&path, name) {
-            self.flash = Some((format!("couldn't delete — {e}"), Instant::now()));
+            self.flash(format!("couldn't delete — {e}"));
             return;
         }
         self.reload();
-        self.flash = Some((format!("deleted “{name}”"), Instant::now()));
+        self.flash(format!("deleted “{name}”"));
         self.focus = Focus::Sidebar;
     }
 
@@ -213,10 +213,7 @@ impl App {
     /// the project cap is reached. Driven by [`linkbrowse_key`](super::input).
     pub(crate) fn open_link_browser(&mut self) {
         if self.projects.len() >= config::MAX_PROJECTS {
-            self.flash = Some((
-                format!("workspace is capped at {} projects", config::MAX_PROJECTS),
-                Instant::now(),
-            ));
+            self.flash(format!("workspace is capped at {} projects", config::MAX_PROJECTS));
             return;
         }
         let root = self.projects[0].cfg.dir.clone();
@@ -237,15 +234,12 @@ impl App {
     pub(crate) fn link_project(&mut self, dir: PathBuf) {
         self.overlay = None;
         if self.projects.len() >= config::MAX_PROJECTS {
-            self.flash = Some((
-                format!("workspace is capped at {} projects", config::MAX_PROJECTS),
-                Instant::now(),
-            ));
+            self.flash(format!("workspace is capped at {} projects", config::MAX_PROJECTS));
             return;
         }
         let canon = config::canonical(&dir);
         if self.projects.iter().any(|p| config::canonical(&p.cfg.dir) == canon) {
-            self.flash = Some(("already in this workspace".into(), Instant::now()));
+            self.flash("already in this workspace");
             return;
         }
         // Its effective config = the global config + its own mmux.yaml. A directory
@@ -254,10 +248,7 @@ impl App {
         let mut cfg = match Config::load(&canon) {
             Ok(c) => c,
             Err(e) => {
-                self.flash = Some((
-                    format!("couldn't link — {}", first_line(&format!("{e:#}"))),
-                    Instant::now(),
-                ));
+                self.flash(format!("couldn't link — {}", first_line(&format!("{e:#}"))));
                 return;
             }
         };
@@ -268,7 +259,7 @@ impl App {
         let rel = config::relative_path(&config::canonical(&root_dir), &canon);
         let path = config::project_config_path(&root_dir);
         if let Err(e) = config::append_linked_project(&path, &rel) {
-            self.flash = Some((format!("couldn't write the link — {e}"), Instant::now()));
+            self.flash(format!("couldn't write the link — {e}"));
             return;
         }
 
@@ -286,7 +277,7 @@ impl App {
         // Jump the cursor into the freshly-linked project so the user sees it land.
         self.focus_project(pi);
         self.focus = Focus::Sidebar;
-        self.flash = Some((format!("linked {rel}"), Instant::now()));
+        self.flash(format!("linked {rel}"));
     }
 
     /// Open `rel` (relative to project `pi`'s dir) in the user's editor as a new
@@ -430,7 +421,7 @@ impl App {
         thread::spawn(move || {
             let _ = cmd.status();
         });
-        self.flash = Some((format!("running stop command for “{name}”"), Instant::now()));
+        self.flash(format!("running stop command for “{name}”"));
     }
 
     /// On quit, run every still-running process's teardown command and **wait** for them,
@@ -746,6 +737,6 @@ impl App {
         } else {
             parts.join(", ")
         };
-        self.flash = Some((format!("reloaded — {summary}"), Instant::now()));
+        self.flash(format!("reloaded — {summary}"));
     }
 }

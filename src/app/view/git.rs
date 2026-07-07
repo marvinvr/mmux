@@ -342,11 +342,6 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
     }
 }
 
-/// The "About mmux" card: the version, the project's home + source links (a quiet
-/// backlink to the author), and a live self-update status line with the keys to check
-/// or apply. `can_update` is the synchronous permitted-gate; the Homebrew-managed test
-/// is the worker's job, so a permitted build reads as up to date until a check says
-/// otherwise. Routed here from [`super::App::draw`] so it can see `self.update`.
 /// The mmux mark as half-block pixel art — the same green tile (beveled, with the
 /// `m` knocked out) as the web favicon, painted 16 px square into 16 cols × 8 rows
 /// via the `▀`/`▄` half-block glyphs (so the cells read square). `pad` leading
@@ -697,9 +692,6 @@ fn preview_lines(p: Option<&Preview>) -> Vec<Line<'static>> {
     ]
 }
 
-/// The "+ New Process" guided form: a "Step N of 4" header, the fields already
-/// entered (dim, for context), the active input or the review screen, an optional
-/// validation warning, and a key hint pinned to the bottom row.
 /// The agent manager: one checkbox row per built-in harness (enabled + a danger tag),
 /// its blurb dimmed alongside, with the cursor row marked. Toggled/saved in
 /// [`agentmgr_key`](crate::app::input); the write targets the global config.
@@ -771,6 +763,9 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
     );
 }
 
+/// The "+ New Process" guided form: a "Step N of 4" header, the fields already
+/// entered (dim, for context), the active input or the review screen, an optional
+/// validation warning, and a key hint pinned to the bottom row.
 fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let w = area.width.saturating_sub(6).clamp(34, 72);
     let h = 13u16.min(area.height);

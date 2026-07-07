@@ -675,7 +675,7 @@ impl App {
     /// card and pane-content links share one path.
     fn open_url(&mut self, url: &str) {
         crate::open::url(url);
-        self.flash = Some((format!("opened {url}"), std::time::Instant::now()));
+        self.flash(format!("opened {url}"));
     }
 
     /// Run the action behind a clicked footer button. Each mirrors the matching
@@ -875,7 +875,7 @@ impl App {
         }
         let n = text.chars().count();
         crate::clipboard::copy(&text);
-        self.flash = Some((format!("copied {n} chars"), std::time::Instant::now()));
+        self.flash(format!("copied {n} chars"));
     }
 
     /// One auto-scroll step in the armed direction, re-pinning the drag head to the
@@ -935,7 +935,7 @@ impl App {
         }
         let n = text.chars().count();
         crate::clipboard::copy(&text);
-        self.flash = Some((format!("copied {n} chars"), std::time::Instant::now()));
+        self.flash(format!("copied {n} chars"));
     }
 
     fn on_sidebar_click(&mut self, row: u16) {

@@ -279,6 +279,12 @@ impl App {
         &self.projects[0].cfg
     }
 
+    /// Set the transient footer note (shown for a few seconds). One place so the
+    /// `Instant::now()` stamping isn't open-coded at every call site.
+    fn flash(&mut self, msg: impl Into<String>) {
+        self.flash = Some((msg.into(), Instant::now()));
+    }
+
     /// Per-loop housekeeping. First follow the selection — the project of the
     /// selected row becomes active, so its git panel is the one shown. Then drain
     /// any finished background pull/push jobs (flashing the result) and give the
@@ -312,7 +318,7 @@ impl App {
                 Ok(s) => s,
                 Err(e) => format!("{} failed — {}", j.verb, first_line(&e)),
             };
-            self.flash = Some((msg, Instant::now()));
+            self.flash(msg);
         }
         // Keep the visible panel fresh (throttled).
         let active = self.active;
@@ -348,10 +354,7 @@ impl App {
                 },
                 // Installed and ready: light the badge and announce it once via the flash.
                 UpdateMsg::Installed(v) => {
-                    self.flash = Some((
-                        format!("update {v} ready — press U or click ↻ to restart"),
-                        Instant::now(),
-                    ));
+                    self.flash(format!("update {v} ready — press U or click ↻ to restart"));
                     self.update = UpdateState::Ready(v);
                 }
                 // A check came back current, or a step failed (network/brew): fall back
@@ -365,10 +368,7 @@ impl App {
                 }
                 UpdateMsg::Failed(reason) => {
                     if matches!(self.update, UpdateState::Installing(_)) {
-                        self.flash = Some((
-                            format!("update failed — {reason}; will retry later"),
-                            Instant::now(),
-                        ));
+                        self.flash(format!("update failed — {reason}; will retry later"));
                     }
                     if !matches!(self.update, UpdateState::Ready(_)) {
                         self.update = UpdateState::Idle;
