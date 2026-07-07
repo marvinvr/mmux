@@ -78,6 +78,8 @@ pub(crate) enum FooterAction {
     ApplyUpdate,
     /// Open the "About mmux" card (version + links + manual update check/apply).
     About,
+    /// Open the agent manager popup (add/remove harnesses, toggle danger mode).
+    ManageAgents,
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
@@ -395,6 +397,7 @@ impl App {
                         v.push(Seg::btn("r", "restart", Restart));
                     }
                 }
+                v.push(Seg::btn("a", "agents", ManageAgents));
                 v.push(Seg::btn("R", "reload", Reload));
                 if self.projects.len() > 1 {
                     v.push(Seg::hint("[ ] project"));

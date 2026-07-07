@@ -24,11 +24,15 @@ cd ~/some/project
 mmux init
 ```
 
-`mmux init` is an interactive wizard: it offers the Claude and Codex agent presets (each with an
-optional "danger" mode that skips permission prompts), asks for any start commands you want to
-watch, and lets you list other projects you want in the same workspace as [linked projects](04-configuration.md#linked-projects).
+`mmux init` is an interactive wizard: it offers the built-in agent presets — Claude, Codex,
+Gemini, Amp, opencode, and Grok — as a multi-select with one optional "danger" mode question (skip
+permission prompts) applied to all you pick, asks for any start commands you want to watch, and
+lets you list other projects you want in the same workspace as [linked projects](04-configuration.md#linked-projects).
 On a machine with no global config yet, your agents are saved to `~/.mmux/config.yaml` so they
 are available in every project; the rest goes in this project's `mmux.yaml`.
+
+To change your agents later, run **`mmux agents`** (the same picker, agents only) or press **`a`**
+in the sidebar — both write to the global config and take effect on the next open / reload.
 
 You can skip the wizard and write [`mmux.yaml`](04-configuration.md) by hand, or rely entirely on
 a global config — either file alone is enough.
@@ -63,6 +67,7 @@ opened recently. Choose one to jump straight back in — handy after reconnectin
 ## Validate Without Launching
 
 ```sh
+mmux agents   # add/remove the built-in agent harnesses in your global config
 mmux check    # print the effective merged config, no TUI
 mmux docs     # print a self-contained setup & config guide
 ```

@@ -91,6 +91,76 @@ pub struct AgentDef {
     pub env: BTreeMap<String, String>,
 }
 
+/// A built-in agent harness mmux knows how to seed. Shared by the `mmux init` wizard
+/// (which offers them as a multiselect) and the in-TUI agent manager (the sidebar's
+/// `a` popup). `danger` is the single flag that opts the agent out of permission/
+/// approval prompts ("danger mode"); `None` for a harness with no such flag.
+pub struct AgentPreset {
+    pub name: &'static str,
+    pub cmd: &'static str,
+    pub danger: Option<&'static str>,
+    pub blurb: &'static str,
+}
+
+impl AgentPreset {
+    /// The danger flag as a one-element args vector when `danger` is on, else empty —
+    /// the args this preset contributes to its [`AgentDraft`].
+    pub fn danger_args(&self, danger: bool) -> Vec<String> {
+        match (danger, self.danger) {
+            (true, Some(flag)) => vec![flag.to_string()],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// The agent harnesses mmux offers out of the box. Every one ships a documented
+/// danger-mode flag; add new harnesses here and they appear in both the wizard and
+/// the in-TUI agent manager automatically. Flags verified against each tool's CLI.
+pub const PRESETS: &[AgentPreset] = &[
+    AgentPreset {
+        name: "Claude",
+        cmd: "claude",
+        danger: Some("--dangerously-skip-permissions"),
+        blurb: "Anthropic Claude Code",
+    },
+    AgentPreset {
+        name: "Codex",
+        cmd: "codex",
+        danger: Some("--dangerously-bypass-approvals-and-sandbox"),
+        blurb: "OpenAI Codex CLI",
+    },
+    AgentPreset {
+        name: "Gemini",
+        cmd: "gemini",
+        danger: Some("--yolo"),
+        blurb: "Google Gemini CLI",
+    },
+    AgentPreset {
+        name: "Amp",
+        cmd: "amp",
+        danger: Some("--dangerously-allow-all"),
+        blurb: "Sourcegraph Amp",
+    },
+    AgentPreset {
+        name: "opencode",
+        cmd: "opencode",
+        danger: Some("--yolo"),
+        blurb: "opencode terminal agent",
+    },
+    AgentPreset {
+        name: "Grok",
+        cmd: "grok",
+        danger: Some("--always-approve"),
+        blurb: "xAI Grok Build",
+    },
+];
+
+/// The preset whose `name` matches `name` (case-sensitive), if any — lets the agent
+/// manager map a configured agent back to its preset (for its blurb / danger flag).
+pub fn preset_by_name(name: &str) -> Option<&'static AgentPreset> {
+    PRESETS.iter().find(|p| p.name == name)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProcessDef {
     pub name: String,
@@ -490,6 +560,26 @@ pub struct ProcessDraft {
     pub stop: Option<String>,
 }
 
+/// An agent gathered by the in-TUI agent manager, before it's written to the config.
+/// Unlike the process form there's no wizard of fields — the manager toggles presets
+/// on/off and flips their danger flag, so a draft is just the three rendered keys.
+pub struct AgentDraft {
+    pub name: String,
+    pub cmd: String,
+    pub args: Vec<String>,
+}
+
+/// The agents declared in the global config (`~/.mmux/config.yaml`), or empty when
+/// there's no global config. The in-TUI agent manager reads this to seed its rows,
+/// since it edits the global file specifically (a project's agents merge on top).
+pub fn global_agents() -> Vec<AgentDef> {
+    load_file(global_config_path().as_deref())
+        .ok()
+        .flatten()
+        .map(|c| c.agents)
+        .unwrap_or_default()
+}
+
 /// Split a typed command line ("npm run dev") into `(cmd, args)`, honouring simple
 /// single/double quotes so one argument can contain spaces ("git commit -m 'a b'").
 pub fn split_command(line: &str) -> (String, Vec<String>) {
@@ -559,6 +649,100 @@ pub fn remove_process(path: &Path, name: &str) -> Result<()> {
     let updated = delete_named_item(&original, "processes", name)?;
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
+}
+
+/// Rewrite the top-level `agents:` block in `path` to exactly `agents`, preserving
+/// everything else in the file (its header comments, the git-panel example, any other
+/// blocks). The in-TUI agent manager always targets the global config, so a
+/// missing/blank file is seeded with the documented global scaffold and a file with no
+/// `agents:` block gains one appended at the end. Unlike the process editors this
+/// replaces the *whole* block (the manager owns the full list), so any hand-written
+/// comments *inside* the old block are dropped — the surrounding file is untouched.
+pub fn write_agents(path: &Path, agents: &[AgentDraft]) -> Result<()> {
+    let original = std::fs::read_to_string(path).unwrap_or_default();
+    let updated = if original.trim().is_empty() {
+        scaffold_global_file(&render_agents_block(agents))
+    } else {
+        replace_agents_block(&original, agents)
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// The `agents:` block for `agents` — the key line plus one item each, or the empty
+/// placeholder `agents: []` when none are enabled (which parses back to an empty list).
+fn render_agents_block(agents: &[AgentDraft]) -> String {
+    if agents.is_empty() {
+        return "agents: []\n".to_string();
+    }
+    let mut s = String::from("agents:\n");
+    for a in agents {
+        s.push_str(&render_agent_item(a, 2));
+    }
+    s
+}
+
+/// Render one `agents:` list item at the given indent, matching the hand-written style
+/// (unquoted scalars where safe, quoted args). `args` is always emitted — even `[]` —
+/// so an agent toggled out of danger mode reads clearly as "no flags".
+fn render_agent_item(a: &AgentDraft, indent: usize) -> String {
+    let ind = " ".repeat(indent);
+    let sub = " ".repeat(indent + 2);
+    let mut s = format!("{ind}- name: {}\n", yaml_scalar(&a.name));
+    s.push_str(&format!("{sub}cmd: {}\n", yaml_scalar(&a.cmd)));
+    s.push_str(&format!("{sub}args: {}\n", yaml_args(&a.args)));
+    s
+}
+
+/// Swap the existing top-level `agents:` block for a freshly rendered one, or append a
+/// new block at EOF when there's none. Preserves every line outside the block (kept
+/// pure for testing). The block's item lines are `k..block_end`, so any trailing blank
+/// lines/comments after the last item — the git-panel example the scaffold writes —
+/// survive as the file's tail.
+fn replace_agents_block(text: &str, agents: &[AgentDraft]) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let block = render_agents_block(agents);
+    let Some(k) = lines.iter().position(|l| top_level_key(l) == Some("agents")) else {
+        // No block yet: append a fresh one (with a blank separator) at EOF.
+        let mut out = text.trim_end_matches('\n').to_string();
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str(&block);
+        return out;
+    };
+    let end = block_end(&lines, k);
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == k {
+            out.push_str(&block); // ends with a newline
+        }
+        if i >= k && i < end {
+            continue; // drop the old `agents:` line and its items
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    out
+}
+
+/// A fresh, self-documenting global config (`~/.mmux/config.yaml`) seeded with
+/// `agents_block`. Matches the header the `mmux init` wizard writes for a first-run
+/// global file, so a config born from the in-TUI agent manager explains itself.
+fn scaffold_global_file(agents_block: &str) -> String {
+    let mut s = String::new();
+    s.push_str("# mmux global config (~/.mmux/config.yaml).\n");
+    s.push_str("# Agents here are available in EVERY project. A project's mmux.yaml can\n");
+    s.push_str("# override or add to them by name.\n");
+    s.push_str("# Full guide: run `mmux docs`, or visit https://mmux.org.\n\n");
+    s.push_str(agents_block);
+    s.push_str("\n# A git panel is shown automatically in every git repo. To disable it:\n");
+    s.push_str("# git-panel:\n");
+    s.push_str("#   enabled: false\n");
+    s
 }
 
 /// Append `rel` (a path, relative to `path`'s directory) to the `linked-projects:`
@@ -961,6 +1145,8 @@ const STARTER: &str = r#"# mmux workspace config.
 # Agents: interactive programs you spawn on demand. Each "+ New <name>" in the
 # sidebar launches a fresh instance; its sidebar subtitle shows the terminal
 # title the program sets, and a red dot appears when it rings the bell.
+# More harnesses ship as presets (Gemini, Amp, opencode, Grok) — add/remove them
+# any time with `mmux agents` or the sidebar's `a` key (both edit your global config).
 agents:
   - name: Claude
     cmd: claude
@@ -1223,6 +1409,84 @@ mod tests {
         assert!(!out.contains("[]"));
         let cfg: Config = serde_yaml::from_str(&out).unwrap();
         assert_eq!(cfg.linked_projects, vec!["../b".to_string()]);
+    }
+
+    // ── agent manager: rewriting the global `agents:` block ──────────────────
+    fn ag(name: &str, cmd: &str, args: &[&str]) -> AgentDraft {
+        AgentDraft {
+            name: name.into(),
+            cmd: cmd.into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn replace_agents_block_swaps_the_whole_list_keeping_the_rest() {
+        // The header comment before and the git-panel example after the block must
+        // survive; the block itself is replaced by the new list.
+        let text = "# mmux global config\n\nagents:\n  - name: Claude\n    cmd: claude\n    args: []\n\n# git-panel:\n#   enabled: false\n";
+        let out = replace_agents_block(text, &[
+            ag("Claude", "claude", &["--dangerously-skip-permissions"]),
+            ag("Gemini", "gemini", &["--yolo"]),
+        ]);
+        assert!(out.starts_with("# mmux global config"));
+        assert!(out.contains("# git-panel:"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        let names: Vec<&str> = cfg.agents.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Claude", "Gemini"]);
+        assert_eq!(cfg.agents[0].args, vec!["--dangerously-skip-permissions"]);
+        assert_eq!(cfg.agents[1].args, vec!["--yolo"]);
+    }
+
+    #[test]
+    fn replace_agents_block_appends_when_absent() {
+        let out = replace_agents_block("name: global\n", &[ag("Codex", "codex", &[])]);
+        assert!(out.contains("\nagents:\n  - name: Codex"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.agents.len(), 1);
+        assert_eq!(cfg.name.as_deref(), Some("global"));
+    }
+
+    #[test]
+    fn empty_agent_list_writes_an_empty_placeholder() {
+        let out = replace_agents_block("agents:\n  - name: Claude\n    cmd: claude\n", &[]);
+        assert!(out.contains("agents: []"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert!(cfg.agents.is_empty());
+    }
+
+    #[test]
+    fn scaffolds_a_documented_global_file_for_a_first_agent() {
+        let out = scaffold_global_file(&render_agents_block(&[ag("Claude", "claude", &["--dangerously-skip-permissions"])]));
+        assert!(out.starts_with("# mmux global config"));
+        assert!(out.contains("mmux docs"));
+        assert!(out.contains("agents:\n  - name: Claude"));
+        assert!(out.contains("# git-panel:"));
+        let cfg: Config = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(cfg.agents.len(), 1);
+    }
+
+    #[test]
+    fn write_agents_scaffolds_a_missing_global_file() {
+        let dir = std::env::temp_dir().join(format!("mmux-agents-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.yaml");
+        let _ = std::fs::remove_file(&path);
+        write_agents(&path, &[ag("Claude", "claude", &["--dangerously-skip-permissions"])]).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("mmux docs"));
+        assert!(written.contains("agents:\n  - name: Claude"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn preset_danger_args_toggle() {
+        let claude = preset_by_name("Claude").unwrap();
+        assert_eq!(claude.danger_args(true), vec!["--dangerously-skip-permissions"]);
+        assert!(claude.danger_args(false).is_empty());
+        assert!(preset_by_name("Nope").is_none());
+        // Every shipped preset has a danger flag.
+        assert!(PRESETS.iter().all(|p| p.danger.is_some()));
     }
 
     #[test]

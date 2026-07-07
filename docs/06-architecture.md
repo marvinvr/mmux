@@ -175,6 +175,8 @@ cursor through all three.
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
 | `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |
 | `LinkProject` | `+ Link another project` (its own sidebar box) | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
+| `Agents` | `a` in the sidebar | [Agent manager](04-configuration.md#agent) → toggle the built-in harnesses on/off + danger mode, rewrite the **global** `agents:` block, and reload |
+| `About` | `?` in the sidebar | Version, project links, and the manual self-update check/apply (stateless — reads live `UpdateState`) |
 
 The picker (`picker.rs`) lists files with the `ignore` crate (ripgrep's walking engine, in-process
 — so no external `rg` is needed; `.gitignore` is deliberately *not* honoured and heavy
@@ -184,7 +186,11 @@ build/artifact dirs are pruned instead) and fuzzy-ranks them. The process form (
 comments — and reloads; `D` deletes via `config::remove_process` behind a confirmation. The link browser (`linkbrowse.rs`) walks the filesystem
 with fork-free previews (repo-ness is a `.git` check, the branch is read from `.git/HEAD`), then
 `link_project` appends the path via `config::append_linked_project` (the same raw-text splicer) and
-**adds a new `Project` in place** — the one action that grows the project set after launch.
+**adds a new `Project` in place** — the one action that grows the project set after launch. The
+agent manager (`agentmgr.rs`) seeds its rows from `config::PRESETS` and the current global agents,
+then `apply_agent_manager` writes the whole set back with `config::write_agents` — which, unlike the
+per-item process splicers, **replaces the entire global `agents:` block** (the manager owns the full
+list) while preserving the rest of the file — and reloads so the sidebar updates live.
 
 ### The Diff Preview
 

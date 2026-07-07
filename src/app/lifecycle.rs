@@ -70,6 +70,37 @@ impl App {
         self.overlay = Some(Overlay::new_process(pi));
     }
 
+    /// Raise the agent manager popup (`a`). It manages the built-in harnesses in the
+    /// **global** config (`~/.mmux/config.yaml`) — the natural home for agents you reuse
+    /// across projects — so a HOME we can't resolve is the one hard stop, flashed rather
+    /// than opening a manager that has nowhere to save.
+    pub(crate) fn open_agent_manager(&mut self) {
+        if config::global_config_target().is_none() {
+            self.flash = Some(("can't locate ~/.mmux (is HOME set?)".into(), Instant::now()));
+            return;
+        }
+        self.overlay = Some(Overlay::agents());
+    }
+
+    /// Persist the agent manager's choices to the global config and reload so the
+    /// sidebar reflects them immediately (new launchers appear, dropped ones vanish; a
+    /// project that also defines an agent still wins the merge). A write failure is
+    /// flashed and the overlay simply closes. Called from [`agentmgr_key`](super::input).
+    pub(crate) fn apply_agent_manager(&mut self, m: &super::agentmgr::AgentManager) {
+        let Some(path) = config::global_config_target() else {
+            self.flash = Some(("can't locate ~/.mmux (is HOME set?)".into(), Instant::now()));
+            return;
+        };
+        let drafts = m.drafts();
+        if let Err(e) = config::write_agents(&path, &drafts) {
+            self.flash = Some((format!("couldn't save agents — {e}"), Instant::now()));
+            return;
+        }
+        self.reload();
+        self.flash = Some((format!("agents updated — {} configured", drafts.len()), Instant::now()));
+        self.focus = Focus::Sidebar;
+    }
+
     /// Write a finished form's process to project `pi`'s `mmux.yaml` — appended for a
     /// new process, spliced in place when editing (`form.edit`) — then reload so the
     /// change shows up live. On success the row is selected (and, for a new autostart

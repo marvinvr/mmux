@@ -14,42 +14,22 @@
 //!     layering on top of your global agents.
 //!
 //! So the wizard never needs to know how it was triggered — `mmux init` and the
-//! "no config anywhere, just run `mmux`" first-run path call the same [`run`].
+//! "no global config yet, just run `mmux`" first-run path call the same [`run`].
 //!
-//! The pure half (`split_command` + the `build_*` YAML formatters) is unit-tested
+//! [`run_agents`] is a third entry point (`mmux agents`): an agents-only re-run that
+//! edits the global config in place — the command-line twin of the in-TUI agent manager.
+//!
+//! The agents offered are [`crate::config::PRESETS`], shared with the in-TUI agent
+//! manager so both stay in step. The pure half (`parse_selection` + `split_command` +
+//! the `build_*` YAML formatters) is unit-tested
 //! and hand-formats commented YAML to match `config::STARTER`'s voice — we don't
 //! derive `Serialize`, which would emit `null`s and drop the comments. The
 //! interactive half is thin stdin/stdout prompting and never runs without a TTY.
 
-use crate::config::{yaml_args, yaml_scalar};
+use crate::config::{self, yaml_args, yaml_scalar};
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
-
-/// A preset agent offered in the wizard. `danger` is the single argument added
-/// when the user opts into "danger mode"; without it the agent gets `args: []`.
-struct Preset {
-    name: &'static str,
-    cmd: &'static str,
-    danger: &'static str,
-    blurb: &'static str,
-}
-
-/// Claude and Codex only, by design — the two agents most users start with.
-const PRESETS: &[Preset] = &[
-    Preset {
-        name: "Claude",
-        cmd: "claude",
-        danger: "--dangerously-skip-permissions",
-        blurb: "Anthropic Claude Code",
-    },
-    Preset {
-        name: "Codex",
-        cmd: "codex",
-        danger: "--dangerously-bypass-approvals-and-sandbox",
-        blurb: "OpenAI Codex CLI",
-    },
-];
 
 /// A chosen agent, ready to render into YAML.
 #[derive(Debug, Clone, PartialEq)]
@@ -114,24 +94,131 @@ pub fn run(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// `mmux agents` — a focused, agents-only version of the wizard for the terminal: show
+/// the built-in harnesses with their current on/off state, let the user re-pick them
+/// (+ one danger-mode question), and write the result to the **global** config. It's the
+/// command-line twin of the in-TUI agent manager (the sidebar's `a` popup); both edit
+/// the same file and preserve any non-preset agents you added by hand.
+pub fn run_agents() -> Result<()> {
+    if !io::stdin().is_terminal() {
+        anyhow::bail!("`mmux agents` needs an interactive terminal");
+    }
+    let Some(path) = config::global_config_target() else {
+        anyhow::bail!("can't locate ~/.mmux (is HOME set?)");
+    };
+    let current = config::global_agents();
+
+    println!("\n{}", bold("Manage agents"));
+    println!("{}", dim(&format!("Built-in AI coding harnesses, saved to {}.", pretty(&path))));
+    println!("{}", dim("A green [x] marks the ones you already have configured."));
+    for (i, p) in config::PRESETS.iter().enumerate() {
+        let on = current.iter().any(|a| a.name == p.name);
+        let mark = if on { "[x]" } else { "[ ]" };
+        println!("  {}) {} {:<9} {}", i + 1, mark, p.name, dim(&format!("— {}", p.blurb)));
+    }
+
+    // Default the picker to whatever's already on (Enter keeps it), or all on first run.
+    let enabled: Vec<usize> = config::PRESETS
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| current.iter().any(|a| a.name == p.name))
+        .map(|(i, _)| i + 1)
+        .collect();
+    let default = if enabled.is_empty() {
+        "all".to_string()
+    } else {
+        enabled.iter().map(usize::to_string).collect::<Vec<_>>().join(",")
+    };
+    let picked = ask("Which agents? (numbers e.g. 1,3 · 'all' · 'none')", Some(&default))?;
+    let idxs = parse_selection(&picked);
+
+    // Danger defaults to on when a currently-configured preset already carries its flag,
+    // so re-running and pressing Enter doesn't silently drop danger mode.
+    let current_danger = config::PRESETS.iter().any(|p| {
+        p.danger.is_some_and(|f| {
+            current.iter().any(|a| a.name == p.name && a.args.iter().any(|x| x == f))
+        })
+    });
+    let danger = if idxs.is_empty() {
+        false
+    } else {
+        confirm("Run them in danger mode (skip permission/approval prompts)?", current_danger)?
+    };
+
+    // Chosen presets, then any hand-added (non-preset) agents preserved verbatim.
+    let mut drafts: Vec<config::AgentDraft> = idxs
+        .iter()
+        .map(|&i| {
+            let p = &config::PRESETS[i];
+            config::AgentDraft { name: p.name.to_string(), cmd: p.cmd.to_string(), args: p.danger_args(danger) }
+        })
+        .collect();
+    for a in current.into_iter().filter(|a| config::preset_by_name(&a.name).is_none()) {
+        drafts.push(config::AgentDraft { name: a.name, cmd: a.cmd, args: a.args });
+    }
+
+    config::write_agents(&path, &drafts).with_context(|| format!("writing {}", pretty(&path)))?;
+    println!("\n{}", bold("Done."));
+    println!("  • {} {}", pretty(&path), dim(&format!("({} agent(s) configured)", drafts.len())));
+    println!("{}", dim("Open mmux — or press R inside it — to see the change."));
+    Ok(())
+}
+
 // ── interactive sections ────────────────────────────────────────────────────
 
 fn ask_agents() -> Result<Vec<Agent>> {
     header("Agents");
-    println!("{}", dim("Interactive AI coding agents you spawn from the sidebar."));
-    let mut out = Vec::new();
-    for p in PRESETS {
-        if !confirm(&format!("Use {} ({})?", p.name, p.blurb), true)? {
-            continue;
-        }
-        let danger = confirm(
-            &format!("  Run {} in danger mode (skip permission/approval prompts)?", p.name),
-            false,
-        )?;
-        let args = if danger { vec![p.danger.to_string()] } else { Vec::new() };
-        out.push(Agent { name: p.name.to_string(), cmd: p.cmd.to_string(), args });
+    println!("{}", dim("Interactive AI coding agents you spawn from the sidebar. Pick any —"));
+    println!("{}", dim("you can add or remove them later from the sidebar (press a)."));
+    for (i, p) in config::PRESETS.iter().enumerate() {
+        println!("  {}) {:<9} {}", i + 1, p.name, dim(&format!("— {}", p.blurb)));
     }
+    let picked = ask("Which agents? (numbers e.g. 1,3 · 'all' · 'none')", Some("all"))?;
+    let idxs = parse_selection(&picked);
+    if idxs.is_empty() {
+        return Ok(Vec::new());
+    }
+    // One question for the whole set — the same danger flag is applied to each chosen
+    // agent (each preset knows its own flag).
+    let danger = confirm("Run them in danger mode (skip permission/approval prompts)?", false)?;
+    let out = idxs
+        .iter()
+        .map(|&i| {
+            let p = &config::PRESETS[i];
+            Agent { name: p.name.to_string(), cmd: p.cmd.to_string(), args: p.danger_args(danger) }
+        })
+        .collect();
     Ok(out)
+}
+
+/// Parse the agent picker's answer into preset indices (0-based, de-duplicated, in the
+/// order typed). Accepts comma/space-separated 1-based numbers *or* preset names;
+/// empty/`all`/`*` selects every preset, `none`/`skip`/`-` selects none. Unknown or
+/// out-of-range tokens are ignored. Pure — unit-tested.
+fn parse_selection(input: &str) -> Vec<usize> {
+    let t = input.trim();
+    let lower = t.to_ascii_lowercase();
+    let n = config::PRESETS.len();
+    if t.is_empty() || lower == "all" || lower == "*" {
+        return (0..n).collect();
+    }
+    if lower == "none" || lower == "skip" || lower == "-" {
+        return Vec::new();
+    }
+    let mut out: Vec<usize> = Vec::new();
+    for tok in t.split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()) {
+        let idx = tok
+            .parse::<usize>()
+            .ok()
+            .and_then(|num| num.checked_sub(1))
+            .or_else(|| config::PRESETS.iter().position(|p| p.name.eq_ignore_ascii_case(tok)));
+        if let Some(i) = idx {
+            if i < n && !out.contains(&i) {
+                out.push(i);
+            }
+        }
+    }
+    out
 }
 
 fn ask_processes() -> Result<Vec<Process>> {
@@ -451,6 +538,25 @@ mod tests {
 
     fn agent(name: &str, cmd: &str, args: &[&str]) -> Agent {
         Agent { name: name.into(), cmd: cmd.into(), args: args.iter().map(|s| s.to_string()).collect() }
+    }
+
+    #[test]
+    fn parse_selection_reads_numbers_names_and_keywords() {
+        let n = crate::config::PRESETS.len();
+        // Empty / all / * → everything.
+        assert_eq!(parse_selection(""), (0..n).collect::<Vec<_>>());
+        assert_eq!(parse_selection("all"), (0..n).collect::<Vec<_>>());
+        // none / skip → nothing.
+        assert!(parse_selection("none").is_empty());
+        assert!(parse_selection("skip").is_empty());
+        // Numbers are 1-based; order is preserved and duplicates dropped.
+        assert_eq!(parse_selection("1,3"), vec![0, 2]);
+        assert_eq!(parse_selection("3 1 3"), vec![2, 0]);
+        // Names (case-insensitive) resolve to their preset index.
+        assert_eq!(parse_selection("claude"), vec![0]);
+        assert_eq!(parse_selection("Codex, Claude"), vec![1, 0]);
+        // Unknown / out-of-range tokens are ignored, not errors.
+        assert!(parse_selection("99, bogus").is_empty());
     }
 
     #[test]

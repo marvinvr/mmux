@@ -1,5 +1,5 @@
 //! Command-line surface: argument dispatch and the non-TUI subcommands
-//! (`init`, `check`, `--help`, `--version`). The actual work lives elsewhere —
+//! (`init`, `agents`, `check`, `--help`, `--version`). The actual work lives elsewhere —
 //! this module just decides which entry point to run.
 
 use crate::config::Config;
@@ -21,6 +21,11 @@ pub fn run() -> Result<()> {
     }
     if args.first().map(String::as_str) == Some("init") {
         return crate::wizard::run(&std::env::current_dir()?);
+    }
+    // Manage just the built-in agent harnesses (global config) from the terminal — the
+    // CLI twin of the in-TUI `a` popup. Distinct from `mmux a` (the attach alias).
+    if matches!(args.first().map(String::as_str), Some("agents") | Some("agent")) {
+        return crate::wizard::run_agents();
     }
     if args.first().map(String::as_str) == Some("check") {
         return check();
@@ -110,6 +115,7 @@ USAGE:
     mmux            Open (or reattach to) the mmux session for the current directory
     mmux attach     Pick any running or recent mmux session and open it (alias: mmux a)
     mmux init       Interactive setup: pick agents, your start command & linked projects
+    mmux agents     Add/remove the built-in agent harnesses in your global config
     mmux check      Validate the effective config (global + project) and exit
     mmux docs       Explain what mmux is + how to write the config. If you (or an
                     AI agent) need setup instructions, run this — it prints them.
@@ -123,7 +129,7 @@ Config: mmux.yaml in the directory, layered on top of an optional global
 mmux.local.yml deep-overrides the project file. See `mmux init`/`mmux docs`.
 Add `linked-projects` to show other projects in one sidebar (see `mmux docs`).
 
-KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · R reload config · ? about · d detach · q quit
+KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · a agents · R reload config · ? about · d detach · q quit
 KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close R=reload b=send Ctrl-b"#
     );
 }
@@ -212,6 +218,11 @@ GLOBAL FILE — ~/.mmux/config.yaml
           cmd: codex
           args: ["--dangerously-bypass-approvals-and-sandbox"]
 
+    You don't have to hand-write this: `mmux init` offers the built-in harnesses
+    (Claude, Codex, Gemini, Amp, opencode, Grok) as a multi-select, and pressing `a` in
+    the sidebar opens the same picker any time — toggle harnesses on/off, flip danger
+    mode, and it writes here and reloads. A green check marks the ones found on your PATH.
+
 LINKED PROJECTS — one sidebar for several projects
     Want several projects open together? List them under `linked-projects` and they
     all open in ONE mmux, each its own group in the sidebar — extra clones of a repo,
@@ -247,6 +258,7 @@ FIELD REFERENCE
 QUICK START
     cd ~/some/project
     mmux init      # interactive setup wizard (agents, start command, linked projects)
+    mmux agents    # add/remove the built-in harnesses in ~/.mmux/config.yaml
     mmux check     # print the effective merged config without launching the TUI
     mmux           # open / reattach
     mmux a         # `mmux attach`: pick ANY running mmux session and join it"##

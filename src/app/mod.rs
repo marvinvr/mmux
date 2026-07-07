@@ -8,6 +8,7 @@
 //! - [`keymap`] — pure key-event → PTY-byte translation.
 //! - [`view`] — all rendering (layout, sidebar, panes, footer).
 
+mod agentmgr;
 mod git;
 mod highlight;
 mod input;

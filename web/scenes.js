@@ -196,6 +196,10 @@
   // (src/app/nav.rs build_nav: NewAgent → agents, NewTerminal → terminals, …).
   var L_CLAUDE = { id: "new-claude", launcher: true, name: "New Claude" };
   var L_CODEX = { id: "new-codex", launcher: true, name: "New Codex" };
+  // Gemini is one of the built-in presets too (alongside Amp and opencode) — shown here
+  // as a launcher so the demo hints that mmux runs whatever agent you configure, not just
+  // Claude/Codex. Kept to one extra harness so the sidebar stays readable.
+  var L_GEMINI = { id: "new-gemini", launcher: true, name: "New Gemini" };
   var L_TERMINAL = { id: "new-terminal", launcher: true, name: "New Terminal" };
   var L_PROCESS = { id: "new-process", launcher: true, name: "New Process" };
 
@@ -286,13 +290,13 @@
       },
       state: {
         title: "~/dev/app",
-        status: "claude and codex come configured — spawn either one",
+        status: "claude, codex, gemini and more come configured — spawn any",
         multiProject: false,
         projects: [{ name: "app", active: true }],
         sidebar: [
           {
             kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ sub: "idle", status: "exited", active: true })],
+            rows: [L_CLAUDE, L_CODEX, L_GEMINI, claude({ sub: "idle", status: "exited", active: true })],
           },
           { kind: "TERMINAL", rows: [L_TERMINAL, { id: "zsh", name: "zsh", status: "running" }] },
           { kind: "PROCESSES", rows: [L_PROCESS] },
@@ -327,7 +331,7 @@
         sidebar: [
           {
             kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running", active: true })],
+            rows: [L_CLAUDE, L_CODEX, L_GEMINI, claude({ status: "running", active: true })],
           },
           { kind: "TERMINAL", rows: [L_TERMINAL, { id: "zsh", name: "zsh", status: "running" }] },
           { kind: "PROCESSES", rows: [L_PROCESS] },
@@ -365,6 +369,7 @@
             rows: [
               L_CLAUDE,
               L_CODEX,
+              L_GEMINI,
               claude({ status: "running" }),
               codex({ status: "running", active: true }),
             ],
@@ -402,7 +407,7 @@
         sidebar: [
           {
             kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running" }), codex({ status: "running" })],
+            rows: [L_CLAUDE, L_CODEX, L_GEMINI, claude({ status: "running" }), codex({ status: "running" })],
           },
           {
             kind: "TERMINAL",
@@ -440,7 +445,7 @@
         sidebar: [
           {
             kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running" }), codex({ status: "running" })],
+            rows: [L_CLAUDE, L_CODEX, L_GEMINI, claude({ status: "running" }), codex({ status: "running" })],
           },
           {
             kind: "TERMINAL",
@@ -486,7 +491,7 @@
         sidebar: [
           {
             kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running", active: true }), codex({ status: "running" })],
+            rows: [L_CLAUDE, L_CODEX, L_GEMINI, claude({ status: "running", active: true }), codex({ status: "running" })],
           },
           {
             kind: "TERMINAL",
@@ -533,6 +538,7 @@
             rows: [
               L_CLAUDE,
               L_CODEX,
+              L_GEMINI,
               claude({ project: "app" }),
               { id: "claude-api", name: "Claude", sub: "rate limiting", status: "running", active: true, project: "api" },
             ],
@@ -587,6 +593,7 @@
             rows: [
               L_CLAUDE,
               L_CODEX,
+              L_GEMINI,
               claude({ sub: "waiting for you", status: "running", active: true, attention: true }),
               codex({ status: "running" }),
             ],
@@ -641,7 +648,7 @@
         sidebar: [
           {
             kind: "AGENTS",
-            rows: [L_CLAUDE, L_CODEX, claude({ status: "running", active: true }), codex({ status: "running" })],
+            rows: [L_CLAUDE, L_CODEX, L_GEMINI, claude({ status: "running", active: true }), codex({ status: "running" })],
           },
           {
             kind: "TERMINAL",

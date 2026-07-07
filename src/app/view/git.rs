@@ -9,6 +9,7 @@
 //! wrapper that owns the per-frame hit [`Regions`](super::Regions) lives in
 //! [`super::pane`] and stores the row maps [`render_git`] returns.
 
+use crate::app::agentmgr::AgentManager;
 use crate::app::git::{GitPanel, Overlay, PromptKind, Section};
 use crate::app::UpdateState;
 use crate::app::linkbrowse::{DirEntry, LinkBrowser, Preview};
@@ -335,6 +336,7 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
         Overlay::Picker(p) => render_picker(f, area, p),
         Overlay::NewProcess(form) => render_procform(f, area, form),
         Overlay::LinkProject(b) => render_linkbrowse(f, area, b),
+        Overlay::Agents(m) => render_agentmgr(f, area, m),
         // Drawn by `render_about` (it needs live update state), routed there in `draw`.
         Overlay::About => {}
     }
@@ -698,6 +700,77 @@ fn preview_lines(p: Option<&Preview>) -> Vec<Line<'static>> {
 /// The "+ New Process" guided form: a "Step N of 4" header, the fields already
 /// entered (dim, for context), the active input or the review screen, an optional
 /// validation warning, and a key hint pinned to the bottom row.
+/// The agent manager: one checkbox row per built-in harness (enabled + a danger tag),
+/// its blurb dimmed alongside, with the cursor row marked. Toggled/saved in
+/// [`agentmgr_key`](crate::app::input); the write targets the global config.
+fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
+    let w = area.width.saturating_sub(6).clamp(40, 68);
+    // Intro + blank + one line per row + blank + hint, inside the two borders.
+    let h = (m.rows.len() as u16 + 6).min(area.height);
+    let rect = centered(area, w, h);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Agents ")
+        .border_style(Style::default().fg(Color::Magenta));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    if inner.width == 0 || inner.height < 3 {
+        return;
+    }
+
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            "Available in every project · saved to ~/.mmux/config.yaml",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+    ];
+    for (i, r) in m.rows.iter().enumerate() {
+        let selected = i == m.cursor;
+        let (checkbox, check_style) = if r.enabled {
+            ("[x] ", Style::default().fg(Color::Green))
+        } else {
+            ("[ ] ", Style::default().fg(Color::DarkGray))
+        };
+        let name_style = if selected {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else if r.enabled {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        // A green ✓ highlights the harnesses actually found on PATH; not-installed ones
+        // are left unmarked (never blocked — you can still enable them). Fixed-width so
+        // the following columns stay aligned.
+        let (install, install_style) = if r.installed {
+            ("✓ ", Style::default().fg(Color::Green))
+        } else {
+            ("  ", Style::default())
+        };
+        // A fixed-width danger cell so the blurbs stay aligned whether or not it's shown.
+        let danger = if r.danger() { format!("{:<8}", "danger") } else { format!("{:<8}", "") };
+        lines.push(Line::from(vec![
+            Span::styled(if selected { "› " } else { "  " }, Style::default().fg(Color::Cyan)),
+            Span::styled(checkbox, check_style),
+            Span::styled(install, install_style),
+            Span::styled(format!("{:<10}", r.name), name_style),
+            Span::styled(danger, Style::default().fg(Color::Yellow)),
+            Span::styled(format!("  {}", r.blurb), Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+
+    let body = Rect { x: inner.x, y: inner.y, width: inner.width, height: inner.height - 1 };
+    f.render_widget(Paragraph::new(lines), body);
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "space toggle · d danger · ⏎ save · esc cancel · ✓ on PATH",
+            Style::default().fg(Color::DarkGray),
+        ))),
+        Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 },
+    );
+}
+
 fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let w = area.width.saturating_sub(6).clamp(34, 72);
     let h = 13u16.min(area.height);

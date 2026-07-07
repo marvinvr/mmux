@@ -53,13 +53,15 @@
     multiProject: false,
     projects: [{ name: "app", active: true }],
     // Launchers come FIRST in every section, matching the real sidebar order
-    // (src/app/nav.rs build_nav). Both Claude and Codex are configured agents.
+    // (src/app/nav.rs build_nav). Claude, Codex and Gemini are configured agents here
+    // (Amp and opencode ship as presets too — see `mmux agents`).
     sidebar: [
       {
         kind: "AGENTS",
         rows: [
           { id: "new-claude", launcher: true, name: "New Claude" },
           { id: "new-codex", launcher: true, name: "New Codex" },
+          { id: "new-gemini", launcher: true, name: "New Gemini" },
           {
             id: "claude",
             name: "Claude",

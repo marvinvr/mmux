@@ -757,6 +757,9 @@ pub(crate) enum Overlay {
     NewProcess(super::procform::ProcForm),
     /// The "Link another project" directory browser (state in [`super::linkbrowse`]).
     LinkProject(super::linkbrowse::LinkBrowser),
+    /// The agent manager (sidebar `a`): toggle the built-in harnesses on/off and flip
+    /// danger mode, then write them to the global config (state in [`super::agentmgr`]).
+    Agents(super::agentmgr::AgentManager),
 }
 
 #[derive(Clone, Copy)]
@@ -841,6 +844,11 @@ impl Overlay {
     /// The process form pre-filled to edit `def` (see [`super::procform::ProcForm::edit`]).
     pub(crate) fn edit_process(project: usize, def: &crate::config::ProcessDef) -> Overlay {
         Overlay::NewProcess(super::procform::ProcForm::edit(project, def))
+    }
+
+    /// The agent manager, seeded from the presets + the current global config.
+    pub(crate) fn agents() -> Overlay {
+        Overlay::Agents(super::agentmgr::AgentManager::new())
     }
 }
 

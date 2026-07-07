@@ -99,6 +99,9 @@ impl App {
             // asks to confirm, then removes it from the config. No-ops on other rows.
             KeyCode::Char('e') => self.edit_selected(),
             KeyCode::Char('D') => self.delete_selected(),
+            // Manage the built-in agent harnesses (add/remove, danger mode) — the popup
+            // writes to the global config and reloads. Available from any sidebar row.
+            KeyCode::Char('a') => self.open_agent_manager(),
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
             // is showing); otherwise a no-op.
             KeyCode::Char('U') => self.apply_update(),
@@ -232,6 +235,12 @@ impl App {
             self.about_key(k);
             return;
         }
+        // The agent manager writes the global config and reloads on save, so it also
+        // needs `&mut self` and gets its own handler.
+        if matches!(self.overlay, Some(Overlay::Agents(_))) {
+            self.agentmgr_key(k);
+            return;
+        }
         enum Act {
             None,
             Close,
@@ -320,11 +329,12 @@ impl App {
                 KeyCode::Char('d') if matches!(action, Confirmed::Quit) => Act::Detach,
                 _ => Act::Close,
             },
-            // Handled above by `procform_key` / `linkbrowse_key` / `about_key`; arms kept
-            // for match exhaustiveness.
-            Some(Overlay::NewProcess(_)) | Some(Overlay::LinkProject(_)) | Some(Overlay::About) => {
-                Act::None
-            }
+            // Handled above by `procform_key` / `linkbrowse_key` / `about_key` /
+            // `agentmgr_key`; arms kept for match exhaustiveness.
+            Some(Overlay::NewProcess(_))
+            | Some(Overlay::LinkProject(_))
+            | Some(Overlay::About)
+            | Some(Overlay::Agents(_)) => Act::None,
             None => Act::None,
         };
         match act {
@@ -363,6 +373,29 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Keys for the agent manager: navigate the preset rows, `space` toggles an agent
+    /// on/off, `d` flips its danger flag, ⏎ saves (writes the global config + reloads),
+    /// Esc/`q` cancels. Taken out of `self.overlay` for the duration since saving needs
+    /// `&mut self`; put back unless the user saved or cancelled.
+    fn agentmgr_key(&mut self, k: KeyEvent) {
+        let Some(Overlay::Agents(mut m)) = self.overlay.take() else {
+            return;
+        };
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('q') => return, // cancelled — overlay stays cleared
+            KeyCode::Up | KeyCode::Char('k') => m.move_cursor(-1),
+            KeyCode::Down | KeyCode::Char('j') => m.move_cursor(1),
+            KeyCode::Char(' ') => m.toggle_enabled(),
+            KeyCode::Char('d') => m.toggle_danger(),
+            KeyCode::Enter => {
+                self.apply_agent_manager(&m); // writes the global config, reloads, flashes
+                return;
+            }
+            _ => {}
+        }
+        self.overlay = Some(Overlay::Agents(m));
     }
 
     /// Keys for the "+ New Process" form. We take the form out of `self.overlay` for
@@ -678,6 +711,7 @@ impl App {
             FooterAction::SendLeaderB => self.send_focused(vec![0x02]),
             FooterAction::ApplyUpdate => self.apply_update(),
             FooterAction::About => self.open_about(),
+            FooterAction::ManageAgents => self.open_agent_manager(),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
             FooterAction::GitStageAll => self.git_toggle_all(),

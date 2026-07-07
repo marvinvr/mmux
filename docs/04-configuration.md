@@ -10,8 +10,11 @@ mmux is configured with YAML. There are two files, merged at launch — plus an 
 | `~/.mmux/config.yaml` | **Global defaults** — the things you want in every project, typically your agents. |
 | `./mmux.yaml` | **Per-project** — this directory's processes, name, and links. `./mmux.yml` is also accepted (`.yaml` wins if both exist). |
 
-Either file alone is enough. If **neither** exists when you run `mmux`, it treats the directory
-as a first run and launches the [`mmux init`](01-quick-start.md#2-set-up-a-project) wizard.
+Either file alone is a valid config. But the **global** file is what the first-run check looks
+for: if `~/.mmux/config.yaml` doesn't exist when you run `mmux` — even when a project `./mmux.yaml`
+is already present — it treats this as a first run and launches the
+[`mmux init`](01-quick-start.md#2-set-up-a-project) wizard, since a project file may define
+processes but no agents.
 
 Run `mmux check` to print the effective merged config without launching the TUI, or `mmux docs`
 for a self-contained guide printed straight to the terminal (handy for humans and AI agents
@@ -128,6 +131,24 @@ session goes away.
 | `args` | list of strings | Defaults to `[]`. |
 | `cwd` | string | Relative to the config file's directory; defaults to the project directory. |
 | `env` | map | Environment overrides. |
+
+**Built-in presets.** mmux ships presets for the common harnesses — **Claude** (`claude`),
+**Codex** (`codex`), **Gemini** (`gemini`), **Amp** (`amp`), **opencode** (`opencode`), and
+**Grok** (`grok`, xAI's Grok Build) — each with the flag that opts it out of permission/approval
+prompts ("danger mode"). The
+[`mmux init`](01-quick-start.md#2-set-up-a-project) wizard offers them as a multi-select and asks
+once whether to run them in danger mode; whatever you pick seeds your **global** config so it's
+available everywhere.
+
+**Managing agents.** Two ways, both editing the **global** `~/.mmux/config.yaml` (the natural home
+for agents you reuse across projects) and preserving any non-preset agents you added by hand:
+
+- **In the TUI:** press **`a`** in the sidebar for the agent manager — a popup of every preset with
+  a checkbox, a `danger` tag, and a green `✓` on the ones found on your `PATH` (purely a hint — you
+  can enable any of them). `space` toggles an agent on/off, `d` flips its danger flag, `⏎` saves and
+  [reloads](#live-reload) so the sidebar updates immediately.
+- **From the terminal:** run **`mmux agents`** — the same picker as the setup wizard, agents only.
+  It takes effect the next time you open mmux (or press `R` inside it).
 
 ### Process
 
