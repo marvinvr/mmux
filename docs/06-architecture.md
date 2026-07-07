@@ -141,7 +141,7 @@ others stay alive in the background. `last_proj_sel` remembers each project's la
 `[`/`]` and clicking restore where you were. A single-project workspace renders exactly as it
 always did — no project header.
 
-`load_workspace` (in `config.rs`) builds the workspace: load the root, then each linked project
+`load_workspace` (in `config/mod.rs`) builds the workspace: load the root, then each linked project
 one level deep, de-duplicated by canonical path, capped at 8, with each linked project's *own*
 `linked-projects` cleared so links never chain. Failures become warnings, not errors. The same cap
 and de-dup gate `link_project`, which appends a `Project` (and its process rows) to grow the
@@ -162,11 +162,15 @@ cursor through all three.
 - **`app/git.rs`** is the `GitPanel` state machine plus the `impl App` git-action methods. It
   refreshes on a 1500 ms throttle while visible (and immediately after any mutation). Network ops
   (pull/push) block, so they run on a throwaway thread and report back over an `mpsc` channel
-  drained in `tick()`. The centre-pane `DiffView` pager serves both a live working-file preview
-  (follows the Changes cursor, self-refreshes) and a static commit diff (`git show`, rendered with
-  per-file dividers, chosen in the Commits box).
+  drained in `tick()`. Its diff-lifecycle bridges (`git_open_diff`/`git_show_commit`/
+  `git_preview_follow`/`diff_upkeep`) drive the centre-pane `DiffView` pager — whose model lives in
+  its own module, **`app/diff.rs`** — which serves both a live working-file preview (follows the
+  Changes cursor, self-refreshes) and a static commit diff (`git show`, rendered with per-file
+  dividers, chosen in the Commits box).
 
-`GitPanel` also hosts the **`Overlay`** enum — full-screen modals that eat every key while open:
+Floating above the whole UI — independent of the git panel — is the **`Overlay`** enum, its own
+module ([`app/overlay.rs`](07-module-map.md) for the state + key handling, [`view/overlay.rs`](07-module-map.md)
+for the rendering): full-screen modals that eat every key while open:
 
 | Overlay | Raised by | Effect |
 | --- | --- | --- |
@@ -195,8 +199,9 @@ list) while preserving the rest of the file — and reloads so the sidebar updat
 ### The Diff Preview
 
 Clicking a changed file (or `v`) opens `App.diff: Option<DiffView>` — a parsed `git diff` of the
-file under the Changes cursor, rendered in the **main pane** as a read-only pager instead of the
-selected session. It is **not** a `Session` (no PTY) and **not** an overlay (it doesn't eat keys
+file under the Changes cursor (the `DiffView` model and `parse_diff` live in
+[`app/diff.rs`](07-module-map.md)), rendered in the **main pane** as a read-only pager instead of
+the selected session. It is **not** a `Session` (no PTY) and **not** an overlay (it doesn't eat keys
 globally); it's a third main-pane mode alongside "live pane" and "placeholder", checked first in
 `render_main`. It is a *live preview*: `git_preview_follow` rebuilds it as the Changes cursor
 moves, and `App::diff_upkeep` (in `tick`) re-reads it on the panel's throttle and drops it when

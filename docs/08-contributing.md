@@ -24,7 +24,7 @@ handles it). See [Installation](02-installation.md#from-source).
 ## Conventions
 
 - **One inherent `impl App`, split across files.** `app/mod.rs` defines the struct; `nav.rs`,
-  `lifecycle.rs`, `input.rs`, `app/git.rs`, `view/*` each add `impl App { … }`. Methods called
+  `lifecycle.rs`, `input.rs`, `overlay.rs`, `app/git.rs`, `view/*` each add `impl App { … }`. Methods called
   from a sibling module must be `pub(crate)`; struct fields stay private (descendant modules see
   them). Put a new method in the file that matches its concern, not in `mod.rs`.
 - **Keep the unified Session model unified.** Agents, terminals, and processes share one
@@ -51,8 +51,9 @@ handles it). See [Installation](02-installation.md#from-source).
 
 `cargo test` covers the pure, easily-isolated pieces: `keymap::encode_key`, the `input.rs`
 cell/selection geometry (`cell_at`, `Selection::ordered`), the `pane.rs` mouse-sequence encoding,
-the `picker.rs` fuzzy score, `notify.rs` escape formatting, `config.rs` (the project-over-global
-`merge` precedence and the comment-preserving YAML splicer), `git::parse_change` porcelain parsing
+the `picker.rs` fuzzy score, `notify.rs` escape formatting, the `config/` module (the
+project-over-global `merge` precedence in `config/mod.rs` and the comment-preserving YAML splicer in
+`config/yaml.rs`), `git::parse_change` porcelain parsing
 plus the changed-files tree, `tmux::session_name` hashing, `agent.rs` session-id parsing,
 `update.rs` version comparison + release-redirect parsing, and the `wizard.rs` YAML builders. The
 PTY/TUI layers are verified by hand by the maintainer — with one automated exception below.

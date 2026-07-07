@@ -69,5 +69,5 @@ mmux check             # validate the effective (global + project) config, no TU
   `Callbacks` trait); ratatui 0.30 / crossterm 0.29 via the `crossterm_0_29` feature (use
   `ratatui::crossterm::*`). No `log`/`tracing` — errors surface as `Session.error` or the footer
   `flash`.
-- **`config.rs` and `pane.rs` are clean — touch sparingly.** Match the existing comment density;
-  comments explain *why*.
+- **`config/` (`config/mod.rs` + `config/yaml.rs`) and `pane.rs` are clean — touch sparingly.**
+  Match the existing comment density; comments explain *why*.
