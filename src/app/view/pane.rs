@@ -4,7 +4,7 @@
 //! recipe/rect/resize target they touch.
 
 use super::theme::{self, status_label};
-use crate::app::git::{DiffKind, DiffLine, DiffView, PreviewImage};
+use crate::app::diff::{DiffKind, DiffLine, DiffView, PreviewImage};
 use crate::app::input::SelTarget;
 use crate::app::nav::Nav;
 use crate::app::session::Kind;

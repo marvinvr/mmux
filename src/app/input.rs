@@ -533,7 +533,7 @@ impl App {
     }
 
     /// Extract the selected diff text — each line's code only (gutter number and sign
-    /// stripped, see [`DiffLine::content`](crate::app::git::DiffLine::content)) — and put
+    /// stripped, see [`DiffLine::content`](crate::app::diff::DiffLine::content)) — and put
     /// it on the clipboard.
     fn copy_diff_selection(&mut self, sel: Selection) {
         let Some(v) = self.diff.as_ref() else { return };

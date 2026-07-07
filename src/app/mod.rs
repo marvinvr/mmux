@@ -8,6 +8,7 @@
 //! - [`keymap`] — pure key-event → PTY-byte translation.
 //! - [`view`] — all rendering (layout, sidebar, panes, footer).
 
+mod diff;
 mod git;
 mod highlight;
 mod input;
@@ -23,7 +24,8 @@ mod session;
 mod view;
 
 pub(crate) use session::{Kind, Recipe, Session, Status};
-use git::{first_line, DiffView, GitPanel, JobDone};
+use diff::DiffView;
+use git::{first_line, GitPanel, JobDone};
 use overlay::Overlay;
 use input::Selection;
 use nav::Nav;
