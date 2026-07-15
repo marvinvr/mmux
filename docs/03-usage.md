@@ -169,7 +169,9 @@ In the **Commits** box these keys act on the selected commit:
 Staging is whole-file or whole-directory (or `a` for the whole repo) — there is no hunk staging.
 Committing with nothing staged stages everything first. Commit & push (`Ctrl+P` from the commit
 prompt — `Ctrl+⏎` also works where the terminal reports the modifier through tmux) commits and then
-kicks off the same background push as `P` — the push result is flashed when it returns. Pull and push never block the UI; a second press while one is in flight is
+kicks off the same background push as `P` — the push result is flashed when it returns. Pushing a
+branch that has no upstream publishes it (`--set-upstream` to `origin`, or to the only/first remote
+when there's no `origin`) rather than failing. Pull and push never block the UI; a second press while one is in flight is
 ignored. Revert and uncommit go through a confirmation and refresh the panel; neither loses work
 (revert adds a commit, uncommit keeps the changes staged). The panel re-reads git state on a short
 throttle, so commits an agent makes in the main pane show up on their own.

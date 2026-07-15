@@ -394,9 +394,43 @@ pub fn pull(dir: &Path) -> Result<String, String> {
     run(dir, &["pull"]).map(|_| "pulled".into())
 }
 
-/// `git push` (blocks on the network — run off the UI thread).
+/// `git push` (blocks on the network — run off the UI thread). A branch with no
+/// upstream is *published* rather than refused: we set the upstream to the default
+/// remote on the way out, so the first push of a new branch just works instead of
+/// making the user drop to a shell for `-u`.
 pub fn push(dir: &Path) -> Result<String, String> {
-    run(dir, &["push"]).map(|_| "pushed".into())
+    if upstream(dir).is_some() {
+        return run(dir, &["push"]).map(|_| "pushed".into());
+    }
+    let remote = default_remote(dir)?;
+    // `HEAD`, not the branch name, so a detached HEAD fails as git's own error
+    // rather than publishing to a same-named branch by accident.
+    run(dir, &["push", "--set-upstream", &remote, "HEAD"])?;
+    Ok(format!("pushed → {remote} (upstream set)"))
+}
+
+/// The current branch's upstream (`origin/main`), or `None` when it has none — the
+/// case [`push`] publishes through.
+fn upstream(dir: &Path) -> Option<String> {
+    let out = run(dir, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).ok()?;
+    let name = out.trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+/// Which remote to publish a new branch to: `origin` when it exists (the overwhelming
+/// case), else the only remote, else the first listed. With several non-`origin` remotes
+/// there's nothing better to guess at, so we take the first and let the flash name the
+/// upstream it set.
+fn default_remote(dir: &Path) -> Result<String, String> {
+    let out = run(dir, &["remote"])?;
+    let names: Vec<&str> = out.lines().map(str::trim).filter(|s| !s.is_empty()).collect();
+    if names.contains(&"origin") {
+        return Ok("origin".into());
+    }
+    names
+        .first()
+        .map(|s| (*s).to_string())
+        .ok_or_else(|| "no remote configured".to_string())
 }
 
 /// Stash all changes, including untracked files (`git stash push -u`). Recoverable
@@ -441,6 +475,57 @@ fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A throwaway repo one commit deep, with a bare repo wired up as `origin`.
+    /// Returns (worktree, remote), both under a pid+`tag`-keyed temp dir.
+    fn scratch_repo(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("mmux-git-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (work, remote) = (root.join("work"), root.join("remote.git"));
+        std::fs::create_dir_all(&work).unwrap();
+        run(&root, &["init", "--bare", remote.to_str().unwrap()]).unwrap();
+        run(&work, &["init", "-b", "main"]).unwrap();
+        run(&work, &["config", "user.email", "t@t.t"]).unwrap();
+        run(&work, &["config", "user.name", "t"]).unwrap();
+        std::fs::write(work.join("f"), "x").unwrap();
+        run(&work, &["add", "-A"]).unwrap();
+        run(&work, &["commit", "-m", "init"]).unwrap();
+        run(&work, &["remote", "add", "origin", remote.to_str().unwrap()]).unwrap();
+        (work, remote)
+    }
+
+    /// The reason `push` is more than `run(&["push"])`: a branch with no upstream gets
+    /// published instead of refused, and the upstream sticks so the next push is ordinary.
+    #[test]
+    fn push_publishes_a_branch_with_no_upstream() {
+        let (work, remote) = scratch_repo("push");
+        assert!(upstream(&work).is_none());
+
+        let flash = push(&work).expect("first push should publish, not fail");
+        assert!(flash.contains("origin"), "flash names the remote: {flash}");
+        assert_eq!(upstream(&work).as_deref(), Some("origin/main"));
+        // The commit really landed on the remote — not just a config write.
+        assert!(run(&remote, &["rev-parse", "main"]).is_ok());
+
+        // Now that an upstream exists, the plain path takes over.
+        assert_eq!(push(&work).unwrap(), "pushed");
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// `origin` wins when present; otherwise the first remote is the only sane guess.
+    #[test]
+    fn default_remote_prefers_origin() {
+        let (work, _) = scratch_repo("remote");
+        run(&work, &["remote", "add", "aaa", "/nowhere"]).unwrap();
+        assert_eq!(default_remote(&work).unwrap(), "origin");
+
+        run(&work, &["remote", "remove", "origin"]).unwrap();
+        assert_eq!(default_remote(&work).unwrap(), "aaa");
+
+        run(&work, &["remote", "remove", "aaa"]).unwrap();
+        assert_eq!(default_remote(&work).unwrap_err(), "no remote configured");
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
 
     fn fe(path: &str) -> FileEntry {
         FileEntry {
