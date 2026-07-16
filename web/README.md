@@ -34,15 +34,10 @@ docker run --rm -p 8080:80 mmux-web
   (search + named AI bots), the canonical sitemap, and an [llms.txt](https://llmstxt.org)-format
   guide LLMs can read. The `<head>` adds canonical, Open Graph/Twitter, and a schema.org
   `SoftwareApplication` JSON-LD block.
-- `assets/og-image.png` — the 1200×630 social card (`og-image.svg` is its editable source).
-  Regenerate the raster on macOS after editing the SVG:
-
-  ```sh
-  cd assets && sips -s format png og-image.svg --out og-image.png
-  ```
-
-  ImageIO honours the first installed font family (Menlo), so the PNG renders monospace.
-- `fonts/` — empty by default; see `fonts/README.md` to self-host a monospace face.
+- `assets/og-image.png` — the 1200×630 social card. Its editable source is
+  `../assets/og-image.src.html` (with the repo's other brand sources, outside the
+  deployed tree) — a standalone HTML canvas in the site's identity; the regeneration
+  commands are in its header comment.
 - `Dockerfile`, `nginx.conf`, `.dockerignore` — production serving (gzip, cache headers,
   strict CSP with no external origins and no `unsafe-inline`).
 

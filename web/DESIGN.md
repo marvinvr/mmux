@@ -327,6 +327,8 @@ web/
   fonts/        # DepartureMono-Regular.woff2 + its OFL LICENSE + README.
   banner.txt    # the plain-text card nginx serves to curl/wget/httpie on `/`.
   robots.txt / sitemap.xml / llms.txt / assets/ (og-image, icon)   # stable URLs.
+                # og-image.png's editable source is ../assets/og-image.src.html —
+                #   kept OUTSIDE web/ so it never ships; regen recipe in its comment.
   Dockerfile    # nginx:alpine; fingerprints css/js to <name>.<hash>.<ext> and
                 #   rewrites index.html refs (1y immutable cache stays safe).
                 #   fonts/, assets/ and the txt/xml files are copied verbatim.

@@ -1,0 +1,152 @@
+<!doctype html>
+<!--
+  og-image.src.html — editable source for web/assets/og-image.png (the 1200×630 social
+  card). Lives here in assets/ with the other brand sources, OUTSIDE web/, so it can
+  never be shipped by the site's Dockerfile.
+
+  The <body> IS the canvas: exactly 1200×630, no page chrome. It reuses the site's
+  identity per web/DESIGN.md — the pixel tile, Departure Mono (loaded from
+  ../web/fonts/, so keep the file at this depth), the green kicker, hero chips, and
+  the tmux-green status bar.
+
+  Regenerate the raster (from the repo root):
+
+    npx playwright screenshot --viewport-size=1200,630 --wait-for-timeout=1000 \
+      "file://$PWD/assets/og-image.src.html" /tmp/og-full.png
+    magick /tmp/og-full.png -strip -dither None -colors 256 PNG8:web/assets/og-image.png
+
+  (First run may need `npx playwright install chromium`. The magick step palettizes
+  the flat-color art — roughly a 4× smaller file with no visible loss.)
+
+  Keep it in step with index.html's og:image:alt text.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mmux og-image source</title>
+<style>
+  @font-face {
+    font-family: "Departure Mono";
+    src: url("../web/fonts/DepartureMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  :root {
+    --bg: #0d0e10;
+    --border: #2a2d31;
+    --text: #d7d9dc;
+    --text-2: #abafb5;
+    --green: #6e9e72;
+    --font: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --font-display: "Departure Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* the body is the 1200×630 canvas */
+  body {
+    width: 1200px;
+    height: 630px;
+    overflow: hidden;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font);
+  }
+
+  .og-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding-bottom: 8px; /* optical centering against the status bar */
+  }
+
+  .kicker {
+    font-size: 27px;
+    font-weight: 500;
+    letter-spacing: .02em;
+    color: var(--green);
+    margin-bottom: 44px;
+  }
+
+  .wordmark-row {
+    display: flex;
+    align-items: center;
+    gap: 38px;
+  }
+  .mark { width: 114px; height: 114px; display: block; }
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 160px;
+    line-height: 1;
+    letter-spacing: 0;
+    color: var(--text);
+  }
+  .caret {
+    display: inline-block;
+    width: .36em;
+    height: .64em;
+    margin-left: .07em;
+    background: var(--green);
+  }
+
+  .tagline {
+    margin-top: 46px;
+    font-size: 39px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .chips {
+    list-style: none;
+    display: flex;
+    gap: 16px;
+    margin-top: 44px;
+  }
+  .chips li {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 19px;
+    font-size: 20px;
+    color: var(--text-2);
+  }
+
+  /* the tmux-green signature: green bar, dark text */
+  .status {
+    flex: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--green);
+    color: #08130a;
+    font-size: 21px;
+    font-weight: 500;
+    padding: 14px 28px;
+    white-space: pre;
+  }
+</style>
+</head>
+<body>
+
+<div class="og-body">
+  <p class="kicker">// a terminal multiplexer for AI agents</p>
+  <div class="wordmark-row">
+    <svg class="mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+    <span class="wordmark">mmux<span class="caret"></span></span>
+  </div>
+  <p class="tagline">persistent terminals for your coding agents.</p>
+  <ul class="chips">
+    <li>runs in any terminal</li>
+    <li>works over ssh</li>
+    <li>one rust binary</li>
+  </ul>
+</div>
+<div class="status"><span>[mmux]  0:claude*  1:codex  2:zsh  3:vite</span><span>mmux.org</span></div>
+
+</body>
+</html>
