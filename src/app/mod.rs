@@ -14,7 +14,6 @@ mod highlight;
 mod input;
 mod keymap;
 mod lifecycle;
-mod linkbrowse;
 mod nav;
 mod overlay;
 mod persist;
@@ -23,12 +22,12 @@ mod procform;
 mod session;
 mod view;
 
-pub(crate) use session::{Kind, Recipe, Session, Status};
 use diff::DiffView;
 use git::{first_line, GitPanel, JobDone};
-use overlay::Overlay;
 use input::Selection;
 use nav::Nav;
+use overlay::Overlay;
+pub(crate) use session::{Kind, Recipe, Session, Status};
 use view::Regions;
 
 use crate::config::{Config, NotifyConfig, NotifyMechanism, Workspace};
@@ -49,6 +48,7 @@ use ratatui::layout::Rect;
 use ratatui::Terminal;
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -84,9 +84,21 @@ pub(crate) enum UpdateState {
 }
 
 pub(crate) struct App {
-    /// The workspace's projects in load order. `projects[0]` is the directory mmux
-    /// was launched in; the rest come from its `linked-projects`. Each owns its
-    /// config, per-agent instance counters, and its own right panel.
+    /// The launch directory, canonical — the manifest's dir for a manifest workspace,
+    /// else the (single) project's. Keys the restore-state file (see [`persist`]);
+    /// deliberately NOT `projects[0].dir`, which for a manifest is the first
+    /// *member* folder.
+    root: PathBuf,
+    /// Effective config of the launch directory. A manifest directory is a
+    /// container rather than necessarily a project, so its name/notifications/
+    /// update settings cannot be recovered from `projects[0]`.
+    cfg: Config,
+    /// Whether this session came from a `workspace:` manifest (see
+    /// [`crate::config::Workspace::manifest`]).
+    manifest: bool,
+    /// The workspace's projects in load order: the launch directory alone, or — for a
+    /// `workspace:` manifest — each of the manifest's folders. Each owns its config,
+    /// per-agent instance counters, and its own right panel.
     projects: Vec<Project>,
     /// The project whose panel is shown and whose launchers act by default. Tracks
     /// the selected row's project, so the panel "follows" wherever you navigate.
@@ -173,7 +185,7 @@ struct Project {
     counts: Vec<usize>, // per-agent-template instance counter
     term_count: usize,  // running total, for "Terminal #N" naming
     /// This project's git panel — present when the project dir is a git repo,
-    /// `None` otherwise. Each linked project tracks its own repo.
+    /// `None` otherwise. Each project tracks its own repo.
     git: Option<GitPanel>,
 }
 
@@ -183,23 +195,35 @@ impl Project {
         let counts = vec![0; cfg.agents.len()];
         let git =
             (cfg.git_panel_enabled() && crate::git::is_repo(&dir)).then(|| GitPanel::new(dir));
-        Project { cfg, counts, term_count: 0, git }
+        Project {
+            cfg,
+            counts,
+            term_count: 0,
+            git,
+        }
     }
 }
 
 impl App {
     fn new(ws: Workspace) -> App {
-        let projects: Vec<Project> = ws.projects.into_iter().map(Project::new).collect();
+        let Workspace {
+            dir,
+            config,
+            manifest,
+            projects,
+            warnings,
+        } = ws;
+        let root = crate::config::canonical(&dir);
+        let projects: Vec<Project> = projects.into_iter().map(Project::new).collect();
 
         // One flat session list across every project; each process becomes a row
-        // tagged with its project. Note which autostart so we can spawn them below —
-        // but only for the root project (`pi == 0`): autostarting linked projects'
-        // processes isn't wanted, so they start stopped like any manual process.
+        // tagged with its project. Note which autostart so we can spawn them below.
+        // A manifest keeps every member's standalone process semantics.
         let mut sessions = Vec::new();
         let mut auto = Vec::new();
         for (pi, proj) in projects.iter().enumerate() {
             for p in &proj.cfg.processes {
-                if p.autostart && pi == 0 {
+                if p.autostart {
                     auto.push(sessions.len());
                 }
                 let mut s = Session::new(
@@ -216,6 +240,9 @@ impl App {
         let nproj = projects.len();
         let (update_tx, update_rx) = mpsc::channel();
         let mut app = App {
+            root,
+            cfg: config,
+            manifest,
             projects,
             active: 0,
             sessions,
@@ -251,9 +278,9 @@ impl App {
             restore_sig: None,
         };
 
-        // Surface any non-fatal workspace-load problems (missing linked dirs, etc.).
-        if !ws.warnings.is_empty() {
-            app.flash = Some((ws.warnings.join(" · "), Instant::now()));
+        // Surface any non-fatal workspace-load problems (missing folders, etc.).
+        if !warnings.is_empty() {
+            app.flash = Some((warnings.join(" · "), Instant::now()));
         }
 
         // Kick off a background update check when allowed (brew install, not a dev build,
@@ -277,10 +304,11 @@ impl App {
         app
     }
 
-    /// The workspace-level config (the root project's) — drives the sidebar title
-    /// and the notification settings.
+    /// The launch directory's effective config — drives workspace identity,
+    /// notification settings, and self-update. In a manifest this is deliberately
+    /// separate from the first member project's config.
     fn root_cfg(&self) -> &Config {
-        &self.projects[0].cfg
+        &self.cfg
     }
 
     /// Set the transient footer note (shown for a few seconds). One place so the
@@ -310,7 +338,8 @@ impl App {
     /// Per-loop housekeeping. First follow the selection — the project of the
     /// selected row becomes active, so its git panel is the one shown. Then drain
     /// any finished background pull/push jobs (flashing the result) and give the
-    /// visible panel a throttled refresh so external commits show up.
+    /// visible panel a throttled full refresh and inactive panels a slower status
+    /// refresh so external changes show up in collapsed project summaries.
     pub(crate) fn tick(&mut self) {
         // Keep a held-at-edge drag selection auto-scrolling even when the mouse
         // isn't moving (crossterm only emits drag events on movement).
@@ -320,7 +349,15 @@ impl App {
         self.prune_exited();
         if let Some(n) = self.current_nav() {
             if let Some(p) = self.project_of(n) {
-                self.active = p;
+                if self.active != p {
+                    self.active = p;
+                    // Changing the sticky project can reorder the activity groups.
+                    // Keep selection attached to the same row rather than its old
+                    // positional index in the rebuilt nav.
+                    if let Some(pos) = self.build_nav().iter().position(|item| *item == n) {
+                        self.sel = pos;
+                    }
+                }
                 // Remember this row so returning to the project restores it.
                 if let Some(slot) = self.last_proj_sel.get_mut(p) {
                     *slot = Some(n);
@@ -342,10 +379,17 @@ impl App {
             };
             self.flash(msg);
         }
-        // Keep the visible panel fresh (throttled).
+        // Keep the visible panel fully fresh; inactive projects only refresh status
+        // on a slower throttle for their collapsed branch/change summaries.
         let active = self.active;
-        if let Some(g) = self.projects[active].git.as_mut() {
-            g.maybe_refresh();
+        for (pi, project) in self.projects.iter_mut().enumerate() {
+            if let Some(g) = project.git.as_mut() {
+                if pi == active {
+                    g.maybe_refresh();
+                } else {
+                    g.maybe_refresh_status();
+                }
+            }
         }
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
@@ -510,7 +554,13 @@ impl App {
 
     /// Emit one throttled notification for `name` from a batch of captured events,
     /// appending escape bytes to `out` (or firing an external command in-place).
-    fn emit_notification(&mut self, name: &str, notes: &[Notify], cfg: &NotifyConfig, out: &mut Vec<u8>) {
+    fn emit_notification(
+        &mut self,
+        name: &str,
+        notes: &[Notify],
+        cfg: &NotifyConfig,
+        out: &mut Vec<u8>,
+    ) {
         let throttled = self
             .last_notified
             .get(name)
@@ -592,7 +642,12 @@ pub fn run(ws: Workspace) -> Result<()> {
 
     enable_raw_mode()?;
     let mut out = stdout();
-    execute!(out, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste)?;
+    execute!(
+        out,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     // Best-effort: ask the terminal to disambiguate escape codes (the kitty keyboard
     // protocol) so distinct chords — notably `Ctrl+⏎` in the commit prompt — arrive with
     // their modifier instead of collapsing to a bare ⏎. Only the mildest flag: no

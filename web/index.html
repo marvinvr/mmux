@@ -211,19 +211,15 @@
         <div class="spec-side">
           <figure class="yaml-card">
             <figcaption class="yaml-card-name">mmux.yaml</figcaption>
-            <pre class="yaml-card-code"><code><span class="tok-comment"># ./mmux.yaml — this project's half</span>
-name: <span class="tok-str">app</span>
+            <pre class="yaml-card-code"><code><span class="tok-comment"># ~/dev/mmux.yaml — a workspace manifest</span>
+name: <span class="tok-str">my workspace</span>
 
-processes:
-  - name: <span class="tok-str">dev server</span>
-    cmd: <span class="tok-str">npm</span>
-    args: <span class="tok-str">["run", "dev"]</span>
-    autostart: <span class="tok-num">true</span>
-
-linked-projects:
-  - <span class="tok-path">../api</span></code></pre>
+workspace:
+  folders:
+    - <span class="tok-path">app</span>
+    - <span class="tok-path">api</span></code></pre>
           </figure>
-          <p class="spec-note">that's the whole project config. agents are defined once, globally, in <code>~/.mmux/config.yaml</code> — the init wizard scaffolds claude and codex for you. <a href="https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md">the full schema →</a></p>
+          <p class="spec-note">each folder keeps its own project config; agents can be defined once, globally, in <code>~/.mmux/config.yaml</code>. run <code>mmux</code> in the manifest directory to open the collection. <a href="https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md">the full schema →</a></p>
         </div>
       </div>
     </section>

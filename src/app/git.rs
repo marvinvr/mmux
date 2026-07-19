@@ -27,6 +27,9 @@ use super::App;
 /// How often the visible panel re-reads git state (picks up commits an agent makes
 /// in the main pane). A couple of cheap `git` forks.
 const REFRESH_EVERY: Duration = Duration::from_millis(1500);
+/// Inactive project boxes need only branch + changed-path counts. Refresh those less
+/// often and without paying for branches/log until the project becomes visible.
+const STATUS_REFRESH_EVERY: Duration = Duration::from_secs(5);
 /// How many recent commits to keep for the Commits box. Enough to scroll through real
 /// history; reading this many `git log` subjects is still a sub-millisecond fork.
 const LOG_LINES: usize = 200;
@@ -93,6 +96,7 @@ pub(crate) struct GitPanel {
     /// A network op in flight: the present-tense label to show ("pushing…").
     pub busy: Option<&'static str>,
     last_refresh: Option<Instant>,
+    last_status_refresh: Option<Instant>,
     tx: Sender<JobDone>,
     rx: Receiver<JobDone>,
 }
@@ -114,6 +118,7 @@ impl GitPanel {
             commit_cursor: 0,
             busy: None,
             last_refresh: None,
+            last_status_refresh: None,
             tx,
             rx,
         };
@@ -134,6 +139,7 @@ impl GitPanel {
         self.branch_cursor = self.branch_cursor.min(self.branches.len().saturating_sub(1));
         self.commit_cursor = self.commit_cursor.min(self.log.len().saturating_sub(1));
         self.last_refresh = Some(Instant::now());
+        self.last_status_refresh = self.last_refresh;
     }
 
     /// Throttled refresh for the per-frame tick, so external changes show up without
@@ -146,6 +152,24 @@ impl GitPanel {
         if due {
             self.refresh();
         }
+    }
+
+    /// Slower status-only refresh for collapsed background projects. The full branch
+    /// list and commit log are refreshed when this project becomes active again.
+    pub(crate) fn maybe_refresh_status(&mut self) {
+        let due = self
+            .last_status_refresh
+            .map(|t| t.elapsed() >= STATUS_REFRESH_EVERY)
+            .unwrap_or(true);
+        if !due {
+            return;
+        }
+        let st = git::status(&self.dir);
+        self.branch = st.branch;
+        self.files = st.files;
+        self.rows = git::tree_rows(&self.files);
+        self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
+        self.last_status_refresh = Some(Instant::now());
     }
 
     /// Move the cursor within the active section.

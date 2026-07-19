@@ -209,6 +209,9 @@ struct Entry {
     dir: String,
     running: bool,
     attached: bool,
+    /// Manifest workspaces form the first group in the default picker order, whether
+    /// currently running or only present in recents.
+    workspace: bool,
 }
 
 /// `mmux attach` / `mmux a`: pick any running mmux session anywhere and join it.
@@ -239,10 +242,8 @@ pub fn attach_picker() -> Result<()> {
     launch_in(PathBuf::from(&entry.dir))
 }
 
-/// The picker's rows: every running `mmux-*` session first, then recent directories
-/// (from `~/.mmux/history`) that have no live session. Both groups are ordered
-/// most-recently-used first, keyed off the same recents log (`launch_in` records every
-/// directory it opens, so a live session's directory is in the log too).
+/// The picker's rows: workspace manifests first (running or recent), then running
+/// standalone projects, then recent standalone projects. Each group is MRU-ordered.
 fn build_entries() -> Vec<Entry> {
     let recents = read_recents();
     // MRU rank by canonical directory: lower index = more recently used. Recents and
@@ -263,9 +264,20 @@ fn build_entries() -> Vec<Entry> {
         if running.contains(&name) {
             continue;
         }
-        let display = crate::config::project_name(Path::new(dir));
-        entries.push(Entry { name, display, dir: dir.clone(), running: false, attached: false });
+        let (display, workspace) = crate::config::project_identity(Path::new(dir));
+        entries.push(Entry {
+            name,
+            display,
+            dir: dir.clone(),
+            running: false,
+            attached: false,
+            workspace,
+        });
     }
+    entries.sort_by_key(|e| {
+        let group = if e.workspace { 0 } else if e.running { 1 } else { 2 };
+        (group, rank.get(e.dir.as_str()).copied().unwrap_or(usize::MAX))
+    });
     entries
 }
 
@@ -288,8 +300,8 @@ fn list_sessions() -> Vec<Entry> {
         }
         let attached = parts.next().unwrap_or("0").trim() != "0";
         let dir = session_dir(&name).unwrap_or_else(|| name.clone());
-        let display = crate::config::project_name(Path::new(&dir));
-        sessions.push(Entry { name, display, dir, running: true, attached });
+        let (display, workspace) = crate::config::project_identity(Path::new(&dir));
+        sessions.push(Entry { name, display, dir, running: true, attached, workspace });
     }
     sessions
 }
@@ -427,18 +439,17 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
 
                 for (pos, &ei) in filtered.iter().enumerate() {
                     let e = &entries[ei];
-                    // In the default (unfiltered) view, a dim header — set off by a blank
-                    // line so it reads as a clear break — introduces the recents the moment
-                    // we cross from the last running session into the not-running ones. A
-                    // ranked search mixes both states, so the grouping is dropped then.
+                    // The natural view is grouped; a ranked search deliberately drops
+                    // headers because its results mix all three groups.
+                    let group = entry_group(e);
                     if query.is_empty()
-                        && pos > 0
-                        && entries[filtered[pos - 1]].running
-                        && !e.running
+                        && (pos == 0 || entry_group(&entries[filtered[pos - 1]]) != group)
                     {
-                        lines.push(Line::from(""));
+                        if pos > 0 {
+                            lines.push(Line::from(""));
+                        }
                         lines.push(Line::from(Span::styled(
-                            "  recent (not running)".to_string(),
+                            format!("  {}", entry_group_label(group)),
                             Style::default().fg(Color::DarkGray),
                         )));
                     }
@@ -559,7 +570,7 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
 }
 
 /// The entry indices to display for `query`, in order. An empty query keeps the natural
-/// order (running sessions first, then recents). A non-empty query fuzzy-matches each
+/// order (workspaces, active projects, then recents). A non-empty query fuzzy-matches each
 /// entry's name + directory and ranks the survivors best-first — reusing the file
 /// picker's boundary-aware scorer — dropping the entries that don't match at all.
 fn rank(entries: &[Entry], query: &str) -> Vec<usize> {
@@ -580,6 +591,24 @@ fn rank(entries: &[Entry], query: &str) -> Vec<usize> {
             .then_with(|| entries[a.1].display.len().cmp(&entries[b.1].display.len()))
     });
     scored.into_iter().map(|(_, i)| i).collect()
+}
+
+fn entry_group(entry: &Entry) -> u8 {
+    if entry.workspace {
+        0
+    } else if entry.running {
+        1
+    } else {
+        2
+    }
+}
+
+fn entry_group_label(group: u8) -> &'static str {
+    match group {
+        0 => "workspaces",
+        1 => "running projects",
+        _ => "recent (not running)",
+    }
 }
 
 #[cfg(test)]

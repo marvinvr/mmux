@@ -51,10 +51,11 @@ Homebrew install notifies you and applies the upgrade with one confirmation. See
 
 ```sh
 cd ~/some/project
-mmux init      # interactive setup: agents, start commands, linked projects
+mmux init      # interactive setup: agents + start commands
 mmux           # open / reattach
 
-mmux a         # `mmux attach`: pick any running session and rejoin
+mmux a         # `mmux attach`: pick a workspace, active project, or past project
+mmux workspace # create/manage a workspace from the current directory's subfolders
 ```
 
 In the TUI: `↑`/`↓` move · `Enter` opens a `+ New …` row or jumps into a session · `s`/`x`/`r`
@@ -89,10 +90,23 @@ processes:
 A private, git-ignored `./mmux.local.yml` can **deep-override** the project file — overriding just
 the keys it names (down to a single nested field) and leaving the rest intact.
 
+To bundle several projects, run `mmux workspace` in their parent directory. It offers the
+subdirectories as an ordered checkbox list and writes a manifest like this:
+
+```yaml
+name: Private
+workspace:
+  folders: [mmux, otherproject]
+```
+
+The projects share one sidebar; switch between them with `[` and `]` or by clicking their boxes.
+Inside that workspace, press `w` in the sidebar to reopen the same manager.
+
 `mmux check` prints the effective merged config; `mmux docs` prints a self-contained setup guide.
 See [Configuration](docs/04-configuration.md) for the full schema, the merge rules,
 [local overrides](docs/04-configuration.md#local-overrides--mmuxlocalyml), and
-[linked projects](docs/04-configuration.md#linked-projects) (several projects in one sidebar).
+[workspace manifests](docs/04-configuration.md#workspace-manifests) (several projects in one
+sidebar).
 
 ## Documentation
 

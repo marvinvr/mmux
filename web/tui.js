@@ -22,7 +22,8 @@
    *   bare: bool,                          // true → plain terminal (mmux chrome hidden)
    *   status: str,                         // bottom-bar hint; falls back to STATUS[focus]
    *   multiProject: bool,
-   *   projects: [{ name, active }],
+   *   projects: [{ name, active, branch?, gitChanges? }],
+   *   workspaceName?: str,                 // manifest/session name (sidebar title)
    *   sidebar: [ { kind:"AGENTS"|"TERMINAL"|"PROCESSES", rows: [    // launchers FIRST
    *       { id, launcher:true, name:"New Claude" }, // launcher → "+ New Claude"
    *       { id, name, sub?, status:"running"|"exited"|"stopped",
@@ -261,12 +262,12 @@
 
     renderBar(t, state);
     renderSidebar(t.sidebar, state);
-    // The sidebar box title is the active project's name (the real single-project
-    // sidebar titles its border with the directory name — src/app/view/sidebar.rs).
+    // A manifest keeps its own workspace identity; a plain session uses the
+    // active/single project's name.
     if (t.sidebarTitle) {
       var projs = state.projects || [];
       var act = projs.filter(function (p) { return p.active; })[0] || projs[0];
-      t.sidebarTitle.textContent = (act && act.name) || "app";
+      t.sidebarTitle.textContent = state.workspaceName || (act && act.name) || "app";
     }
     renderMain(t, state.main || {});
     renderPanel(t, state.panel || {});
@@ -296,55 +297,82 @@
     if (!host) return;
     host.textContent = ""; // rebuild wholesale: small DOM, simpler than diffing.
 
-    // Linked workspaces show ONE clone at a time — stacking N clones' sections is
-    // unreadable in a narrow sidebar. Render only the active clone's rows; a quiet
-    // pager pinned to the bottom (built only when there's more than one) switches.
+    // A manifest workspace stacks one compact box per member, matching the real
+    // TUI. Plain sessions keep the original single set of sections.
     var projects =
       state.multiProject && Array.isArray(state.projects) && state.projects.length
         ? state.projects
         : null;
-    var active = projects
-      ? (projects.filter(function (p) { return p.active; })[0] || projects[0]).name
-      : null;
-
-    (state.sidebar || []).forEach(function (section) {
-      appendSection(host, section, active);
-    });
-
-    if (projects && projects.length > 1) {
-      host.appendChild(buildSwitch(projects, active));
+    if (projects) {
+      var sections = state.sidebar || [];
+      var ordered = projects.filter(function (project) {
+        return projectAgentRows(sections, project.name).some(agentHasActivity);
+      }).concat(projects.filter(function (project) {
+        return !projectAgentRows(sections, project.name).some(agentHasActivity);
+      }));
+      ordered.forEach(function (project) {
+        var box = el("div", "sb-project" + (project.active ? " sb-project--active" : ""));
+        box.appendChild(el("div", "sb-project-name", project.name));
+        if (project.active) {
+          sections.forEach(function (section) {
+            appendSection(box, section, project.name);
+          });
+        } else {
+          box.appendChild(buildProjectSummary(sections, project));
+        }
+        host.appendChild(box);
+      });
+    } else {
+      (state.sidebar || []).forEach(function (section) {
+        appendSection(host, section, null);
+      });
     }
   }
 
-  // The workspace pager (option A): chevrons + active name + position dots. A
-  // subtle footer; only built when >1 clone. The arrows carry data-switch; the
-  // sandbox driver wires the clicks (plus swipe and the [ / ] keys).
-  function buildSwitch(projects, activeName) {
-    var wrap = el("div", "sb-switch");
-
-    var prev = el("button", "sb-switch-arrow", "‹");
-    prev.type = "button";
-    prev.setAttribute("data-switch", "prev");
-    prev.setAttribute("aria-label", "previous project");
-
-    var mid = el("div", "sb-switch-mid");
-    mid.appendChild(el("span", "sb-switch-name", activeName || ""));
-    var dots = el("span", "sb-switch-dots");
-    dots.setAttribute("aria-hidden", "true");
-    projects.forEach(function (p) {
-      dots.appendChild(el("span", "sb-switch-dot" + (p.active ? " sb-switch-dot--on" : "")));
+  // The real TUI gives an inactive project a compact agent row (plus a git row
+  // for repositories) instead of clipping its first AGENTS heading into view.
+  function projectAgentRows(sections, projectName) {
+    var rows = [];
+    sections.forEach(function (section) {
+      if (section.kind !== "AGENTS") return;
+      (section.rows || []).forEach(function (row) {
+        if (!row.launcher && row.project === projectName) rows.push(row);
+      });
     });
-    mid.appendChild(dots);
+    return rows;
+  }
 
-    var next = el("button", "sb-switch-arrow", "›");
-    next.type = "button";
-    next.setAttribute("data-switch", "next");
-    next.setAttribute("aria-label", "next project");
+  function agentHasActivity(row) {
+    return row.status === "running" || row.status === "failed" || row.status === "crashed";
+  }
 
-    wrap.appendChild(prev);
-    wrap.appendChild(mid);
-    wrap.appendChild(next);
-    return wrap;
+  function buildProjectSummary(sections, project) {
+    var agents = projectAgentRows(sections, project.name);
+    var working = agents.filter(function (row) {
+      return row.status === "running" && !row.attention;
+    }).length;
+    var ready = agents.filter(function (row) {
+      return row.status === "running" && row.attention;
+    }).length;
+    var failed = agents.filter(function (row) {
+      return row.status === "failed" || row.status === "crashed";
+    }).length;
+    var collapsed = el("div", "sb-project-collapsed");
+    if (working || ready || failed) {
+      var summary = el("div", "sb-project-summary");
+      if (working) summary.appendChild(el("span", "sb-project-working", "⠲ " + working + " working"));
+      if (ready) summary.appendChild(el("span", "sb-project-ready", "● " + ready + " ready"));
+      if (failed) summary.appendChild(el("span", "sb-project-failed", "○ " + failed + " failed"));
+      collapsed.appendChild(summary);
+    }
+    if (project.gitChanges != null) {
+      var gitRow = el("div", "sb-project-git-row");
+      gitRow.appendChild(el("span", "sb-project-branch", project.branch || "HEAD"));
+      var git = project.gitChanges ? "git ±" + project.gitChanges : "git ✓";
+      gitRow.appendChild(el("span", project.gitChanges ? "sb-project-git sb-project-git--dirty" : "sb-project-git", git));
+      collapsed.appendChild(gitRow);
+    }
+    return collapsed;
   }
 
   // Append one section; when `projectName` is set, only rows for that project
@@ -989,7 +1017,7 @@
       document.addEventListener("click", onDocClick, true);
     }
 
-    /* horizontal swipe over the sandbox switches the active workspace (mobile).
+    /* horizontal swipe over the sandbox switches the active project (mobile).
      * vertical-dominant or short gestures fall through so page scrolling is intact. */
     var swipeX = null, swipeY = null;
     function onTouchStart(e) {
@@ -1007,7 +1035,7 @@
       if (Math.abs(dx) < 44 || Math.abs(dx) <= Math.abs(dy)) return;
       if (!state.multiProject || (state.projects || []).length < 2) return;
       if (!engaged) engage();
-      switchWorkspace(dx < 0 ? "next" : "prev");
+      switchProject(dx < 0 ? "next" : "prev");
     }
 
     function onFocusOut(e) {
@@ -1022,10 +1050,6 @@
       if (!engaged) engage();
       var tgt = e.target;
       var closest = tgt && tgt.closest ? function (s) { return tgt.closest(s); } : function () { return null; };
-
-      // pager arrows switch the active workspace (only present with linked projects)
-      var swEl = closest(".sb-switch-arrow[data-switch]");
-      if (swEl) { switchWorkspace(swEl.getAttribute("data-switch")); return; }
 
       // clicking a node in the git Changes box stages / unstages it (file → itself;
       // folder → all its children, with the checkbox going [✓]/[~]/[ ])
@@ -1089,9 +1113,9 @@
       showHint(true);
     }
 
-    /* --- flat list of selectable rows (sessions + launchers), in DOM order.
-     * With linked projects the sidebar shows one clone at a time; we walk the
-     * data once, picking the rows of the active project (+ all launchers). --- */
+    /* --- flat list of selectable rows for the active project. The rendered
+     * manifest sidebar shows every member box; keyboard actions stay scoped to
+     * whichever project [ / ] made active. --- */
     function selectableRows() {
       var out = [];
       var activeProj = state.multiProject ? activeProjectName() : null;
@@ -1126,10 +1150,10 @@
       }
     }
 
-    /* Linked workspaces: switch the active clone (pager arrows, swipe, [ / ]).
+    /* Manifest projects: switch the active member (swipe or [ / ]).
      * Re-points the active project, re-selects that clone's first row, follows it
      * in the title bar, and previews its session in main. */
-    function switchWorkspace(dir) {
+    function switchProject(dir) {
       var projs = state.projects || [];
       if (!state.multiProject || projs.length < 2) return;
       var cur = 0;
@@ -1141,11 +1165,11 @@
       projs.forEach(function (p, idx) { p.active = idx === to; });
 
       var name = projs[to].name;
-      state.title = "~/dev/" + name; // the whole window follows the active clone
+      state.title = "~/dev/" + name; // pane/git context follows the active member
       state.focus = "sandbox";
 
       var rows = selectableRows();
-      if (rows.length) selectRow(rows, 0); // first row of the now-active clone
+      if (rows.length) selectRow(rows, 0); // first row of the now-active member
       var first = rows[0];
       if (first && !first.launcher) state.main = mainFor(first);
 
@@ -1190,11 +1214,11 @@
           closeRow(rows[i]);
           break;
         case "[":
-          if (state.multiProject) { switchWorkspace("prev"); return; }
+          if (state.multiProject) { switchProject("prev"); return; }
           handled = false;
           break;
         case "]":
-          if (state.multiProject) { switchWorkspace("next"); return; }
+          if (state.multiProject) { switchProject("next"); return; }
           handled = false;
           break;
         case "Escape":

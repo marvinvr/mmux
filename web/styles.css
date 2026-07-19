@@ -591,8 +591,7 @@ section {
 .tw--main-focus .tw-region--main { border-color: var(--magenta); }
 .tw--main-focus .tw-region--main > .tw-region-title { color: var(--text); }
 
-/* sidebar — a flex column so the workspace pager can pin to the bottom. No border
- * of its own now: the .tw-region wrapper carries the box. */
+/* sidebar content. The .tw-region wrapper carries the outer box. */
 .tw-sidebar {
   flex: 1;
   display: flex;
@@ -602,59 +601,45 @@ section {
   overflow-y: auto;
 }
 
-/* workspace pager (option A) — linked clones show one at a time; this subtle
- * footer switches between them. margin-top:auto pins it to the bottom when the
- * list is short; sticky keeps it in view (rows scroll under it) when it's long. */
-.sb-switch {
+/* Multi-project workspace: active-member group first, manifest order within groups. */
+.sb-project {
   flex: none;
-  margin-top: auto;
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: .3rem;
-  padding: .45rem .55rem;
-  background: var(--surface);
-  border-top: 1px solid var(--tui-border);
+  margin: 0 .28rem .38rem;
+  padding: .22rem 0 .08rem;
+  border: 1px solid var(--tui-border);
 }
-.sb-switch-arrow {
-  flex: none;
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  line-height: 1;
-  padding: .1rem .35rem;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-.sb-switch-arrow:hover { color: var(--green); }
-.sb-switch-mid {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: .4rem;
-}
-.sb-switch-name {
-  min-width: 0;
-  font-size: .76rem;
+.sb-project--active { border-color: var(--cyan); }
+.sb-project-name {
+  padding: 0 .55rem .18rem;
+  color: var(--text-2);
+  font-size: .7rem;
   font-weight: 600;
-  color: var(--text);
+}
+.sb-project-summary {
+  display: flex;
+  gap: .55rem;
+  padding: .12rem .85rem .08rem;
+  font-size: .66rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sb-project-working { color: var(--text-2); }
+.sb-project-ready { color: var(--green); font-weight: 700; }
+.sb-project-failed { color: var(--red); }
+.sb-project-git-row {
+  display: flex;
+  padding: .04rem .85rem .2rem;
+  font-size: .66rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sb-project-branch {
+  color: var(--magenta);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.sb-switch-dots { flex: none; display: inline-flex; gap: .22rem; }
-.sb-switch-dot {
-  width: .3rem;
-  height: .3rem;
-  border-radius: 50%;
-  background: var(--border-2);   /* visible against the sidebar, unlike surface-3 */
-}
-.sb-switch-dot--on { background: var(--green); }
+.sb-project-git { flex: none; margin-left: auto; color: var(--muted); }
+.sb-project-git--dirty { color: var(--yellow); }
 
 .sb-section { flex: none; margin-bottom: .28rem; }
 /* section heads are cyan + bold in the real tool (theme.rs `header`) */

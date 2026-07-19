@@ -19,15 +19,17 @@ pub enum Nav {
     NewProcess(usize),      // (project): launcher for the "+ New Process" form in that project
     Session(usize),         // a live/exited session: self.sessions[i]
     Panel,                  // the active project's right panel (only listed in compact mode)
-    Link,                   // the standalone "+ Link another project" box (targets projects[0])
 }
 
 impl App {
-    /// The ordered nav list: for each project in turn, its agent launchers + agents,
-    /// terminal launcher + terminals, and processes; then (compact only) the panel.
+    /// The ordered nav list: agent-active projects first (stable in manifest order),
+    /// then quiet projects, each with its launchers/sessions; finally the compact panel.
+    /// The selected project stays in the upper group until another project is selected,
+    /// so closing its last agent cannot move the rows underneath the cursor.
     pub(crate) fn build_nav(&self) -> Vec<Nav> {
         let mut nav = Vec::new();
-        for (pi, proj) in self.projects.iter().enumerate() {
+        for pi in self.project_display_order() {
+            let proj = &self.projects[pi];
             for t in 0..proj.cfg.agents.len() {
                 nav.push(Nav::NewAgent(pi, t));
             }
@@ -40,11 +42,33 @@ impl App {
         if self.compact && self.active_git().is_some() {
             nav.push(Nav::Panel);
         }
-        // The link row is always last: its own standalone box below every project, so
-        // it's reachable by the arrow keys (and highlights when selected). Opening it
-        // (Enter / click) raises the browser; it grows `projects[0]`, capped or not.
-        nav.push(Nav::Link);
         nav
+    }
+
+    /// Stable-partition projects by agent activity. A project with any working,
+    /// ready, or failed agent belongs to the upper group. The selected project is
+    /// sticky in that group until selection moves elsewhere, even if its last agent
+    /// closes. Neither counts nor the mix of states rank projects within a group, so
+    /// the manifest stays the stable tie-breaker.
+    pub(crate) fn project_display_order(&self) -> Vec<usize> {
+        let mut active = Vec::new();
+        let mut quiet = Vec::new();
+        for pi in 0..self.projects.len() {
+            let has_agent_activity = self.sessions.iter().any(|s| {
+                s.project == pi
+                    && s.kind == Kind::Agent
+                    && (s.is_running()
+                        || matches!(s.status(), super::Status::Failed)
+                        || s.error.is_some())
+            });
+            if has_agent_activity || pi == self.active {
+                active.push(pi);
+            } else {
+                quiet.push(pi);
+            }
+        }
+        active.extend(quiet);
+        active
     }
 
     fn push_sessions(&self, nav: &mut Vec<Nav>, pi: usize, kind: Kind) {
@@ -55,12 +79,12 @@ impl App {
         }
     }
 
-    /// Which project a nav row belongs to (the shared panel and link rows belong to none).
+    /// Which project a nav row belongs to (the shared panel row belongs to none).
     pub(crate) fn project_of(&self, nav: Nav) -> Option<usize> {
         match nav {
             Nav::NewAgent(p, _) | Nav::NewTerminal(p) | Nav::NewProcess(p) => Some(p),
             Nav::Session(i) => Some(self.sessions[i].project),
-            Nav::Panel | Nav::Link => None,
+            Nav::Panel => None,
         }
     }
 
@@ -86,15 +110,15 @@ impl App {
     pub(crate) fn pane_at(&self, nav: Nav) -> Option<&Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_ref(),
-            // The git panel is native, not pane-backed; launchers and the link row have no pane.
-            Nav::Panel | Nav::Link | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
+            // The git panel is native, not pane-backed; launchers have no pane.
+            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
         }
     }
 
     pub(crate) fn pane_at_mut(&mut self, nav: Nav) -> Option<&mut Pane> {
         match nav {
             Nav::Session(i) => self.sessions[i].pane.as_mut(),
-            Nav::Panel | Nav::Link | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
+            Nav::Panel | Nav::NewAgent(..) | Nav::NewTerminal(_) | Nav::NewProcess(_) => None,
         }
     }
 
@@ -108,16 +132,21 @@ impl App {
 
     /// Switch the cursor to project `delta` away (`]` / `[`).
     pub(crate) fn jump_project(&mut self, delta: i32) {
-        if self.projects.len() < 2 {
+        let order = self.project_display_order();
+        if order.len() < 2 {
             return;
         }
-        let target = (self.active as i32 + delta).clamp(0, self.projects.len() as i32 - 1) as usize;
-        self.focus_project(target);
+        let pos = order.iter().position(|&pi| pi == self.active).unwrap_or(0) as i32;
+        let target = (pos + delta).clamp(0, order.len() as i32 - 1) as usize;
+        self.focus_project(order[target]);
     }
 
     /// Move the cursor into project `pi`, landing on the row last selected there (if
     /// it still exists and still belongs to `pi`) or that project's first row.
     pub(crate) fn focus_project(&mut self, pi: usize) {
+        let changed = self.active != pi;
+        // Set this first because the selected project participates in display order.
+        self.active = pi;
         let nav = self.build_nav();
         let remembered = self.last_proj_sel.get(pi).copied().flatten();
         let pos = remembered
@@ -128,9 +157,10 @@ impl App {
             .or_else(|| nav.iter().position(|n| self.project_of(*n) == Some(pi)));
         if let Some(pos) = pos {
             self.sel = pos;
-            self.active = pi;
             // The preview is scoped to one project's repo; a switch invalidates it.
-            self.clear_diff();
+            if changed {
+                self.clear_diff();
+            }
         }
     }
 

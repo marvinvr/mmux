@@ -32,8 +32,9 @@ curl -fsSL https://mmux.org/install.sh | sh
 On macOS you can install with Homebrew instead (`brew install marvinvr/mmux/mmux`); a brew
 install notifies you of updates and applies them with one confirmation. From source with Rust:
 `cargo install --path .`. Then run `mmux` in any project directory. `mmux init` runs an
-interactive setup (agents, start commands, linked projects); `mmux attach` rejoins a running
-session from anywhere; `mmux check` prints the effective merged config; and `mmux docs` prints
+interactive setup (agents and start commands); `mmux attach` rejoins a running
+session from anywhere; `mmux workspace` creates or manages a directory-level workspace with an
+ordered subdirectory picker; `mmux check` prints the effective merged config; and `mmux docs` prints
 a self-contained setup guide.
 
 ## Documentation
@@ -42,7 +43,7 @@ a self-contained setup guide.
 - [Quick Start](https://github.com/marvinvr/mmux/blob/main/docs/01-quick-start.md): first run, init, attach
 - [Installation](https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md): the install script, Homebrew, prebuilt binaries, the macOS code-signing note
 - [Usage](https://github.com/marvinvr/mmux/blob/main/docs/03-usage.md): the interface, every keybinding, the git panel, the mouse
-- [Configuration](https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md): the YAML schema, the global + per-project merge, linked projects, auto-update
+- [Configuration](https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md): the YAML schema, the global + per-project merge, workspace manifests, auto-update
 - [Notifications](https://github.com/marvinvr/mmux/blob/main/docs/05-notifications.md): bells, notification escapes, desktop notifications over SSH
 - [Architecture](https://github.com/marvinvr/mmux/blob/main/docs/06-architecture.md): the inner/outer tmux split, the unified Session model, the native git panel
 - [Module Map](https://github.com/marvinvr/mmux/blob/main/docs/07-module-map.md): a file-by-file index of `src/`
@@ -53,7 +54,7 @@ a self-contained setup guide.
 - One mmux per directory, kept alive inside a tmux session; it survives terminal close and SSH drops.
 - Agents, terminals and processes share one unified session model — each is spawned, stopped and restarted from the sidebar.
 - The git panel is native (Changes / Branches / Commits boxes), not an embedded external tool. A changed file's diff previews in the main pane; selecting a commit shows its full diff there too; changed images preview as the picture itself (sixels on capable terminals, half-block glyphs elsewhere).
-- Linked projects group related project directories into one sidebar; the git panel follows whichever project is active.
+- A directory-level workspace manifest groups up to 10 projects into one sidebar; the git panel follows the active project.
 - Config is two layers merged at launch: a global `~/.mmux/config.yaml` with each project's `mmux.yaml` on top.
 - Common keys: `↑`/`↓` move · `Enter` open or spawn · `s`/`x`/`r` start/close/restart · `Tab` focus the git panel · `Ctrl+P` file picker · `d` detach · `q` quit · `Ctrl-b h` return to the sidebar.
 

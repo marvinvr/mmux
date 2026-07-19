@@ -90,7 +90,11 @@ impl App {
         let hits = match self.active_git() {
             Some(g) => super::git::render_git(f, area, g, focused),
             None => {
-                let border = if focused { theme::FOCUS_BORDER } else { theme::IDLE_BORDER };
+                let border = if focused {
+                    theme::FOCUS_BORDER
+                } else {
+                    theme::IDLE_BORDER
+                };
                 let block = Block::default()
                     .borders(Borders::ALL)
                     .title(" git ")
@@ -164,7 +168,9 @@ impl App {
             if sr < 0 || sr >= inner.height as i32 {
                 continue;
             }
-            let Some(line) = v.lines.get(i as usize) else { continue };
+            let Some(line) = v.lines.get(i as usize) else {
+                continue;
+            };
             let len = line.content().chars().count() as u16;
             if len == 0 {
                 continue;
@@ -216,7 +222,6 @@ impl App {
                 }
             }
             Some(Nav::Panel) => " git ".into(),
-            Some(Nav::Link) => " link ".into(),
             None => " mmux ".into(),
         }
     }
@@ -224,7 +229,10 @@ impl App {
     pub(crate) fn placeholder_text(&self, nav: Option<Nav>) -> String {
         match nav {
             Some(Nav::NewAgent(p, t)) => {
-                format!("Press Enter to launch a new {}.", self.projects[p].cfg.agents[t].name)
+                format!(
+                    "Press Enter to launch a new {}.",
+                    self.projects[p].cfg.agents[t].name
+                )
             }
             Some(Nav::NewTerminal(_)) => "Press Enter to open a new terminal.".into(),
             Some(Nav::NewProcess(_)) => {
@@ -233,7 +241,11 @@ impl App {
             Some(Nav::Session(i)) => {
                 let s = &self.sessions[i];
                 if let Some(e) = &s.error {
-                    let verb = if s.kind == Kind::Terminal { "open" } else { "start" };
+                    let verb = if s.kind == Kind::Terminal {
+                        "open"
+                    } else {
+                        "start"
+                    };
                     return format!("Failed to {verb} {}:\n\n{e}", s.name);
                 }
                 match s.kind {
@@ -241,13 +253,18 @@ impl App {
                         format!("{} is stopped.\n\nPress Enter or 's' to start it.", s.name)
                     }
                     Kind::Terminal => {
-                        format!("{} has no live terminal.\n\nPress Enter or 'r' to reopen.", s.name)
+                        format!(
+                            "{} has no live terminal.\n\nPress Enter or 'r' to reopen.",
+                            s.name
+                        )
                     }
-                    _ => format!("{} has no live terminal.\n\nPress Enter or 'r' to restart.", s.name),
+                    _ => format!(
+                        "{} has no live terminal.\n\nPress Enter or 'r' to restart.",
+                        s.name
+                    ),
                 }
             }
             Some(Nav::Panel) => "Git panel — press Enter to open it.".into(),
-            Some(Nav::Link) => "Press Enter to link another project into the workspace.".into(),
             None => "No agents or processes configured.\nEdit mmux.yaml and reopen.".into(),
         }
     }
@@ -299,7 +316,9 @@ fn diff_title(v: &DiffView) -> Line<'static> {
             Span::raw(" ▦ "),
             Span::styled(
                 v.path.clone(),
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 format!("  {}×{} ", img.dims.0, img.dims.1),
@@ -313,18 +332,31 @@ fn diff_title(v: &DiffView) -> Line<'static> {
         spans.push(Span::raw(" ● "));
         spans.push(Span::styled(
             format!("{} ", c.short),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(c.subject.clone(), Style::default().fg(Color::White)));
+        spans.push(Span::styled(
+            c.subject.clone(),
+            Style::default().fg(Color::White),
+        ));
     } else {
         spans.push(Span::raw(" Δ "));
         spans.push(Span::styled(
             v.path.clone(),
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         ));
     }
-    spans.push(Span::styled(format!("  +{}", v.added), Style::default().fg(Color::Green)));
-    spans.push(Span::styled(format!(" −{} ", v.removed), Style::default().fg(Color::Red)));
+    spans.push(Span::styled(
+        format!("  +{}", v.added),
+        Style::default().fg(Color::Green),
+    ));
+    spans.push(Span::styled(
+        format!(" −{} ", v.removed),
+        Style::default().fg(Color::Red),
+    ));
     Line::from(spans)
 }
 
@@ -385,7 +417,9 @@ fn diff_line(l: &DiffLine, width: u16, gutter: usize) -> Line<'static> {
     if matches!(l.kind, DiffKind::File) {
         let mut line = Line::from(vec![Span::styled(
             format!(" ▸ {}", l.text),
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         )]);
         theme::fill_row_bg(&mut line, width, theme::DIFF_FILE_BG);
         return line;

@@ -7,99 +7,90 @@ use super::theme::{
 };
 use crate::app::nav::Nav;
 use crate::app::session::Kind;
-use crate::app::{App, Focus};
+use crate::app::{App, Focus, Status};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
-/// The link box's fixed height: top border + one row + bottom border.
-const LINK_H: u16 = 3;
-/// Minimum body height worth splitting a link box off from (else the box is dropped
-/// this frame — keyboard nav still reaches the row).
-const MIN_BODY: u16 = 3;
+#[derive(Default)]
+struct AgentActivity {
+    working: usize,
+    ready: usize,
+    failed: usize,
+}
 
 impl App {
     pub(crate) fn render_sidebar(&mut self, f: &mut Frame, area: Rect) {
-        // The whole left column routes clicks to the sidebar. A standalone box pinned to
-        // the column's bottom hosts the "+ Link another project" row — its own chrome, not
-        // tucked inside a project box, since it acts on the workspace (it always grows the
-        // root project), not any one project. It's a nav row: arrow-reachable, highlighted
-        // when selected, opened by Enter or a click. The body above it fills the rest, so
-        // the active project's box still expands to run right down to the link box.
+        // The whole left column routes clicks to the sidebar.
         self.regions.sidebar = Some(area);
-        let (body, link_area) = split_link_box(area);
         if self.projects.len() > 1 {
-            self.render_sidebar_projects(f, body);
+            self.render_sidebar_projects(f, area);
         } else {
-            self.render_sidebar_single(f, body);
+            self.render_sidebar_single(f, area);
         }
-        if let Some(link_area) = link_area {
-            self.render_link_box(f, link_area);
-        }
-    }
-
-    /// Draw the standalone, `Projects`-titled "+ Link another project" box pinned to the
-    /// column's bottom. The row is styled by [`nav_row`](Self::nav_row) — left-aligned and
-    /// the same weight as a `+ New …` launcher — so it highlights when selected like any
-    /// other row; its rect is stored for click routing.
-    fn render_link_box(&mut self, f: &mut Frame, area: Rect) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled(" Projects ", Style::default().fg(Color::Gray)))
-            .border_style(Style::default().fg(IDLE_BORDER));
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        if inner.width == 0 || inner.height == 0 {
-            return;
-        }
-        let nav = self.build_nav();
-        let Some(pos) = nav.iter().position(|n| matches!(n, Nav::Link)) else {
-            return;
-        };
-        let row = Rect { height: 1, ..inner };
-        f.render_widget(Paragraph::new(self.nav_row(pos, Nav::Link, inner.width)), row);
-        self.regions.link_btn = Some(row);
     }
 
     /// One bordered box per project, stacked top-to-bottom. The active box expands to
-    /// fill the leftover height; inactive boxes are content-sized (no whitespace). In
-    /// compact (phone) mode the git panel — which has no column of its own there — is
-    /// appended as a final box so it stays reachable. Works in wide and compact alike.
+    /// fill the available height; inactive boxes stay collapsed. In compact (phone)
+    /// mode the git panel — which has no column of its own there — is appended as a
+    /// final box so it stays reachable. Works in wide and compact alike.
     fn render_sidebar_projects(&mut self, f: &mut Frame, area: Rect) {
         self.regions.rows.clear();
         let nav = self.build_nav();
-        let n = self.projects.len();
-        let inner_w = area.width.saturating_sub(2); // minus the box's two border columns
+        // Border columns + one content-padding cell on each side.
+        let inner_w = area.width.saturating_sub(4);
+        let order = self.project_display_order();
+        let active_pos = order.iter().position(|&pi| pi == self.active).unwrap_or(0);
 
-        // The boxes to stack: one per project, then (compact only) a git box. Each is
-        // (title, is_active_project, lines, row map).
-        let mut blocks: Vec<(String, bool, Vec<Line>, Vec<(u16, usize)>)> = (0..n)
+        // The boxes to stack: agent-active projects plus the sticky selected project
+        // first (stable within each activity bucket), then the compact-only git box.
+        // Keep the real project index in the tuple because display order no longer
+        // equals `App.projects` order.
+        let mut blocks: Vec<(String, bool, Option<usize>, Vec<Line>, Vec<(u16, usize)>)> = order
+            .into_iter()
             .map(|pi| {
-                let (lines, rows) = self.project_lines(pi, &nav, inner_w);
-                (self.projects[pi].cfg.display_name(), pi == self.active, lines, rows)
+                let active = pi == self.active;
+                let (lines, rows) = if active {
+                    self.project_lines(pi, &nav, inner_w)
+                } else {
+                    (self.collapsed_project_lines(pi, inner_w), Vec::new())
+                };
+                (
+                    self.projects[pi].cfg.display_name(),
+                    active,
+                    Some(pi),
+                    lines,
+                    rows,
+                )
             })
             .collect();
         if self.compact && self.active_git().is_some() {
             if let Some(pos) = nav.iter().position(|n| matches!(n, Nav::Panel)) {
                 let row = self.nav_row(pos, Nav::Panel, inner_w);
-                blocks.push(("git".to_string(), false, vec![row], vec![(0, pos)]));
+                blocks.push(("git".to_string(), false, None, vec![row], vec![(0, pos)]));
             }
         }
 
-        // The active project's box absorbs the slack; everything else is content-sized.
-        let content_h: Vec<u16> = blocks.iter().map(|(_, _, l, _)| l.len() as u16 + 2).collect();
-        let heights = box_heights(&content_h, self.active, area.height);
+        // Inactive repos need one extra row for branch + change state; non-git
+        // projects stay at one summary row. The active project gets everything left.
+        let collapsed_heights: Vec<u16> = blocks
+            .iter()
+            .map(|(_, _, _, lines, _)| lines.len() as u16 + 2)
+            .collect();
+        let heights = box_heights(&collapsed_heights, active_pos, area.height);
         let chunks = Layout::vertical(heights.iter().map(|h| Constraint::Length(*h))).split(area);
 
-        for (i, (name, active, lines, rows)) in blocks.into_iter().enumerate() {
+        for (i, (name, active, project, lines, rows)) in blocks.into_iter().enumerate() {
             let rect = chunks[i];
             if rect.height == 0 {
                 continue;
             }
             let title_style = if active {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Gray)
             };
@@ -108,12 +99,12 @@ impl App {
                 .borders(Borders::ALL)
                 .title(Span::styled(format!(" {name} "), title_style))
                 .border_style(Style::default().fg(border));
-            let inner = block.inner(rect);
+            let inner = padded_inner(block.inner(rect));
             f.render_widget(block, rect);
-            // Remember each project box's area so a click in its whitespace switches
-            // projects (the trailing git box, index >= n, is not a project).
-            if i < n {
-                self.regions.project_boxes.push((rect, i));
+            // Remember the actual project index so clicks stay correct after the
+            // activity-based display ordering. The trailing git box has no project.
+            if let Some(pi) = project {
+                self.regions.project_boxes.push((rect, pi));
             }
             // Map each row's local line index to an absolute screen `y` for click
             // routing, skipping any the box is too short to actually show.
@@ -127,21 +118,135 @@ impl App {
         }
     }
 
+    fn agent_activity(&self, pi: usize) -> AgentActivity {
+        let mut activity = AgentActivity::default();
+        for s in self
+            .sessions
+            .iter()
+            .filter(|s| s.project == pi && s.kind == Kind::Agent)
+        {
+            if s.is_running() {
+                if s.busy() {
+                    activity.working += 1;
+                } else {
+                    activity.ready += 1;
+                }
+            } else if matches!(s.status(), Status::Failed) || s.error.is_some() {
+                activity.failed += 1;
+            }
+        }
+        activity
+    }
+
+    /// Compact inactive-project content: an agent-activity row when there is any,
+    /// plus — only for a git repo — the current branch and changed-path count.
+    fn collapsed_project_lines(&self, pi: usize, width: u16) -> Vec<Line<'static>> {
+        let activity = self.agent_activity(pi);
+
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        if activity.working > 0 {
+            spans.push(Span::styled(
+                format!("{} {} working", self.spinner(), activity.working),
+                Style::default().fg(Color::Gray),
+            ));
+        }
+        if activity.ready > 0 {
+            if !spans.is_empty() {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                format!("● {} ready", activity.ready),
+                Style::default()
+                    .fg(super::theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+        if activity.failed > 0 {
+            if !spans.is_empty() {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                format!("○ {} failed", activity.failed),
+                Style::default().fg(Color::Red),
+            ));
+        }
+        let mut lines = Vec::new();
+        if !spans.is_empty() {
+            lines.push(Line::from(spans));
+        }
+
+        let Some(g) = self.projects[pi].git.as_ref() else {
+            return lines;
+        };
+
+        let (git, git_style) = if g.files.is_empty() {
+            ("git ✓".to_string(), Style::default().fg(Color::DarkGray))
+        } else {
+            (
+                format!("git ±{}", g.files.len()),
+                Style::default().fg(Color::Yellow),
+            )
+        };
+        let git_w = git.chars().count();
+        let branch_w = (width as usize).saturating_sub(git_w + 1);
+        let branch = if branch_w == 0 {
+            String::new()
+        } else {
+            super::git::truncate_middle(
+                if g.branch.is_empty() {
+                    "HEAD"
+                } else {
+                    &g.branch
+                },
+                branch_w,
+            )
+        };
+        let mut line = Line::from(Span::styled(branch, Style::default().fg(Color::Magenta)));
+        let pad = (width as usize).saturating_sub(line.width() + git_w);
+        line.spans.push(Span::raw(" ".repeat(pad)));
+        line.spans.push(Span::styled(git, git_style));
+        lines.push(line);
+        lines
+    }
+
     /// Build one project's AGENTS/TERMINAL/PROCESSES lines (no project header — the
     /// box title carries the name) plus each row's line index within the box mapped
     /// to its global nav position, for click routing.
-    fn project_lines(&self, pi: usize, nav: &[Nav], width: u16) -> (Vec<Line<'static>>, Vec<(u16, usize)>) {
+    fn project_lines(
+        &self,
+        pi: usize,
+        nav: &[Nav],
+        width: u16,
+    ) -> (Vec<Line<'static>>, Vec<(u16, usize)>) {
         let mut lines: Vec<Line<'static>> = Vec::new();
         let mut rows: Vec<(u16, usize)> = Vec::new();
-        self.push_proj_section(&mut lines, &mut rows, "AGENTS", true, nav, width, move |app, n| {
-            section_matches(app, n, pi, Kind::Agent)
-        });
-        self.push_proj_section(&mut lines, &mut rows, "TERMINAL", false, nav, width, move |app, n| {
-            section_matches(app, n, pi, Kind::Terminal)
-        });
-        self.push_proj_section(&mut lines, &mut rows, "PROCESSES", false, nav, width, move |app, n| {
-            section_matches(app, n, pi, Kind::Process)
-        });
+        self.push_proj_section(
+            &mut lines,
+            &mut rows,
+            "AGENTS",
+            true,
+            nav,
+            width,
+            move |app, n| section_matches(app, n, pi, Kind::Agent),
+        );
+        self.push_proj_section(
+            &mut lines,
+            &mut rows,
+            "TERMINAL",
+            false,
+            nav,
+            width,
+            move |app, n| section_matches(app, n, pi, Kind::Terminal),
+        );
+        self.push_proj_section(
+            &mut lines,
+            &mut rows,
+            "PROCESSES",
+            false,
+            nav,
+            width,
+            move |app, n| section_matches(app, n, pi, Kind::Process),
+        );
         (lines, rows)
     }
 
@@ -175,7 +280,7 @@ impl App {
             .borders(Borders::ALL)
             .title(format!(" {title} "))
             .border_style(Style::default().fg(IDLE_BORDER));
-        let inner = block.inner(area);
+        let inner = padded_inner(block.inner(area));
         f.render_widget(block, area);
 
         self.regions.rows.clear();
@@ -192,32 +297,61 @@ impl App {
                     lines.push(Line::from(""));
                     y += 1;
                 }
-                lines.push(project_header(&self.projects[pi].cfg.display_name(), pi == self.active, inner.width));
+                lines.push(project_header(
+                    &self.projects[pi].cfg.display_name(),
+                    pi == self.active,
+                    inner.width,
+                ));
                 y += 1;
             }
-            self.section(&mut lines, &mut y, "AGENTS", true, &nav, inner.width, move |app, n| {
-                section_matches(app, n, pi, Kind::Agent)
-            });
-            self.section(&mut lines, &mut y, "TERMINAL", false, &nav, inner.width, move |app, n| {
-                section_matches(app, n, pi, Kind::Terminal)
-            });
-            self.section(&mut lines, &mut y, "PROCESSES", false, &nav, inner.width, move |app, n| {
-                section_matches(app, n, pi, Kind::Process)
-            });
+            self.section(
+                &mut lines,
+                &mut y,
+                "AGENTS",
+                true,
+                &nav,
+                inner.width,
+                move |app, n| section_matches(app, n, pi, Kind::Agent),
+            );
+            self.section(
+                &mut lines,
+                &mut y,
+                "TERMINAL",
+                false,
+                &nav,
+                inner.width,
+                move |app, n| section_matches(app, n, pi, Kind::Terminal),
+            );
+            self.section(
+                &mut lines,
+                &mut y,
+                "PROCESSES",
+                false,
+                &nav,
+                inner.width,
+                move |app, n| section_matches(app, n, pi, Kind::Process),
+            );
         }
         // In compact mode the git panel is also a sidebar entry.
         if self.compact && self.active_git().is_some() {
-            self.section(&mut lines, &mut y, "GIT", false, &nav, inner.width, |_, n| {
-                matches!(n, Nav::Panel)
-            });
+            self.section(
+                &mut lines,
+                &mut y,
+                "GIT",
+                false,
+                &nav,
+                inner.width,
+                |_, n| matches!(n, Nav::Panel),
+            );
         }
 
         f.render_widget(Paragraph::new(lines), inner);
     }
 
-    /// The sidebar block title: the root (launch) project's display name.
+    /// The sidebar block title: the launch directory's display name. For a manifest
+    /// this is the workspace name, not the first member project's name.
     fn root_title(&self) -> String {
-        self.projects[0].cfg.display_name()
+        self.root_cfg().display_name()
     }
 
     /// Emit a header and every nav entry for which `want` is true, recording each
@@ -334,7 +468,10 @@ impl App {
                 }
             }
             Nav::Panel => {
-                let branch = self.active_git().map(|g| g.branch.clone()).unwrap_or_default();
+                let branch = self
+                    .active_git()
+                    .map(|g| g.branch.clone())
+                    .unwrap_or_default();
                 entry_line(
                     "git",
                     sel,
@@ -343,13 +480,6 @@ impl App {
                     false,
                     width,
                 )
-            }
-            // The standalone link box's row: styled like the `+ New …` launchers, dimmed
-            // once the workspace hits the project cap (linking would be refused).
-            Nav::Link => {
-                let capped = self.projects.len() >= crate::config::MAX_PROJECTS;
-                let fg = if capped { Color::DarkGray } else { Color::Green };
-                entry_line("+ Link another project", sel, Style::default().fg(fg), None, false, width)
             }
         }
     }
@@ -369,53 +499,43 @@ fn section_matches(app: &App, n: Nav, pi: usize, kind: Kind) -> bool {
     }
 }
 
-/// Carve the standalone, bottom-pinned "Projects" (link) box off the bottom of the
-/// sidebar column: returns the body rect above it (the project box(es) / drawer, which
-/// then fills that body) and the link box rect. When the column is too short to spare a
-/// box the whole area is the body and there's no link box — keyboard nav still reaches
-/// the row, it just isn't drawn this frame.
-fn split_link_box(area: Rect) -> (Rect, Option<Rect>) {
-    if area.height < LINK_H + MIN_BODY {
-        return (area, None);
+/// One cell of breathing room between sidebar content and each vertical border.
+/// Applied to both the single-project drawer and every workspace project box so
+/// headers, rows, collapsed summaries, and their right-aligned git state agree.
+fn padded_inner(area: Rect) -> Rect {
+    let pad = (area.width / 2).min(1);
+    Rect {
+        x: area.x + pad,
+        width: area.width.saturating_sub(pad * 2),
+        ..area
     }
-    let body = Rect { height: area.height - LINK_H, ..area };
-    let link = Rect { y: area.y + area.height - LINK_H, height: LINK_H, ..area };
-    (body, Some(link))
 }
 
-/// Vertical heights for the stacked per-project boxes: inactive boxes keep their
-/// content height, the active box expands to absorb the remaining space. The result
-/// always sums to `total` (so the active box runs to the bottom of the body, no dead
-/// space above the link box). If the content can't all fit, the active box keeps a
-/// minimum and inactive boxes are trimmed from the bottom.
-fn box_heights(content: &[u16], active: usize, total: u16) -> Vec<u16> {
+/// Vertical heights for the stacked per-project boxes: every inactive box gets its
+/// compact content height (one row, or two with git), while the active box absorbs
+/// the remaining space. If the sidebar is too short, split it evenly and give the
+/// remainder to the active box so the selected project remains the most visible one.
+fn box_heights(collapsed_heights: &[u16], active: usize, total: u16) -> Vec<u16> {
     const MIN_BOX: u16 = 3; // top border + ≥1 row + bottom border
-    let n = content.len();
-    let mut h: Vec<u16> = content.iter().map(|&c| c.max(MIN_BOX)).collect();
-    if n == 0 || total == 0 {
+    let n = collapsed_heights.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let active = active.min(n - 1);
+    let collapsed: u16 = collapsed_heights
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != active)
+        .map(|(_, height)| *height)
+        .sum();
+    if collapsed + MIN_BOX <= total {
+        let mut h = collapsed_heights.to_vec();
+        h[active] = total - collapsed;
         return h;
     }
-    let inactive: u16 = (0..n).filter(|&i| i != active).map(|i| h[i]).sum();
-    if inactive + MIN_BOX <= total {
-        h[active] = total - inactive; // active fills the rest
-        return h;
-    }
-    // Doesn't all fit: the active box keeps a minimum, inactive boxes give back
-    // height from the bottom until it fits.
-    h[active] = MIN_BOX.min(total);
-    let mut over = (inactive + h[active]).saturating_sub(total);
-    for i in (0..n).rev() {
-        if over == 0 {
-            break;
-        }
-        if i != active {
-            let cut = over.min(h[i].saturating_sub(MIN_BOX));
-            h[i] -= cut;
-            over -= cut;
-        }
-    }
-    if over > 0 {
-        h[active] = h[active].saturating_sub(over).max(1);
-    }
+
+    let each = total / n as u16;
+    let mut h = vec![each; n];
+    h[active] += total % n as u16;
     h
 }

@@ -5,26 +5,26 @@ use std::path::{Path, PathBuf};
 
 mod yaml;
 pub use yaml::{
-    append_linked_project, append_process, global_agents, remove_process, replace_process,
-    write_agents, write_starter,
+    append_process, global_agents, remove_process, replace_process, write_agents, write_starter,
+    write_workspace,
 };
+use yaml::{quote_token, shell_split};
 pub(crate) use yaml::{render_agent_item, yaml_args, yaml_scalar};
 pub(crate) use yaml::{
     GLOBAL_GIT_PANEL_HINT, GLOBAL_HEADER, PROJECT_AGENTS_COMMENT, PROJECT_AGENTS_EXAMPLE,
-    PROJECT_HEADER, PROJECT_LINKED_COMMENT, PROJECT_LINKED_EXAMPLE, PROJECT_PROCESSES_COMMENT,
-    PROJECT_PROCESSES_EXAMPLE,
+    PROJECT_HEADER, PROJECT_PROCESSES_COMMENT, PROJECT_PROCESSES_EXAMPLE,
+    PROJECT_WORKSPACE_COMMENT, PROJECT_WORKSPACE_EXAMPLE,
 };
-use yaml::{quote_token, shell_split};
 
-/// Upper bound on projects in one workspace (root + linked). A backstop so a
-/// runaway `linked-projects` list can't explode the sidebar. Also the cap the
-/// in-TUI "Link another project" browser enforces before growing the workspace.
-pub(crate) const MAX_PROJECTS: usize = 8;
+/// Upper bound on the projects one workspace manifest loads. A backstop so a
+/// runaway `folders:` list can't explode the sidebar.
+pub(crate) const MAX_PROJECTS: usize = 10;
 
 /// A workspace config, loaded from `mmux.yaml` (or `mmux.yml`) in a directory.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    /// Optional display name for the workspace (shown in the sidebar title).
+    /// Optional display name for this directory/session (terminal title, plus the
+    /// sidebar title for an ordinary single-project session).
     #[serde(default)]
     pub name: Option<String>,
     /// Agent templates — interactive programs you spawn on demand (Claude, Codex, …).
@@ -43,13 +43,14 @@ pub struct Config {
     /// (enabled); see [`NotifyConfig`].
     #[serde(default)]
     pub notifications: Option<NotifyConfig>,
-    /// Other project directories to load alongside this one in the same workspace —
-    /// any related projects, not just extra clones (`../myproject2`). Each becomes its
-    /// own group in the sidebar. Paths are relative to this config's dir. Honored only
-    /// in the directory you launch mmux in: a linked project's own `linked-projects` is
-    /// ignored, so a shared config can never expand recursively. See [`Config::load_workspace`].
-    #[serde(default, rename = "linked-projects")]
-    pub linked_projects: Vec<String>,
+    /// Marks this directory as a **workspace manifest**: a named bundle of project
+    /// folders that open together in one sidebar, each folder its own group. The
+    /// manifest's directory is a container, not a project — list `.` under
+    /// [`WorkspaceDef::folders`] to include it too. A project-file concern only (a
+    /// global `workspace:` is ignored — see [`Config::load`]).
+    /// See [`Config::load_workspace`].
+    #[serde(default)]
+    pub workspace: Option<WorkspaceDef>,
     /// Background self-update (Homebrew + native-binary installs). `None`/unset ⇒ enabled;
     /// see [`AutoUpdateConfig`] and [`crate::update`].
     #[serde(default, rename = "auto-update")]
@@ -59,12 +60,36 @@ pub struct Config {
     pub dir: PathBuf,
 }
 
-/// A loaded workspace: the root project (the dir mmux was launched in) plus every
-/// directory it links to, in load order. Always non-empty (`projects[0]` is root).
+/// The `workspace:` block of a manifest config. Presence of the block (even an empty
+/// one) is what makes a config a manifest.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkspaceDef {
+    /// Member project folders, relative to the manifest's directory, in sidebar order.
+    /// Each becomes its own project group; `.` includes the manifest's own directory.
+    #[serde(default)]
+    pub folders: Vec<String>,
+}
+
+/// A loaded workspace: either a single project (the dir mmux was launched in), or —
+/// when that dir's config carries a [`workspace:`](WorkspaceDef) manifest — the
+/// manifest's folders, each loaded as its own project. Always non-empty.
 pub struct Workspace {
+    /// The launch directory (the manifest's dir for a manifest workspace). This — not
+    /// `projects[0].dir`, which for a manifest is the first *member* — keys the tmux
+    /// session and the restore-state file, so a workspace and a member folder opened
+    /// solo never share state.
+    pub dir: PathBuf,
+    /// The effective config of the directory mmux was launched in. For a manifest
+    /// this owns workspace-level identity and settings (`name`, notifications,
+    /// auto-update) even though the directory is not itself a project unless `.` is
+    /// listed under `folders`.
+    pub config: Config,
+    /// Whether this workspace came from a `workspace:` manifest. Drives
+    /// workspace-specific presentation and reload behavior.
+    pub manifest: bool,
     pub projects: Vec<Config>,
-    /// Non-fatal problems (a linked project that was missing, unreadable, or beyond
-    /// the cap) to surface without aborting startup.
+    /// Non-fatal problems (a folder that was missing, unreadable, or beyond the cap)
+    /// to surface without aborting startup.
     pub warnings: Vec<String>,
 }
 
@@ -274,7 +299,12 @@ impl Config {
 
         let mut cfg = match (global, project) {
             (g, Some(p)) => merge(g, p),
-            (Some(g), None) => g,
+            // A workspace manifest is a per-directory fact; a global `workspace:`
+            // would turn every unconfigured directory into that workspace.
+            (Some(mut g), None) => {
+                g.workspace = None;
+                g
+            }
             (None, None) => {
                 anyhow::bail!(
                     "no mmux.yaml in {} and no ~/.mmux/config.yaml. Run `mmux init` to create one.",
@@ -288,54 +318,106 @@ impl Config {
         Ok(cfg)
     }
 
-    /// Load the root config for `dir`, then every directory it lists under
-    /// `linked-projects`, into one [`Workspace`].
+    /// Load the effective [`Workspace`] for `dir`: its config alone when it's a plain
+    /// project, or — when the config carries a [`workspace:`](WorkspaceDef) manifest —
+    /// each of the manifest's `folders` as its own project, in list order.
     ///
-    /// Two rules make this safe even when a set of clones all share the same config
-    /// (each listing the others, or itself):
-    /// 1. **One level deep.** A linked project's own `linked-projects` is dropped —
-    ///    aggregation is driven solely by the root, so links can't chain.
-    /// 2. **De-dup by canonical path.** The root and every already-loaded project are
-    ///    remembered; a path resolving to one of them is skipped. This drops self-
-    ///    references and duplicates.
-    /// A hard cap ([`MAX_PROJECTS`]) is the final backstop. Missing/unreadable links
-    /// become warnings, never errors — only the root failing aborts.
+    /// Manifest expansion is deliberately flat and bounded:
+    /// - **One level deep.** A member whose own config is also a manifest loads as a
+    ///   plain project (its `workspace:` block dropped, with a warning) — workspaces
+    ///   never nest.
+    /// - **De-dup by canonical path.** A folder resolving to an already-loaded one is
+    ///   skipped, so duplicates (and a `.` next to an absolute spelling of the same
+    ///   dir) collapse.
+    /// - A hard cap ([`MAX_PROJECTS`]) is the final backstop. Missing/unreadable
+    ///   folders become warnings, never errors — only the manifest itself failing
+    ///   aborts, and a manifest whose folders *all* fail falls back to opening its
+    ///   own directory as a plain project.
     pub fn load_workspace(dir: &Path) -> Result<Workspace> {
         let root = Config::load(dir)?;
         let root_dir = root.dir.clone();
-        let links = root.linked_projects.clone();
-
-        let mut visited: HashSet<PathBuf> = HashSet::new();
-        visited.insert(canonical(&root_dir));
-
-        let mut projects = vec![root];
         let mut warnings = Vec::new();
 
-        for raw in &links {
+        // The `linked-projects` key was replaced by workspace manifests; serde now
+        // ignores it silently, so surface a pointer instead of quietly un-bundling.
+        if has_removed_linked_projects(dir) {
+            warnings.push(
+                "linked-projects was removed — bundle projects with a `workspace:` manifest instead (see `mmux docs`)".into(),
+            );
+        }
+
+        let Some(ws) = root.workspace.clone() else {
+            return Ok(Workspace {
+                dir: root_dir,
+                config: root.clone(),
+                manifest: false,
+                projects: vec![root],
+                warnings,
+            });
+        };
+
+        let root_canon = canonical(&root_dir);
+        let mut visited: HashSet<PathBuf> = HashSet::new();
+        let mut projects: Vec<Config> = Vec::new();
+        for raw in &ws.folders {
             if projects.len() >= MAX_PROJECTS {
-                warnings.push(format!("linked-projects: capped at {MAX_PROJECTS}, ignoring the rest"));
+                warnings.push(format!(
+                    "workspace: capped at {MAX_PROJECTS} folders, ignoring the rest"
+                ));
                 break;
             }
             let canon = canonical(&root_dir.join(raw));
-            // Skip self, duplicates, and anything resolving to an already-loaded
-            // project — this is what makes shared/clone configs safe.
             if !visited.insert(canon.clone()) {
                 continue;
             }
             if !canon.is_dir() {
-                warnings.push(format!("linked project not found: {raw}"));
+                warnings.push(format!("workspace folder not found: {raw}"));
                 continue;
             }
             match Config::load(&canon) {
                 Ok(mut c) => {
-                    c.linked_projects.clear(); // one level only — never recurse
+                    if canon != root_canon && has_removed_linked_projects(&canon) {
+                        warnings.push(format!(
+                            "{raw}: linked-projects was removed — this member's old links are ignored"
+                        ));
+                    }
+                    // Workspaces never nest: a member that is itself a manifest loads
+                    // as a plain project. `.` (the manifest's own dir) is the expected
+                    // self-reference, so only foreign manifests get the warning.
+                    if c.workspace.take().is_some() && canon != root_canon {
+                        warnings.push(format!(
+                            "{raw}: nested workspace ignored — loaded as a plain project"
+                        ));
+                    }
                     projects.push(c);
                 }
-                Err(e) => warnings.push(format!("skipped linked project {raw}: {e:#}")),
+                Err(e) => warnings.push(format!("skipped workspace folder {raw}: {e:#}")),
             }
         }
 
-        Ok(Workspace { projects, warnings })
+        if projects.is_empty() {
+            warnings.push(
+                "workspace lists no loadable folders — opening this directory as a plain project"
+                    .into(),
+            );
+            let mut root = root;
+            root.workspace = None;
+            return Ok(Workspace {
+                dir: root_dir,
+                config: root.clone(),
+                manifest: false,
+                projects: vec![root],
+                warnings,
+            });
+        }
+
+        Ok(Workspace {
+            dir: root_dir,
+            config: root,
+            manifest: true,
+            projects,
+            warnings,
+        })
     }
 
     /// The workspace name to show: the configured `name`, or the directory's basename.
@@ -362,16 +444,17 @@ fn dir_basename(dir: &Path) -> String {
         .unwrap_or_else(|| "mmux".into())
 }
 
-/// The project's own display name for `dir`, as the attach picker labels its rows:
-/// the project `mmux.yaml`'s `name:` if set, else the directory's basename. Unlike
-/// [`Config::display_name`] this reads only the *project* config, never the global
-/// one — so a global `name:` can't leak onto every unrelated directory in the picker.
-pub fn project_name(dir: &Path) -> String {
-    load_project(dir)
-        .ok()
-        .flatten()
+/// The directory identity used by the attach picker: its project-layer `name:` (or
+/// folder basename) plus whether it declares a `workspace:` manifest. This reads only
+/// the project config, never the global one — so a global name or workspace cannot
+/// leak onto every unrelated directory in the picker.
+pub(crate) fn project_identity(dir: &Path) -> (String, bool) {
+    let cfg = load_project(dir).ok().flatten();
+    let workspace = cfg.as_ref().and_then(|c| c.workspace.as_ref()).is_some();
+    let name = cfg
         .and_then(|c| c.name)
-        .unwrap_or_else(|| dir_basename(dir))
+        .unwrap_or_else(|| dir_basename(dir));
+    (name, workspace)
 }
 
 fn load_file(path: Option<&Path>) -> Result<Option<Config>> {
@@ -429,7 +512,7 @@ fn load_value(path: &Path) -> Result<serde_yaml::Value> {
 /// - two **named sequences** (every item a mapping with a scalar `name` — the shape of
 ///   `agents:`/`processes:`) merge by `name`: a same-named entry is deep-merged in place,
 ///   a new one is appended (matching how [`merge`] treats them);
-/// - anything else (scalars, plain sequences like `args`/`linked-projects`, or a type
+/// - anything else (scalars, plain sequences like `args`/`folders`, or a type
 ///   mismatch) is **replaced** wholesale by `over`.
 fn deep_merge(base: &mut serde_yaml::Value, over: serde_yaml::Value) {
     use serde_yaml::Value;
@@ -456,7 +539,10 @@ fn deep_merge(base: &mut serde_yaml::Value, over: serde_yaml::Value) {
 /// i.e. an `agents:`/`processes:` list, which [`deep_merge`] merges by name. An empty
 /// list is not "named", so an empty override sequence clears the base instead.
 fn is_named_seq(seq: &[serde_yaml::Value]) -> bool {
-    !seq.is_empty() && seq.iter().all(|v| v.get("name").and_then(|n| n.as_str()).is_some())
+    !seq.is_empty()
+        && seq
+            .iter()
+            .all(|v| v.get("name").and_then(|n| n.as_str()).is_some())
 }
 
 /// Merge `over`'s items into `base` by their `name`: a same-named entry is deep-merged
@@ -486,13 +572,9 @@ fn merge(base: Option<Config>, project: Config) -> Config {
         git_panel: project.git_panel.or(base.git_panel),
         notifications: project.notifications.or(base.notifications),
         auto_update: project.auto_update.or(base.auto_update),
-        // Linking is a per-project concern; the project file wins, falling back to
-        // the global only if the project lists none.
-        linked_projects: if project.linked_projects.is_empty() {
-            base.linked_projects
-        } else {
-            project.linked_projects
-        },
+        // A manifest is a per-directory fact: only the project file can declare one
+        // (a global `workspace:` must not turn every directory into that workspace).
+        workspace: project.workspace,
         dir: project.dir,
     }
 }
@@ -503,28 +585,21 @@ pub(crate) fn canonical(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
-/// A path from directory `from` to directory `to`, in the form written into
-/// `linked-projects` (e.g. `../sibling`). Both should be absolute (ideally
-/// canonical). Walks up to the common ancestor with `..`, then down into `to`;
-/// returns `.` when they're the same directory and `to` verbatim when they share no
-/// prefix (different roots). Pure — unit-tested.
-pub(crate) fn relative_path(from: &Path, to: &Path) -> String {
-    use std::path::Component;
-    let f: Vec<Component> = from.components().collect();
-    let t: Vec<Component> = to.components().collect();
-    let common = f.iter().zip(&t).take_while(|(a, b)| a == b).count();
-    if common == 0 {
-        return to.to_string_lossy().into_owned();
-    }
-    let mut parts: Vec<String> = std::iter::repeat("..".to_string()).take(f.len() - common).collect();
-    for c in &t[common..] {
-        parts.push(c.as_os_str().to_string_lossy().into_owned());
-    }
-    if parts.is_empty() {
-        ".".into()
-    } else {
-        parts.join("/")
-    }
+/// Whether either project-layer file still declares the removed top-level
+/// `linked-projects:` key. Serde intentionally ignores unknown fields, so this
+/// targeted raw check preserves a useful migration warning.
+fn has_removed_linked_projects(dir: &Path) -> bool {
+    [config_path(dir), local_config_path(dir)]
+        .into_iter()
+        .flatten()
+        .any(|path| {
+            std::fs::read_to_string(path)
+                .map(|text| {
+                    text.lines()
+                        .any(|line| line.starts_with("linked-projects:"))
+                })
+                .unwrap_or(false)
+        })
 }
 
 fn merge_named<T>(base: Vec<T>, over: Vec<T>, key: impl Fn(&T) -> String) -> Vec<T> {
@@ -567,6 +642,24 @@ pub fn local_config_path(dir: &Path) -> Option<PathBuf> {
 /// the existing `mmux.yaml`/`.yml` if there is one, else a fresh `mmux.yaml`.
 pub fn project_config_path(dir: &Path) -> PathBuf {
     config_path(dir).unwrap_or_else(|| dir.join("mmux.yaml"))
+}
+
+/// The layer a workspace editor should update. A private local override that already
+/// owns `workspace:` remains the owner; otherwise edit the ordinary project file.
+/// This avoids a successful-looking save being shadowed immediately by
+/// `mmux.local.y{a,}ml` during the next load.
+pub fn workspace_config_path(dir: &Path) -> PathBuf {
+    if let Some(local) = local_config_path(dir) {
+        let owns_workspace = std::fs::read_to_string(&local)
+            .ok()
+            .and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok())
+            .and_then(|value| value.as_mapping().cloned())
+            .is_some_and(|map| map.contains_key(&serde_yaml::Value::String("workspace".into())));
+        if owns_workspace {
+            return local;
+        }
+    }
+    project_config_path(dir)
 }
 
 /// A process gathered by the in-TUI form, before it's written to the config.
@@ -627,11 +720,20 @@ mod tests {
 
     #[test]
     fn join_command_round_trips_through_split() {
-        assert_eq!(join_command("npm", &["run".into(), "dev".into()]), "npm run dev");
+        assert_eq!(
+            join_command("npm", &["run".into(), "dev".into()]),
+            "npm run dev"
+        );
         // A token with spaces is quoted so a re-split keeps it as one argument.
         let joined = join_command("git", &["commit".into(), "-m".into(), "a b".into()]);
         assert_eq!(joined, "git commit -m \"a b\"");
-        assert_eq!(split_command(&joined), ("git".into(), vec!["commit".into(), "-m".into(), "a b".into()]));
+        assert_eq!(
+            split_command(&joined),
+            (
+                "git".into(),
+                vec!["commit".into(), "-m".into(), "a b".into()]
+            )
+        );
     }
 
     #[test]
@@ -642,23 +744,23 @@ mod tests {
         assert_eq!(claude.auto, Some(&["--permission-mode", "auto"][..]));
         assert!(preset_by_name("Nope").is_none());
         // Every shipped preset has a command and a danger flag.
-        assert!(PRESETS.iter().all(|p| !p.cmd.is_empty() && p.danger.is_some()));
-    }
-
-    #[test]
-    fn relative_path_walks_to_the_common_ancestor() {
-        assert_eq!(relative_path(Path::new("/u/m/proj"), Path::new("/u/m/other")), "../other");
-        assert_eq!(relative_path(Path::new("/u/m/proj"), Path::new("/u/m/proj")), ".");
-        assert_eq!(relative_path(Path::new("/u/m/proj"), Path::new("/u/m/proj/sub")), "sub");
-        assert_eq!(relative_path(Path::new("/u/m/a/b"), Path::new("/u/m/x")), "../../x");
+        assert!(PRESETS
+            .iter()
+            .all(|p| !p.cmd.is_empty() && p.danger.is_some()));
     }
 
     #[test]
     fn split_command_handles_quotes() {
-        assert_eq!(split_command("npm run dev"), ("npm".into(), vec!["run".into(), "dev".into()]));
+        assert_eq!(
+            split_command("npm run dev"),
+            ("npm".into(), vec!["run".into(), "dev".into()])
+        );
         assert_eq!(
             split_command("git commit -m 'a b'"),
-            ("git".into(), vec!["commit".into(), "-m".into(), "a b".into()])
+            (
+                "git".into(),
+                vec!["commit".into(), "-m".into(), "a b".into()]
+            )
         );
         assert_eq!(split_command("  "), (String::new(), vec![]));
     }
@@ -678,7 +780,8 @@ mod tests {
 
     #[test]
     fn merge_replaces_scalar_blocks_wholesale_else_falls_back() {
-        let base = cfg("name: global\ngit-panel:\n  enabled: true\nnotifications:\n  enabled: false\n");
+        let base =
+            cfg("name: global\ngit-panel:\n  enabled: true\nnotifications:\n  enabled: false\n");
         let project = cfg("name: proj\ngit-panel:\n  enabled: false\n");
         let merged = merge(Some(base), project);
         // Project's name and git-panel win outright…
@@ -698,8 +801,11 @@ mod tests {
 
     #[test]
     fn merge_agents_and_processes_by_name() {
-        let base = cfg("agents:\n  - name: Claude\n    cmd: claude\n  - name: Codex\n    cmd: codex\n");
-        let project = cfg("agents:\n  - name: Claude\n    cmd: claude-beta\n  - name: Gemini\n    cmd: gemini\n");
+        let base =
+            cfg("agents:\n  - name: Claude\n    cmd: claude\n  - name: Codex\n    cmd: codex\n");
+        let project = cfg(
+            "agents:\n  - name: Claude\n    cmd: claude-beta\n  - name: Gemini\n    cmd: gemini\n",
+        );
         let merged = merge(Some(base), project);
         let names: Vec<&str> = merged.agents.iter().map(|a| a.name.as_str()).collect();
         // Same-name entry is replaced in place; a new one is appended; the untouched survives.
@@ -708,14 +814,23 @@ mod tests {
     }
 
     #[test]
-    fn merge_linked_projects_project_wins_else_base() {
-        let base = || cfg("linked-projects:\n  - ../g1\n  - ../g2\n");
-        // Project lists none → inherit the global list.
-        let inherited = merge(Some(base()), cfg("name: p\n"));
-        assert_eq!(inherited.linked_projects, vec!["../g1", "../g2"]);
-        // Project lists some → its list replaces the global's outright (no concat).
-        let overridden = merge(Some(base()), cfg("linked-projects:\n  - ../p1\n"));
-        assert_eq!(overridden.linked_projects, vec!["../p1"]);
+    fn merge_workspace_comes_from_the_project_only() {
+        let base = || cfg("workspace:\n  folders:\n    - ../g1\n");
+        // A global `workspace:` never leaks onto a project…
+        let plain = merge(Some(base()), cfg("name: p\n"));
+        assert!(plain.workspace.is_none());
+        // …while a project manifest survives the merge untouched.
+        let manifest = merge(Some(base()), cfg("workspace:\n  folders:\n    - ../p1\n"));
+        let ws = manifest.workspace.expect("project manifest kept");
+        assert_eq!(ws.folders, vec!["../p1"]);
+    }
+
+    #[test]
+    fn workspace_block_parses_with_defaults() {
+        // A bare `workspace:` block (or one with only folders) is a valid manifest.
+        let c = cfg("workspace:\n  folders:\n    - one\n    - two\n");
+        let ws = c.workspace.expect("manifest");
+        assert_eq!(ws.folders, vec!["one", "two"]);
     }
 
     #[test]
@@ -778,8 +893,107 @@ mod tests {
     #[test]
     fn deep_merge_empty_named_seq_clears_the_base() {
         // `processes: []` in the local file means "no processes here", not a no-op.
-        let merged = deep("processes:\n  - name: Dev\n    cmd: npm\n", "processes: []\n");
+        let merged = deep(
+            "processes:\n  - name: Dev\n    cmd: npm\n",
+            "processes: []\n",
+        );
         let cfg: Config = serde_yaml::from_value(merged).unwrap();
         assert!(cfg.processes.is_empty());
+    }
+
+    // ── load_workspace: manifest expansion ────────────────────────────────────
+
+    /// A throwaway directory tree for manifest tests, removed on drop.
+    struct TempTree(PathBuf);
+    impl TempTree {
+        fn new(tag: &str) -> TempTree {
+            let dir = std::env::temp_dir().join(format!("mmux-ws-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempTree(dir)
+        }
+        fn write(&self, rel: &str, text: &str) {
+            let path = self.0.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+    }
+    impl Drop for TempTree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn load_workspace_expands_manifest_folders() {
+        let t = TempTree::new("expand");
+        t.write(
+            "hub/mmux.yaml",
+            "name: Hub\nworkspace:\n  folders:\n    - ../a\n    - ../a\n    - ../b\n    - ../missing\n    - .\n",
+        );
+        t.write("a/mmux.yaml", "name: A\n");
+        // A member that is itself a manifest must load as a plain project.
+        t.write(
+            "b/mmux.yaml",
+            "name: B\nworkspace:\n  folders:\n    - ../a\n",
+        );
+        let ws = Config::load_workspace(&t.0.join("hub")).unwrap();
+        assert!(ws.manifest);
+        assert_eq!(canonical(&ws.dir), canonical(&t.0.join("hub")));
+        // `../a` once (deduped), B flattened, then `.` — the hub itself, last.
+        let names: Vec<String> = ws.projects.iter().map(Config::display_name).collect();
+        assert_eq!(names, ["A", "B", "Hub"]);
+        assert!(ws.projects.iter().all(|c| c.workspace.is_none()));
+        assert!(ws.warnings.iter().any(|w| w.contains("../missing")));
+        assert!(ws.warnings.iter().any(|w| w.contains("nested workspace")));
+    }
+
+    #[test]
+    fn load_workspace_without_manifest_is_single_project() {
+        let t = TempTree::new("plain");
+        t.write("p/mmux.yaml", "name: Solo\n");
+        let ws = Config::load_workspace(&t.0.join("p")).unwrap();
+        assert!(!ws.manifest);
+        assert_eq!(ws.projects.len(), 1);
+        assert_eq!(ws.projects[0].display_name(), "Solo");
+    }
+
+    #[test]
+    fn load_workspace_caps_folders_and_warns() {
+        let t = TempTree::new("cap");
+        let list: String = (0..12).map(|i| format!("    - ../p{i}\n")).collect();
+        t.write("hub/mmux.yaml", &format!("workspace:\n  folders:\n{list}"));
+        for i in 0..12 {
+            t.write(&format!("p{i}/mmux.yaml"), "processes: []\n");
+        }
+        let ws = Config::load_workspace(&t.0.join("hub")).unwrap();
+        assert_eq!(ws.projects.len(), MAX_PROJECTS);
+        assert!(ws.warnings.iter().any(|w| w.contains("capped")));
+    }
+
+    #[test]
+    fn load_workspace_warns_on_lingering_linked_projects() {
+        let t = TempTree::new("deprecated");
+        t.write("p/mmux.yaml", "name: Old\nlinked-projects:\n  - ../x\n");
+        let ws = Config::load_workspace(&t.0.join("p")).unwrap();
+        // The removed key no longer bundles anything…
+        assert!(!ws.manifest);
+        assert_eq!(ws.projects.len(), 1);
+        // …but the load points at its replacement rather than staying silent.
+        assert!(ws.warnings.iter().any(|w| w.contains("linked-projects")));
+    }
+
+    #[test]
+    fn load_workspace_empty_manifest_falls_back_to_plain() {
+        let t = TempTree::new("empty");
+        t.write("hub/mmux.yaml", "name: Hub\nworkspace:\n  folders: []\n");
+        let ws = Config::load_workspace(&t.0.join("hub")).unwrap();
+        assert!(!ws.manifest);
+        assert_eq!(ws.projects.len(), 1);
+        assert!(ws.projects[0].workspace.is_none());
+        assert!(ws
+            .warnings
+            .iter()
+            .any(|w| w.contains("no loadable folders")));
     }
 }

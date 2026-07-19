@@ -27,9 +27,7 @@ mmux init
 `mmux init` is an interactive wizard: it offers the built-in agent presets — Claude, Codex,
 Gemini, Amp, opencode, and Grok — as an **inline checkbox picker** you arrow through (`space` to
 toggle, `m` to cycle the launch mode: normal → auto → danger, `⏎` to confirm; installed ones start
-checked), asks for any start
-commands you want to watch, and lets you list other projects you want in the same workspace as
-[linked projects](04-configuration.md#linked-projects). On a machine with no global config yet,
+checked), then asks for any start commands you want to watch. On a machine with no global config yet,
 your agents are saved to `~/.mmux/config.yaml` so they are available in every project; the rest
 goes in this project's `mmux.yaml`.
 
@@ -37,7 +35,9 @@ To change your agents later, run **`mmux agents`** (the same picker, agents only
 in the sidebar — both write to the global config and take effect on the next open / reload.
 
 You can skip the wizard and write [`mmux.yaml`](04-configuration.md) by hand, or rely entirely on
-a global config — either file alone is enough.
+a global config — either file alone is enough. To bundle several project directories, `cd` to
+their parent and run **`mmux workspace`**: use `space` to select folders, `J`/`K` to set their
+sidebar order, then `Enter` to create the [workspace manifest](04-configuration.md#workspace-manifests).
 
 ## 3. Open It
 
@@ -63,13 +63,15 @@ Run `mmux` again in the same directory to reattach. The full key reference is in
 mmux a        # alias for `mmux attach`
 ```
 
-This opens a picker of every running mmux session on the machine, plus directories you have
-opened recently. Choose one to jump straight back in — handy after reconnecting over SSH.
+This opens a searchable picker with workspace manifests first (running or not), followed by active
+standalone projects and then past projects. Choose one to jump straight back in — handy after
+reconnecting over SSH.
 
 ## Validate Without Launching
 
 ```sh
 mmux agents   # add/remove the built-in agent harnesses in your global config
+mmux workspace # create/manage a workspace from this directory's subfolders
 mmux check    # print the effective merged config, no TUI
 mmux docs     # print a self-contained setup & config guide
 ```

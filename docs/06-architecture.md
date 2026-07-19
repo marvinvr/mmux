@@ -51,8 +51,13 @@ and singleton-per-directory:
 - Attaching runs with `TMUX` unset, so mmux works even when launched inside another tmux.
 
 `mmux attach` is a separate path: it lists running `mmux-*` sessions plus recent directories
-(from `~/.mmux/history`) in a small picker — with an always-on, type-to-fuzzy-filter search bar
-(reusing the file picker's scorer) — and attaches to or launches the chosen one.
+(from `~/.mmux/history`) in a small picker. Workspace manifests form the first section regardless
+of running state, followed by active standalone projects and then past standalone projects; each
+section is MRU-ordered. Its always-on fuzzy search (reusing the file picker's scorer) searches all
+three groups and attaches to or launches the chosen target. The picker can also delete a
+non-running directory from `~/.mmux/history` (the next launch records it again), or gracefully quit
+a running target: after confirmation it injects a private F20 control key through tmux, which the
+inner app intercepts before normal input and routes through its ordinary save/teardown exit path.
 
 ## The Event Loop
 
@@ -71,8 +76,9 @@ then `run_loop` cycles:
 `tick()` runs every loop: it steps drag auto-scroll, prunes exited agent/terminal rows, makes the
 selected row's project the **active** one (see [follow-active](#workspaces-and-projects)), drains
 finished background git jobs from every project's panel, gives the *visible* git panel a throttled
-refresh, and advances the [self-updater](#self-update) (drains its worker channel, runs the
-periodic re-check).
+full refresh, gives inactive panels a slower status-only refresh for their collapsed git summaries,
+persists changed restore state, and advances the [self-updater](#self-update) (drains its worker
+channel, runs the periodic re-check).
 
 ## The Unified Session Model
 
@@ -127,8 +133,12 @@ OSCs. Scrollback is 5000 lines.
 
 ## Workspaces and Projects
 
-`App.projects: Vec<Project>` holds the launch directory (`projects[0]`) plus any
-[linked projects](04-configuration.md#linked-projects). Each `Project` owns:
+`App.root` is the canonical launch directory, and `App.cfg` is that directory's effective config.
+For an ordinary session, `App.projects: Vec<Project>` contains that one directory. For a
+[workspace manifest](04-configuration.md#workspace-manifests), `root` remains the manifest
+directory while `projects` contains only its listed member folders. Keeping those identities
+separate makes the tmux/restore key, workspace name, notifications, and update settings belong to
+the manifest rather than accidentally to `projects[0]`. Each `Project` owns:
 
 - its merged `cfg`;
 - per-agent-template instance `counts` and a `term_count` (for `Claude #3`, `Terminal #2`
@@ -138,14 +148,27 @@ OSCs. Scrollback is 5000 lines.
 `App.active` is the selected row's project. **Follow-active:** `tick()` keeps `active` in sync
 with the selection, so the visible git panel always belongs to the project you're working in; the
 others stay alive in the background. `last_proj_sel` remembers each project's last-selected row so
-`[`/`]` and clicking restore where you were. A single-project workspace renders exactly as it
-always did — no project header.
+`[`/`]` and clicking restore where you were. Inactive project boxes show a derived agent summary
+row only when an agent is working, ready, or failed. Repositories with a panel also show a row with
+the cached current branch on the left and changed-path count on the right; quiet non-git folders
+collapse to their borders without wasting a blank row.
+This leaves the useful sidebar height to the active project without hiding background state. Rendering and
+`build_nav()` share a stable partition: projects with agent activity come first, and the selected
+project remains sticky in that upper group until another project is selected. Closing its last
+agent therefore cannot move its rows out from under the cursor. Manifest order is preserved within
+the active and quiet groups; `[`/`]`, arrows, and mouse hit regions follow the same visual order. A
+single-project workspace renders exactly as it always did — no project header.
 
-`load_workspace` (in `config/mod.rs`) builds the workspace: load the root, then each linked project
-one level deep, de-duplicated by canonical path, capped at 8, with each linked project's *own*
-`linked-projects` cleared so links never chain. Failures become warnings, not errors. The same cap
-and de-dup gate `link_project`, which appends a `Project` (and its process rows) to grow the
-workspace live — every other path leaves the project set fixed for the session.
+`load_workspace` (in `config/mod.rs`) loads the launch config, then either returns it as a plain
+single project or expands `workspace.folders` one level deep. Members are de-duplicated by
+canonical path and capped at 10; a nested member manifest is flattened to a plain project with a
+warning. Missing/unreadable folders warn and skip, while an all-invalid manifest falls back to its
+own directory as a plain project. The shared `WorkspaceManager` discovers and orders immediate
+children for both `mmux workspace` and the manifest-only `w` overlay. Its raw-text writer owns only
+`name` and `workspace:`. `R` reload expands the manifest again and appends canonical member dirs
+that are not already live; each new `Project` gets its process rows, git panel, launchers, and
+autostarts. Existing indices are deliberately stable, so removals and manifest reordering still
+need a reopen.
 
 ## The Git Panel and Overlays
 
@@ -178,7 +201,6 @@ for the rendering): full-screen modals that eat every key while open:
 | `Confirm` | `d` in the panel · `t` / `u` on a commit · `D` on a process · `q` | Yes/no guard: destructive discard · revert / uncommit a commit · delete a process · quit |
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
 | `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |
-| `LinkProject` | `+ Link another project` (its own sidebar box) | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
 | `Agents` | `a` in the sidebar | [Agent manager](04-configuration.md#agent) → toggle the built-in harnesses on/off + cycle each one's launch mode (`m`: normal → auto → danger), rewrite the **global** `agents:` block, and reload |
 | `About` | `?` in the sidebar | Version, project links, and the manual self-update check/apply (stateless — reads live `UpdateState`) |
 
@@ -187,11 +209,8 @@ The picker (`picker.rs`) lists files with the `ignore` crate (ripgrep's walking 
 build/artifact dirs are pruned instead) and fuzzy-ranks them. The process form (`procform.rs`) collects fields step-by-step, then
 `finish_new_process` writes the entry into `mmux.yaml` via `config::append_process` (new) or
 `config::replace_process` (an edit, keyed by the original name) — both raw-text edits that preserve
-comments — and reloads; `D` deletes via `config::remove_process` behind a confirmation. The link browser (`linkbrowse.rs`) walks the filesystem
-with fork-free previews (repo-ness is a `.git` check, the branch is read from `.git/HEAD`), then
-`link_project` appends the path via `config::append_linked_project` (the same raw-text splicer) and
-**adds a new `Project` in place** — the one action that grows the project set after launch. The
-agent manager (`agentmgr.rs`) seeds its rows from `config::PRESETS` and the current global agents,
+comments — and reloads; `D` deletes via `config::remove_process` behind a confirmation. The agent
+manager (`agentmgr.rs`) seeds its rows from `config::PRESETS` and the current global agents,
 then `apply_agent_manager` writes the whole set back with `config::write_agents` — which, unlike the
 per-item process splicers, **replaces the entire global `agents:` block** (the manager owns the full
 list) while preserving the rest of the file — and reloads so the sidebar updates live.
@@ -292,7 +311,10 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
   Each save also resolves every agent's resume id (`refresh_agent_ids`): Claude ids are minted by
   mmux and left untouched, while a fresh Codex agent discovers the id of the session it just created
-  (`agent::sessions_for`). Only agents/terminals are saved — processes come back from config.
+  (`agent::sessions_for`). Each row carries its canonical project directory as well as the legacy
+  numeric index, so a manifest reorder restores it to the same member. The workspace editors bind
+  older positional snapshots to directories immediately before writing a new order. Only
+  agents/terminals are saved — processes come back from config.
 - **Restore.** `App::new` always calls `restore_sessions` on startup; it's a no-op when there's no
   file. This is safe to do unconditionally because the **tmux singleton** means a fresh inner
   process only ever starts when there's no live session to attach to (a detach leaves the inner
@@ -321,9 +343,8 @@ removes it from the snapshot, so it's easy to get a clean slate.
 - **Navigation is positional.** `App.sel` is an index into the `Vec<Nav>` returned by
   `build_nav()`, rebuilt on demand. `Nav` is one row in display order: the launchers
   (`NewAgent`/`NewTerminal`/`NewProcess`, each carrying its project), `Session(i)` (an index into
-  the flat sessions vec), `Panel` (the git panel — listed in nav *only* in compact mode), and
-  `Link` (the standalone "+ Link another project" box, always last — it belongs to no project and
-  grows the root). Any code that mutates `sessions` must re-clamp `sel` against the freshly built nav. This is the
+  the flat sessions vec), and `Panel` (the git panel — listed in nav *only* in compact mode). Any
+  code that mutates `sessions` must re-clamp `sel` against the freshly built nav. This is the
   one place that is deliberately not yet ideal — see [Planned](08-contributing.md#planned-and-known-limits).
 - **Focus** (`Sidebar` / `Terminal` / `Right`) decides which region gets keys. `focused_pane()`
   resolves it — and returns `None` for `Right`, because the git panel is native UI with no PTY to
@@ -381,6 +402,6 @@ removes it from the snapshot, so it's easy to get a clean slate.
 The v1 architecture has known limits. Persistence now covers detach/disconnect *and* a
 quit/crash/update reopen via [Session Restore](#session-restore) — but restore is a cold respawn
 (the conversation/cwd come back, not the live process or its in-flight work; a daemon would fix
-that). Selection is positional; a linked project can be added live but only *removed* by a reopen.
-These, and the planned daemon/client split, are tracked in
+that). Selection is positional; workspace manifests are flat and capped, and live reload can only
+append members—removal/reordering still needs a reopen. These, and the planned daemon/client split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

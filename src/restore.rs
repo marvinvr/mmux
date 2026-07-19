@@ -38,7 +38,13 @@ pub struct State {
 pub struct Snapshot {
     pub name: String,
     pub kind: SnapKind,
+    /// Legacy positional member identity. Kept so older state files still deserialize
+    /// and standalone projects remain cheap to restore.
     pub project: usize,
+    /// Stable member identity added with the workspace manager. Reordering a manifest
+    /// can no longer send an agent or terminal into a different project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_dir: Option<String>,
     pub cmd: String,
     #[serde(default)]
     pub args: Vec<String>,
@@ -70,7 +76,12 @@ pub const VERSION: u32 = 1;
 pub fn path_for(root: &Path) -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
     let name = crate::tmux::session_name(&crate::config::canonical(root));
-    Some(PathBuf::from(home).join(".mmux").join("state").join(format!("{name}.yaml")))
+    Some(
+        PathBuf::from(home)
+            .join(".mmux")
+            .join("state")
+            .join(format!("{name}.yaml")),
+    )
 }
 
 /// Write `state` for the workspace at `root`, creating `~/.mmux/state/` as needed.
@@ -91,4 +102,27 @@ pub fn load(root: &Path) -> Option<State> {
     let path = path_for(root)?;
     let text = std::fs::read_to_string(&path).ok()?;
     serde_yaml::from_str(&text).ok()
+}
+
+/// Enrich an existing positional snapshot with stable project directory identities.
+/// Called immediately before a workspace editor writes a potentially reordered
+/// manifest. Best-effort like all restore state: no file or an unreadable one is fine.
+pub fn bind_project_dirs(root: &Path, projects: &[PathBuf]) {
+    let Some(mut state) = load(root) else { return };
+    if state.version != VERSION {
+        return;
+    }
+    let mut changed = false;
+    for snap in &mut state.sessions {
+        if snap.project_dir.is_none() {
+            if let Some(dir) = projects.get(snap.project) {
+                snap.project_dir =
+                    Some(crate::config::canonical(dir).to_string_lossy().into_owned());
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        save(root, &state);
+    }
 }

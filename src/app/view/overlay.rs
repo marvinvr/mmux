@@ -1,18 +1,18 @@
 //! Rendering for the modal overlays that float above the whole UI.
 //!
-//! One dispatcher ([`render_overlay`]) fans out to the seven modal renderers — the
+//! One dispatcher ([`render_overlay`]) fans out to the six modal renderers — the
 //! commit / new-branch text prompt, the yes/no confirmation, the Ctrl+P file picker,
-//! the "+ New Process" guided form, the agent manager, the "Link a project" browser,
-//! and the "About mmux" card. They share the modal chrome ([`modal_frame`] over a
-//! [`centered`] rect) and a handful of modal-only helpers. The overlay STATE and its
-//! key handling live in [`crate::app::overlay`].
+//! the "+ New Process" guided form, the agent manager, and the "About mmux" card.
+//! They share the modal chrome ([`modal_frame`] over a [`centered`] rect) and a
+//! handful of modal-only helpers. The overlay STATE and its key handling live in
+//! [`crate::app::overlay`].
 
 use crate::agentmgr::{AgentManager, Mode};
 use crate::app::overlay::{Overlay, PromptKind};
-use crate::app::linkbrowse::{DirEntry, LinkBrowser, Preview};
 use crate::app::picker::Picker;
 use crate::app::procform::{ProcForm, Step, STEPS};
 use crate::app::UpdateState;
+use crate::workspacemgr::WorkspaceManager;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -23,7 +23,7 @@ use super::git::truncate_middle;
 
 /// The scroll offset that keeps row `sel` visible in a `height`-row list window: 0 until
 /// the selection would fall past the bottom, then just enough to pin it to the last row.
-/// The modal pickers (link browser / file picker) share this simple top-anchored scroll.
+/// The file picker's simple top-anchored scroll.
 fn list_scroll(sel: usize, height: usize) -> usize {
     if height > 0 && sel >= height {
         sel + 1 - height
@@ -37,11 +37,13 @@ fn list_scroll(sel: usize, height: usize) -> usize {
 pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
     match ov {
         Overlay::Prompt { title, buf, kind } => render_prompt(f, area, title, buf, *kind),
-        Overlay::Confirm { title, body, hint, .. } => render_confirm(f, area, title, body, hint),
+        Overlay::Confirm {
+            title, body, hint, ..
+        } => render_confirm(f, area, title, body, hint),
         Overlay::Picker(p) => render_picker(f, area, p),
         Overlay::NewProcess(form) => render_procform(f, area, form),
-        Overlay::LinkProject(b) => render_linkbrowse(f, area, b),
         Overlay::Agents(m) => render_agentmgr(f, area, m),
+        Overlay::Workspace(m) => render_workspacemgr(f, area, m),
         // Drawn by `render_about` (it needs live update state), routed there in `draw`.
         Overlay::About => {}
     }
@@ -133,7 +135,9 @@ pub(crate) fn render_about(
             // Brew install with an update pending confirmation — `u` runs `brew upgrade`.
             UpdateState::Available(v) => (
                 format!("↻ v{v} available"),
-                Style::default().fg(super::theme::ATTN).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(super::theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
                 Some("u update"),
             ),
             UpdateState::Installing(v) => (
@@ -143,7 +147,9 @@ pub(crate) fn render_about(
             ),
             UpdateState::Ready(v) => (
                 format!("↻ v{v} ready"),
-                Style::default().fg(super::theme::ATTN).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(super::theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
                 Some("u restart to update"),
             ),
             // A check ran and found this isn't a managed install — self-update can't act,
@@ -160,15 +166,23 @@ pub(crate) fn render_about(
         None => "esc close".into(),
     };
 
-    let bold = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
+    let bold = Style::default()
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD);
     let label = Style::default().fg(Color::DarkGray);
-    let link = Style::default().fg(Color::Cyan).add_modifier(Modifier::UNDERLINED);
+    let link = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::UNDERLINED);
     // (label, link text, URL). Rendered as a line *and* registered as a click target
     // below, so the two stay in sync. The label is fixed-width, so the URL always
     // starts at the same column.
     let link_rows: [(&str, &str, &str); 2] = [
         ("built by  ", "marvinvr.ch", "https://marvinvr.ch"),
-        ("source    ", "github.com/marvinvr/mmux", "https://github.com/marvinvr/mmux"),
+        (
+            "source    ",
+            "github.com/marvinvr/mmux",
+            "https://github.com/marvinvr/mmux",
+        ),
     ];
     let text_lines: Vec<Line> = vec![
         Line::from(Span::styled(format!("mmux v{version}"), bold)),
@@ -177,8 +191,14 @@ pub(crate) fn render_about(
             Style::default().fg(Color::Gray),
         )),
         Line::from(""),
-        Line::from(vec![Span::styled(link_rows[0].0, label), Span::styled(link_rows[0].1, link)]),
-        Line::from(vec![Span::styled(link_rows[1].0, label), Span::styled(link_rows[1].1, link)]),
+        Line::from(vec![
+            Span::styled(link_rows[0].0, label),
+            Span::styled(link_rows[0].1, link),
+        ]),
+        Line::from(vec![
+            Span::styled(link_rows[1].0, label),
+            Span::styled(link_rows[1].1, link),
+        ]),
         Line::from(""),
         Line::from(Span::styled(status, status_style)),
         Line::from(""),
@@ -216,167 +236,17 @@ pub(crate) fn render_about(
             continue; // clipped off a tiny card
         }
         let width = (link_s.chars().count() as u16).min(right - x);
-        links.push((Rect { x, y, width, height: 1 }, url.to_string()));
+        links.push((
+            Rect {
+                x,
+                y,
+                width,
+                height: 1,
+            },
+            url.to_string(),
+        ));
     }
     links
-}
-
-/// The "Link another project" browser: a path header, a live filter, the current
-/// directory's sub-folders (each tagged git / mmux.yaml / linked), a short preview of
-/// the highlighted directory, and a key hint pinned to the bottom row.
-fn render_linkbrowse(f: &mut Frame, area: Rect, b: &LinkBrowser) {
-    let w = area.width.saturating_sub(6).clamp(30, 86);
-    let h = area.height.saturating_sub(4).clamp(12, 24);
-    let inner = modal_frame(f, area, w, h, " Link a project ", Color::Magenta);
-    if inner.width == 0 || inner.height < 8 {
-        return;
-    }
-    let width = inner.width as usize;
-
-    // Rows: path header, filter, the list, a 3-line preview, and the hint.
-    let path_y = inner.y;
-    let query_y = inner.y + 1;
-    let hint_y = inner.y + inner.height - 1;
-    let prev_h = 3u16;
-    let prev_y = hint_y - prev_h;
-    let list_y = query_y + 1;
-    let list_h = prev_y.saturating_sub(list_y) as usize;
-
-    // Header: the directory being browsed.
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("in ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                b.cwd_label(),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            ),
-        ])),
-        Rect { x: inner.x, y: path_y, width: inner.width, height: 1 },
-    );
-    // Filter line.
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("> ", Style::default().fg(Color::Magenta)),
-            Span::styled(b.query.clone(), Style::default().fg(Color::White)),
-        ])),
-        Rect { x: inner.x, y: query_y, width: inner.width, height: 1 },
-    );
-
-    // The directory list, scrolled to keep the selection on screen.
-    let sel = b.sel();
-    let scroll = list_scroll(sel, list_h);
-    let mut lines: Vec<Line> = Vec::new();
-    if b.count() == 0 {
-        lines.push(Line::from(Span::styled(
-            "  (no sub-directories here — ← to go up)",
-            Style::default().fg(Color::DarkGray),
-        )));
-    }
-    for row in scroll..(scroll + list_h) {
-        let Some(e) = b.entry_at(row) else { break };
-        lines.push(linkrow(e, row == sel, inner.width));
-    }
-    f.render_widget(
-        Paragraph::new(lines),
-        Rect { x: inner.x, y: list_y, width: inner.width, height: list_h as u16 },
-    );
-
-    // A short preview of the highlighted directory (or an error in its place).
-    let prev = match &b.error {
-        Some(e) => vec![Line::from(Span::styled(format!("⚠ {e}"), Style::default().fg(Color::Red)))],
-        None => preview_lines(b.preview.as_ref()),
-    };
-    f.render_widget(
-        Paragraph::new(prev),
-        Rect { x: inner.x, y: prev_y, width: inner.width, height: prev_h },
-    );
-
-    // Hint footer.
-    let hint = format!("{} dirs · ↑↓ move · → enter · ← up · ⏎ link · esc cancel", b.count());
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            truncate_middle(&hint, width),
-            Style::default().fg(Color::DarkGray),
-        ))),
-        Rect { x: inner.x, y: hint_y, width: inner.width, height: 1 },
-    );
-
-    // Park the cursor at the end of the filter text.
-    let cx = inner.x + 2 + (b.query.chars().count() as u16).min(inner.width.saturating_sub(3));
-    f.set_cursor_position((cx, query_y));
-}
-
-/// One directory row in the link browser: a selection bar, the `name/`, and
-/// right-aligned tags (linked / git / mmux.yaml).
-fn linkrow(e: &DirEntry, selected: bool, width: u16) -> Line<'static> {
-    let bar = if selected { "▌ " } else { "  " };
-    let mut tags: Vec<&str> = Vec::new();
-    if e.already {
-        tags.push("linked");
-    } else {
-        if e.is_repo {
-            tags.push("git");
-        }
-        if e.has_config {
-            tags.push("mmux.yaml");
-        }
-    }
-    let tag = if tags.is_empty() { String::new() } else { format!("[{}]", tags.join(" · ")) };
-    let name_color = if e.already {
-        Color::DarkGray
-    } else if e.has_config {
-        Color::Green
-    } else {
-        Color::Blue
-    };
-
-    let w = width as usize;
-    let tagw = tag.chars().count();
-    let label = truncate_middle(&format!("{bar}{}/", e.name), w.saturating_sub(tagw + 1));
-    let pad = w.saturating_sub(label.chars().count() + tagw);
-    let mut line = Line::from(vec![
-        Span::styled(label, Style::default().fg(name_color)),
-        Span::raw(" ".repeat(pad)),
-        Span::styled(tag, Style::default().fg(Color::DarkGray)),
-    ]);
-    if selected {
-        super::theme::fill_row_bg(&mut line, width, super::theme::SELECTION_BG);
-    }
-    line
-}
-
-/// The 3-line preview block for the highlighted directory: the path it would be linked
-/// as, its git branch, and its config presence.
-fn preview_lines(p: Option<&Preview>) -> Vec<Line<'static>> {
-    let Some(p) = p else {
-        return vec![Line::from(Span::styled(
-            "—",
-            Style::default().fg(Color::DarkGray),
-        ))];
-    };
-    let dim = Style::default().fg(Color::DarkGray);
-    let mut link_spans = vec![
-        Span::styled("link as  ", dim),
-        Span::styled(p.rel.clone(), Style::default().fg(Color::White)),
-    ];
-    if p.already {
-        link_spans.push(Span::styled("  (already in workspace)", Style::default().fg(Color::Yellow)));
-    }
-    let git = match &p.branch {
-        Some(branch) => Span::styled(branch.clone(), Style::default().fg(Color::Magenta)),
-        None => Span::styled("not a git repo", dim),
-    };
-    let config = match (p.has_config, &p.name) {
-        (true, Some(name)) => {
-            Span::styled(format!("mmux.yaml · {name}"), Style::default().fg(Color::Green))
-        }
-        _ => Span::styled("no mmux.yaml (the global config applies)", dim),
-    };
-    vec![
-        Line::from(link_spans),
-        Line::from(vec![Span::styled("git      ", dim), git]),
-        Line::from(vec![Span::styled("config   ", dim), config]),
-    ]
 }
 
 /// The agent manager: one checkbox row per built-in harness (enabled + a launch-mode
@@ -406,7 +276,9 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
             ("[ ] ", Style::default().fg(Color::DarkGray))
         };
         let name_style = if selected {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
         } else if r.enabled {
             Style::default().fg(Color::White)
         } else {
@@ -428,24 +300,192 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
             Mode::Danger => Color::Yellow,
         };
         lines.push(Line::from(vec![
-            Span::styled(if selected { "› " } else { "  " }, Style::default().fg(Color::Cyan)),
+            Span::styled(
+                if selected { "› " } else { "  " },
+                Style::default().fg(Color::Cyan),
+            ),
             Span::styled(checkbox, check_style),
             Span::styled(install, install_style),
             Span::styled(format!("{:<10}", r.name), name_style),
-            Span::styled(format!("{:<8}", mode.label()), Style::default().fg(mode_color)),
-            Span::styled(format!("  {}", r.blurb), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{:<8}", mode.label()),
+                Style::default().fg(mode_color),
+            ),
+            Span::styled(
+                format!("  {}", r.blurb),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
     }
 
-    let body = Rect { x: inner.x, y: inner.y, width: inner.width, height: inner.height - 1 };
+    let body = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height - 1,
+    };
     f.render_widget(Paragraph::new(lines), body);
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             "space toggle · m mode · ⏎ save · esc cancel · ✓ on PATH",
             Style::default().fg(Color::DarkGray),
         ))),
-        Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 },
+        Rect {
+            x: inner.x,
+            y: inner.y + inner.height - 1,
+            width: inner.width,
+            height: 1,
+        },
     );
+}
+
+/// The manifest workspace manager: editable name plus a scrollable checkbox list.
+/// Tags help distinguish ready project folders from plain directories without making
+/// configuration or git a requirement.
+fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
+    let w = area.width.saturating_sub(6).clamp(42, 76);
+    let h = area.height.saturating_sub(4).clamp(9, 22);
+    let inner = modal_frame(f, area, w, h, " Workspace ", Color::Magenta);
+    if inner.width == 0 || inner.height < 5 {
+        return;
+    }
+
+    let name_style = if m.editing_name {
+        Style::default().fg(Color::Black).bg(Color::Cyan)
+    } else {
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    };
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Name  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(m.name.clone(), name_style),
+            Span::styled(
+                if m.editing_name {
+                    "  editing"
+                } else {
+                    "  n edit"
+                },
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])),
+        Rect {
+            x: inner.x,
+            y: inner.y,
+            width: inner.width,
+            height: 1,
+        },
+    );
+
+    let list_y = inner.y + 2;
+    let hint_y = inner.y + inner.height - 1;
+    let status_y = hint_y.saturating_sub(1);
+    let list_h = status_y.saturating_sub(list_y) as usize;
+    let scroll = list_scroll(m.cursor, list_h);
+    let mut lines = Vec::new();
+    for i in scroll..scroll + list_h {
+        let Some(r) = m.rows.get(i) else { break };
+        let selected = i == m.cursor;
+        let checkbox = if r.enabled { "[x]" } else { "[ ]" };
+        let checkbox_style = if r.enabled {
+            Style::default().fg(Color::Green)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        let label = if r.path == "." {
+            ".  (this directory)".to_string()
+        } else {
+            r.path.clone()
+        };
+        let label_style = if selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if r.enabled {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        let mut tags = Vec::new();
+        if r.configured {
+            tags.push("mmux");
+        }
+        if r.git {
+            tags.push("git");
+        }
+        if !r.exists {
+            tags.push("missing");
+        }
+        lines.push(Line::from(vec![
+            Span::styled(
+                if selected { "› " } else { "  " },
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::styled(format!("{checkbox} "), checkbox_style),
+            Span::styled(label, label_style),
+            Span::styled(
+                if tags.is_empty() {
+                    String::new()
+                } else {
+                    format!("  {}", tags.join(" · "))
+                },
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+    }
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            x: inner.x,
+            y: list_y,
+            width: inner.width,
+            height: list_h as u16,
+        },
+    );
+
+    let status = m.error.clone().unwrap_or_else(|| {
+        format!(
+            "{} / {} projects selected",
+            m.selected_count(),
+            crate::config::MAX_PROJECTS
+        )
+    });
+    let status_style = if m.error.is_some() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(status, status_style))),
+        Rect {
+            x: inner.x,
+            y: status_y,
+            width: inner.width,
+            height: 1,
+        },
+    );
+    let hint = if m.editing_name {
+        "type a name · ⏎ done · esc done"
+    } else {
+        "space toggle · J/K order · a all · n name · ⏎ save · esc cancel"
+    };
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            hint,
+            Style::default().fg(Color::DarkGray),
+        ))),
+        Rect {
+            x: inner.x,
+            y: hint_y,
+            width: inner.width,
+            height: 1,
+        },
+    );
+    if m.editing_name {
+        let cx = inner.x + 6 + (m.name.chars().count() as u16).min(inner.width.saturating_sub(7));
+        f.set_cursor_position((cx, inner.y));
+    }
 }
 
 /// The "+ New Process" guided form: a "Step N of 4" header, the fields already
@@ -456,7 +496,11 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let h = 13u16.min(area.height);
     // Same form for adding and editing; the title and the Review verb reflect which.
     let editing = form.edit.is_some();
-    let title = if editing { " Edit process " } else { " New process " };
+    let title = if editing {
+        " Edit process "
+    } else {
+        " New process "
+    };
     let inner = modal_frame(f, area, w, h, title, Color::Magenta);
     if inner.width == 0 || inner.height < 3 {
         return;
@@ -478,7 +522,9 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     let mut lines: Vec<Line> = vec![
         Line::from(Span::styled(
             format!("Step {} of {STEPS} · {label}", form.step_index()),
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
     ];
@@ -489,16 +535,27 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
         Step::Review => {
             lines.push(field_line("Name", &form.name));
             lines.push(field_line("Command", &form.command));
-            let cwd = if form.cwd.trim().is_empty() { "(project root)" } else { form.cwd.trim() };
+            let cwd = if form.cwd.trim().is_empty() {
+                "(project root)"
+            } else {
+                form.cwd.trim()
+            };
             lines.push(field_line("Working dir", cwd));
-            let stop = if form.stop.trim().is_empty() { "(none)" } else { form.stop.trim() };
+            let stop = if form.stop.trim().is_empty() {
+                "(none)"
+            } else {
+                form.stop.trim()
+            };
             lines.push(field_line("Stop cmd", stop));
             let mark = if form.autostart { " yes " } else { " no " };
             lines.push(Line::from(vec![
                 Span::styled("Autostart    ", Style::default().fg(Color::Gray)),
                 Span::styled(
                     mark,
-                    Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ),
             ]));
         }
@@ -511,7 +568,11 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
                 lines.push(field_line("Command", &form.command));
             }
             if step == Step::Stop {
-                let cwd = if form.cwd.trim().is_empty() { "(project root)" } else { form.cwd.trim() };
+                let cwd = if form.cwd.trim().is_empty() {
+                    "(project root)"
+                } else {
+                    form.cwd.trim()
+                };
                 lines.push(field_line("Working dir", cwd));
             }
             let prompt = match step {
@@ -521,7 +582,10 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
                 Step::Stop => "Optional teardown run in the dir, e.g. docker compose down",
                 Step::Review => "",
             };
-            lines.push(Line::from(Span::styled(prompt, Style::default().fg(Color::DarkGray))));
+            lines.push(Line::from(Span::styled(
+                prompt,
+                Style::default().fg(Color::DarkGray),
+            )));
             input_y = Some(inner.y + lines.len() as u16);
             lines.push(Line::from(vec![
                 Span::styled("> ", Style::default().fg(Color::Magenta)),
@@ -537,11 +601,24 @@ fn render_procform(f: &mut Frame, area: Rect, form: &ProcForm) {
     }
 
     // Body above, hint pinned to the last inner row.
-    let body = Rect { x: inner.x, y: inner.y, width: inner.width, height: inner.height - 1 };
+    let body = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height - 1,
+    };
     f.render_widget(Paragraph::new(lines), body);
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray)))),
-        Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 },
+        Paragraph::new(Line::from(Span::styled(
+            hint,
+            Style::default().fg(Color::DarkGray),
+        ))),
+        Rect {
+            x: inner.x,
+            y: inner.y + inner.height - 1,
+            width: inner.width,
+            height: 1,
+        },
     );
 
     if let Some(y) = input_y {
@@ -582,7 +659,12 @@ fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
     ]);
     f.render_widget(
         Paragraph::new(query),
-        Rect { x: inner.x, y: query_y, width: inner.width, height: 1 },
+        Rect {
+            x: inner.x,
+            y: query_y,
+            width: inner.width,
+            height: 1,
+        },
     );
 
     // Scroll the list so the selection stays on screen.
@@ -607,7 +689,12 @@ fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
     }
     f.render_widget(
         Paragraph::new(lines),
-        Rect { x: inner.x, y: list_y, width: inner.width, height: list_h as u16 },
+        Rect {
+            x: inner.x,
+            y: list_y,
+            width: inner.width,
+            height: list_h as u16,
+        },
     );
 
     // Footer: match count + the key hints.
@@ -616,8 +703,16 @@ fn render_picker(f: &mut Frame, area: Rect, p: &Picker) {
         p.match_count()
     );
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray)))),
-        Rect { x: inner.x, y: hint_y, width: inner.width, height: 1 },
+        Paragraph::new(Line::from(Span::styled(
+            hint,
+            Style::default().fg(Color::DarkGray),
+        ))),
+        Rect {
+            x: inner.x,
+            y: hint_y,
+            width: inner.width,
+            height: 1,
+        },
     );
 
     // Park the cursor at the end of the query (after the `> ` prompt).
@@ -646,7 +741,12 @@ fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str, hint: &str
     }
     let mut lines: Vec<Line> = body_lines
         .iter()
-        .map(|l| Line::from(Span::styled(l.to_string(), Style::default().fg(Color::White))))
+        .map(|l| {
+            Line::from(Span::styled(
+                l.to_string(),
+                Style::default().fg(Color::White),
+            ))
+        })
         .collect();
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
@@ -668,7 +768,10 @@ fn render_prompt(f: &mut Frame, area: Rect, title: &str, buf: &str, kind: Prompt
         PromptKind::NewBranch => "⏎ create & switch · esc cancel",
     };
     let lines = vec![
-        Line::from(Span::styled(buf.to_string(), Style::default().fg(Color::White))),
+        Line::from(Span::styled(
+            buf.to_string(),
+            Style::default().fg(Color::White),
+        )),
         Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
     ];
     f.render_widget(Paragraph::new(lines), inner);

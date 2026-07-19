@@ -41,7 +41,8 @@ single, persistent, per-directory surface:
 - start, stop, and tail your processes without leaving the multiplexer;
 - stage, commit, branch, and push from a native git panel — no separate tool;
 - get notified when an agent needs you, wherever your terminal is running;
-- group several projects — extra clones, a related repo, a service — into one sidebar with [linked projects](04-configuration.md#linked-projects).
+- group several projects — extra clones, related repos, services — into one sidebar with a
+  [workspace manifest](04-configuration.md#workspace-manifests).
 
 ## The Mental Model
 
@@ -72,8 +73,8 @@ See [Architecture](06-architecture.md) for how the two halves fit together.
 2. **[Installation](02-installation.md)** — prerequisites, the install script, Homebrew, building
    from source, the macOS code-signing gotcha.
 3. **[Usage](03-usage.md)** — the interface tour, every keybinding, the mouse, and the git panel.
-4. **[Configuration](04-configuration.md)** — `mmux.yaml`, the global/project merge, and linked
-   projects.
+4. **[Configuration](04-configuration.md)** — `mmux.yaml`, the global/project merge, and workspace
+   manifests.
 5. **[Notifications](05-notifications.md)** — how attention detection and desktop notifications
    work, including over SSH.
 

@@ -28,7 +28,6 @@ pub(crate) struct Regions {
     pub sidebar: Option<Rect>,
     pub main: Option<Rect>,
     pub right: Option<Rect>,
-    pub link_btn: Option<Rect>, // tap → open the "Link another project" browser
     pub rows: Vec<(u16, usize)>,
     // Footer shortcut buttons: each `[key label]` chip and the action it fires.
     pub footer_btns: Vec<(Rect, FooterAction)>,
@@ -81,6 +80,8 @@ pub(crate) enum FooterAction {
     About,
     /// Open the agent manager popup (add/remove harnesses, toggle danger mode).
     ManageAgents,
+    /// Open the manifest workspace manager (name, folders, sidebar order).
+    ManageWorkspace,
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
@@ -108,7 +109,11 @@ pub(crate) enum FooterAction {
 /// clickable shortcut button.
 enum Seg {
     Hint(String),
-    Btn { key: String, label: String, action: FooterAction },
+    Btn {
+        key: String,
+        label: String,
+        action: FooterAction,
+    },
 }
 
 impl Seg {
@@ -116,7 +121,11 @@ impl Seg {
         Seg::Hint(s.into())
     }
     fn btn(key: &str, label: &str, action: FooterAction) -> Seg {
-        Seg::Btn { key: key.into(), label: label.into(), action }
+        Seg::Btn {
+            key: key.into(),
+            label: label.into(),
+            action,
+        }
     }
 }
 
@@ -188,7 +197,8 @@ impl App {
         // with `&self` access rather than the stateless `render_overlay`.
         match self.overlay.as_ref() {
             Some(super::overlay::Overlay::About) => {
-                self.regions.links = overlay::render_about(f, content, &self.update, self.can_self_update());
+                self.regions.links =
+                    overlay::render_about(f, content, &self.update, self.can_self_update());
             }
             Some(ov) => overlay::render_overlay(f, content, ov),
             None => {}
@@ -237,7 +247,12 @@ impl App {
             let (rspans, rbtns, _) = Self::layout_segs(&right, rx, area.y);
             f.render_widget(
                 Paragraph::new(Line::from(rspans)),
-                Rect { x: rx, y: area.y, width: w, height: 1 },
+                Rect {
+                    x: rx,
+                    y: area.y,
+                    width: w,
+                    height: 1,
+                },
             );
             btns = rbtns;
         }
@@ -259,7 +274,9 @@ impl App {
     ) -> (Vec<Span<'static>>, Vec<(Rect, FooterAction)>, u16) {
         let bar = Style::default().fg(theme::FOOTER_FG).bg(theme::FOOTER_BG); // separators, label text
         let key = bar.add_modifier(Modifier::BOLD); // the shortcut glyph pops
-        let dim = Style::default().fg(theme::FOOTER_BRACE).bg(theme::FOOTER_BG); // braces + hints
+        let dim = Style::default()
+            .fg(theme::FOOTER_BRACE)
+            .bg(theme::FOOTER_BG); // braces + hints
         let mut spans: Vec<Span<'static>> = Vec::new();
         let mut btns: Vec<(Rect, FooterAction)> = Vec::new();
         let mut x = start_x;
@@ -275,15 +292,31 @@ impl App {
                 }
                 // A glyph-less button (empty key) is a pure touch chip — `[git]` — with
                 // its single word bold so the whole chip reads as the tap target.
-                Seg::Btn { key: k, label, action } if k.is_empty() => {
+                Seg::Btn {
+                    key: k,
+                    label,
+                    action,
+                } if k.is_empty() => {
                     let start = x;
                     spans.push(Span::styled("[", dim));
                     spans.push(Span::styled(label.clone(), key));
                     spans.push(Span::styled("]", dim));
                     x += 2 + label.chars().count() as u16;
-                    btns.push((Rect { x: start, y, width: x - start, height: 1 }, *action));
+                    btns.push((
+                        Rect {
+                            x: start,
+                            y,
+                            width: x - start,
+                            height: 1,
+                        },
+                        *action,
+                    ));
                 }
-                Seg::Btn { key: k, label, action } => {
+                Seg::Btn {
+                    key: k,
+                    label,
+                    action,
+                } => {
                     let start = x;
                     spans.push(Span::styled("[", dim));
                     spans.push(Span::styled(k.clone(), key));
@@ -291,7 +324,15 @@ impl App {
                     spans.push(Span::styled(label.clone(), bar));
                     spans.push(Span::styled("]", dim));
                     x += 3 + (k.chars().count() + label.chars().count()) as u16;
-                    btns.push((Rect { x: start, y, width: x - start, height: 1 }, *action));
+                    btns.push((
+                        Rect {
+                            x: start,
+                            y,
+                            width: x - start,
+                            height: 1,
+                        },
+                        *action,
+                    ));
                 }
             }
         }
@@ -335,12 +376,19 @@ impl App {
         if w == 0 {
             return;
         }
-        let rect = Rect { x: area.x + area.width - w, y: area.y, width: w, height: 1 };
+        let rect = Rect {
+            x: area.x + area.width - w,
+            y: area.y,
+            width: w,
+            height: 1,
+        };
         f.render_widget(Paragraph::new(Line::from(Span::styled(text, style))), rect);
         if clickable {
             // Insert at the front: the badge is drawn over the shortcut chips, so it must
             // also win hit-testing where they overlap (`on_left_down` takes the first match).
-            self.regions.footer_btns.insert(0, (rect, FooterAction::ApplyUpdate));
+            self.regions
+                .footer_btns
+                .insert(0, (rect, FooterAction::ApplyUpdate));
         }
     }
 
@@ -372,9 +420,7 @@ impl App {
             }
             // The drawer on a phone *is* the menu, so all it needs is a way back to the
             // pane — in the same bottom-left corner that opened it.
-            Focus::Sidebar if self.compact => {
-                (vec![Seg::btn("✕", "close", CloseToMain)], vec![])
-            }
+            Focus::Sidebar if self.compact => (vec![Seg::btn("✕", "close", CloseToMain)], vec![]),
             Focus::Sidebar => {
                 let mut v = vec![Seg::hint("↑↓ move"), Seg::btn("⏎", "open", Activate)];
                 // The action chips depend on what's selected. A process is a config entry:
@@ -399,6 +445,9 @@ impl App {
                     }
                 }
                 v.push(Seg::btn("a", "agents", ManageAgents));
+                if self.manifest {
+                    v.push(Seg::btn("w", "workspace", ManageWorkspace));
+                }
                 v.push(Seg::btn("R", "reload", Reload));
                 if self.projects.len() > 1 {
                     v.push(Seg::hint("[ ] project"));
@@ -491,5 +540,4 @@ impl App {
             ),
         }
     }
-
 }

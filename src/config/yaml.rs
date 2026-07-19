@@ -1,8 +1,8 @@
 //! Comment-preserving raw-text YAML editing for mmux config files.
 //!
-//! The in-TUI forms (new/edit process, link project) and the agent manager write
-//! back to the user's `mmux.yaml`/global config by splicing the *raw text* rather
-//! than round-tripping through serde — a serde re-serialize would strip every
+//! The in-TUI forms (new/edit process) and the agent manager write back to the
+//! user's `mmux.yaml`/global config by splicing the *raw text* rather than
+//! round-tripping through serde — a serde re-serialize would strip every
 //! comment and reflow the file. Everything here is pure string surgery over the
 //! typed [`ProcessDraft`]/[`AgentDraft`] the caller hands in; the typed schema,
 //! load, and merge live in the parent [`super`] module.
@@ -48,16 +48,19 @@ pub(crate) const PROJECT_PROCESSES_EXAMPLE: &str = "# processes:\n\
     #     autostart: false\n\
     #     # stop: docker compose down\n\n";
 
-/// The `# Linked projects:` explanatory comment (the block or its example follows).
-pub(crate) const PROJECT_LINKED_COMMENT: &str =
-    "# Linked projects: other projects to show alongside this one in the same\n\
-    # workspace — any directories you want grouped together (extra clones, a\n\
-    # related repo, a service), each its own sidebar group. One level deep,\n\
-    # de-duplicated by path.\n";
+/// The `# Workspace:` explanatory comment (the commented example follows).
+pub(crate) const PROJECT_WORKSPACE_COMMENT: &str =
+    "# Workspace: a `workspace:` block turns this file into a workspace manifest — a\n\
+    # named bundle of projects that open together in one sidebar, each folder its own\n\
+    # group (switch with [ and ]). Run `mmux workspace` in their parent folder for\n\
+    # the interactive picker, or list directories here by hand (relative to this\n\
+    # file; `.` includes its own directory). Up to 10 projects.\n";
 
-/// The commented-out `linked-projects:` example.
-pub(crate) const PROJECT_LINKED_EXAMPLE: &str = "# linked-projects:\n\
-    #   - ../myproject2\n";
+/// The commented-out `workspace:` example.
+pub(crate) const PROJECT_WORKSPACE_EXAMPLE: &str = "# workspace:\n\
+    #   folders:\n\
+    #     - myproject\n\
+    #     - myproject2\n";
 
 /// Header for a fresh global config (`~/.mmux/config.yaml`); the `agents:` block follows.
 pub(crate) const GLOBAL_HEADER: &str = "# mmux global config (~/.mmux/config.yaml).\n\
@@ -102,7 +105,7 @@ pub fn append_process(path: &Path, p: &ProcessDraft) -> Result<()> {
         // write the documented scaffold (header, `mmux docs` pointer, commented example
         // sections) with this process live, matching what `mmux init` produces. Existing
         // files are spliced in place so their comments/layout survive.
-        scaffold_project_file(&render_item(p, 2), "")
+        scaffold_project_file(&render_item(p, 2))
     } else {
         insert_process(&original, p)?
     };
@@ -115,8 +118,8 @@ pub fn append_process(path: &Path, p: &ProcessDraft) -> Result<()> {
 /// comments *inside* that one entry are dropped). Errors if the item can't be found —
 /// e.g. its `name:` is written in a shape the raw-text scan doesn't recognise.
 pub fn replace_process(path: &Path, name: &str, p: &ProcessDraft) -> Result<()> {
-    let original = std::fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let original =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let updated = replace_named_item(&original, "processes", name, p)?;
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
@@ -126,8 +129,8 @@ pub fn replace_process(path: &Path, name: &str, p: &ProcessDraft) -> Result<()> 
 /// comments and layout. Errors if the item can't be found. Leaving `processes:` with
 /// no items is fine — it parses back to an empty list.
 pub fn remove_process(path: &Path, name: &str) -> Result<()> {
-    let original = std::fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let original =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let updated = delete_named_item(&original, "processes", name)?;
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
@@ -148,10 +151,72 @@ pub fn write_agents(path: &Path, agents: &[AgentDraft]) -> Result<()> {
         replace_agents_block(&original, agents)
     };
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
     }
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
+}
+
+/// Rewrite the workspace identity and membership owned by `path`, preserving every
+/// unrelated top-level block and surrounding comment. The manager owns the whole
+/// `workspace:` block (as the agent manager owns `agents:`), so comments *inside* the
+/// previous block are replaced. A missing file gets a compact self-documenting
+/// manifest instead of the larger single-project scaffold.
+pub fn write_workspace(path: &Path, name: &str, folders: &[String]) -> Result<()> {
+    let original = std::fs::read_to_string(path).unwrap_or_default();
+    let updated = if original.trim().is_empty() {
+        format!(
+            "# mmux workspace manifest. Run `mmux workspace` here to edit it.\n\
+             name: {}\n\n{}",
+            yaml_scalar(name.trim()),
+            render_workspace_block(folders)
+        )
+    } else {
+        let named = replace_top_level_scalar(&original, "name", name.trim());
+        replace_top_level_block(&named, "workspace", &render_workspace_block(folders))
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+fn render_workspace_block(folders: &[String]) -> String {
+    let mut out = String::from("workspace:\n  folders:\n");
+    for folder in folders {
+        out.push_str(&format!("    - {}\n", yaml_scalar(folder)));
+    }
+    out
+}
+
+/// Replace one top-level scalar, or append it when absent. The manager deliberately
+/// re-renders the owned line so an inline comment on that line is not retained with a
+/// now-different value.
+fn replace_top_level_scalar(text: &str, key: &str, value: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let replacement = format!("{key}: {}\n", yaml_scalar(value));
+    match lines
+        .iter()
+        .position(|line| top_level_key(line) == Some(key))
+    {
+        Some(k) => splice_lines(&lines, k, k + 1, &replacement),
+        None => append_block(text, &replacement),
+    }
+}
+
+/// Replace a complete top-level mapping block, or append it when absent.
+fn replace_top_level_block(text: &str, key: &str, replacement: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    match lines
+        .iter()
+        .position(|line| top_level_key(line) == Some(key))
+    {
+        Some(k) => splice_lines(&lines, k, block_end(&lines, k), replacement),
+        None => append_block(text, replacement),
+    }
 }
 
 /// The `agents:` block for `agents` — the key line plus one item each, or the empty
@@ -187,7 +252,10 @@ pub(crate) fn render_agent_item(a: &AgentDraft, indent: usize) -> String {
 fn replace_agents_block(text: &str, agents: &[AgentDraft]) -> String {
     let lines: Vec<&str> = text.lines().collect();
     let block = render_agents_block(agents);
-    let Some(k) = lines.iter().position(|l| top_level_key(l) == Some("agents")) else {
+    let Some(k) = lines
+        .iter()
+        .position(|l| top_level_key(l) == Some("agents"))
+    else {
         // No block yet: append a fresh one (with a blank separator) at EOF.
         return append_block(text, &block);
     };
@@ -206,30 +274,12 @@ fn scaffold_global_file(agents_block: &str) -> String {
     s
 }
 
-/// Append `rel` (a path, relative to `path`'s directory) to the `linked-projects:`
-/// list in `path`, preserving the file's comments and layout. Creates the file/block
-/// if absent. Mirrors [`append_process`]; used by the in-TUI "Link another project"
-/// browser so a linked sibling survives the next reopen.
-pub fn append_linked_project(path: &Path, rel: &str) -> Result<()> {
-    let original = std::fs::read_to_string(path).unwrap_or_default();
-    let updated = if original.trim().is_empty() {
-        // Same as [`append_process`]: seed an empty/absent file with the documented
-        // scaffold rather than a bare `linked-projects:` block.
-        scaffold_project_file("", &format!("  - {}\n", yaml_scalar(rel)))
-    } else {
-        insert_linked_project(&original, rel)?
-    };
-    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
-    Ok(())
-}
-
 /// A fresh, self-documenting project file for a directory that has no config yet — the
 /// same header, `mmux docs` pointer, and section comments the `mmux init` starter uses,
-/// so a file born from the in-TUI "+ New Process" / "Link project" flows explains itself
-/// instead of starting life as a bare block. `processes`/`linked` hold the already-
-/// rendered live list items (indent 2) for whichever section triggered the creation; an
-/// empty string leaves that section as a commented example.
-fn scaffold_project_file(processes: &str, linked: &str) -> String {
+/// so a file born from the in-TUI "+ New Process" flow explains itself instead of
+/// starting life as a bare block. `processes` holds the already-rendered live list
+/// items (indent 2); an empty string leaves the section as a commented example.
+fn scaffold_project_file(processes: &str) -> String {
     let mut s = String::new();
     s.push_str(PROJECT_HEADER);
     s.push_str("# `name` is optional — it defaults to this directory's name.\n");
@@ -247,13 +297,8 @@ fn scaffold_project_file(processes: &str, linked: &str) -> String {
         s.push('\n');
     }
 
-    s.push_str(PROJECT_LINKED_COMMENT);
-    if linked.is_empty() {
-        s.push_str(PROJECT_LINKED_EXAMPLE);
-    } else {
-        s.push_str("linked-projects:\n");
-        s.push_str(linked);
-    }
+    s.push_str(PROJECT_WORKSPACE_COMMENT);
+    s.push_str(PROJECT_WORKSPACE_EXAMPLE);
     s
 }
 
@@ -296,15 +341,6 @@ fn append_block(text: &str, block_text: &str) -> String {
 /// Splice a rendered process item into `text`'s top-level `processes:` block.
 fn insert_process(text: &str, p: &ProcessDraft) -> Result<String> {
     splice_block_item(text, "processes", |indent| render_item(p, indent))
-}
-
-/// Splice a `- <path>` entry into `text`'s top-level `linked-projects:` block. Like
-/// [`insert_process`] it edits the raw text (not a serde round-trip) so the file's
-/// comments and layout survive.
-fn insert_linked_project(text: &str, rel: &str) -> Result<String> {
-    splice_block_item(text, "linked-projects", |indent| {
-        format!("{}- {}\n", " ".repeat(indent), yaml_scalar(rel))
-    })
 }
 
 /// Splice a rendered list item into `text`'s top-level `block:` sequence, preserving
@@ -398,8 +434,9 @@ fn block_end(lines: &[&str], k: usize) -> usize {
 /// survives. Errors if the named item can't be located.
 fn replace_named_item(text: &str, block: &str, name: &str, p: &ProcessDraft) -> Result<String> {
     let lines: Vec<&str> = text.lines().collect();
-    let (start, mut end, indent) = named_item_span(&lines, block, name)
-        .ok_or_else(|| anyhow::anyhow!("couldn't find “{name}” under `{block}:` — edit it by hand"))?;
+    let (start, mut end, indent) = named_item_span(&lines, block, name).ok_or_else(|| {
+        anyhow::anyhow!("couldn't find “{name}” under `{block}:` — edit it by hand")
+    })?;
     // Don't consume the blank line(s) between this item and the next — re-emit them.
     while end > start + 1 && lines[end - 1].trim().is_empty() {
         end -= 1;
@@ -411,8 +448,9 @@ fn replace_named_item(text: &str, block: &str, name: &str, p: &ProcessDraft) -> 
 /// comments and layout (kept pure for testing). Errors if it can't be located.
 fn delete_named_item(text: &str, block: &str, name: &str) -> Result<String> {
     let lines: Vec<&str> = text.lines().collect();
-    let (start, end, _) = named_item_span(&lines, block, name)
-        .ok_or_else(|| anyhow::anyhow!("couldn't find “{name}” under `{block}:` — edit it by hand"))?;
+    let (start, end, _) = named_item_span(&lines, block, name).ok_or_else(|| {
+        anyhow::anyhow!("couldn't find “{name}” under `{block}:` — edit it by hand")
+    })?;
     Ok(splice_lines(&lines, start, end, ""))
 }
 
@@ -604,14 +642,15 @@ processes:
     autostart: false
     # stop: docker compose down
 
-# Linked projects: other projects to show alongside this one in the same workspace —
-# any directories you want grouped together (extra clones, a related repo, a service).
-# Each gets its own group in the sidebar; switch with [ and ]. Listing is one level
-# deep and de-duplicated by path, so you can drop this same config into every project
-# (even one that lists itself) without it ever expanding recursively.
-# linked-projects:
-#   - ../myproject2
-#   - ../myproject3
+# Workspace: a `workspace:` block turns an mmux.yaml into a workspace manifest — a
+# named bundle of projects that open together in one sidebar, each folder its own
+# group (switch with [ and ]). Put one in a parent folder, list the project
+# directories (relative to that file; `.` includes its own directory; up to 10),
+# and run `mmux` there.
+# workspace:
+#   folders:
+#     - myproject
+#     - myproject2
 
 # Notifications: when a session rings the bell (or emits a notification escape of
 # its own), mmux raises a native desktop popup. It's delivered as a terminal escape
@@ -643,7 +682,8 @@ mod tests {
 
     #[test]
     fn inserts_among_existing_processes_at_their_indent() {
-        let text = "name: demo\n\nprocesses:\n  - name: Check\n    cmd: cargo\n    args: [\"check\"]\n";
+        let text =
+            "name: demo\n\nprocesses:\n  - name: Check\n    cmd: cargo\n    args: [\"check\"]\n";
         let out = insert_process(text, &draft()).unwrap();
         // The existing entry survives untouched and the new one follows it, same indent
         // and unquoted-where-safe style.
@@ -681,32 +721,20 @@ mod tests {
         // A process added to a directory with no config gets the full documented
         // scaffold (header + `mmux docs` pointer + commented example sections), not a
         // bare `processes:` block — the live process sits in the processes section while
-        // agents/linked-projects stay as commented examples.
-        let out = scaffold_project_file(&render_item(&draft(), 2), "");
+        // agents/workspace stay as commented examples.
+        let out = scaffold_project_file(&render_item(&draft(), 2));
         assert!(out.starts_with("# mmux workspace config."));
         assert!(out.contains("mmux docs"));
         assert!(out.contains("# agents:"));
         assert!(out.contains("processes:\n  - name: Dev server"));
-        assert!(out.contains("# linked-projects:"));
+        assert!(out.contains("# workspace:"));
         // The commented processes example is gone (the real block took its place) and
         // the whole thing parses back to exactly the one process.
         assert!(!out.contains("# processes:"));
         let cfg: Config = serde_yaml::from_str(&out).unwrap();
         assert_eq!(cfg.processes.len(), 1);
         assert_eq!(cfg.processes[0].name, "Dev server");
-        assert!(cfg.linked_projects.is_empty());
-    }
-
-    #[test]
-    fn scaffolds_a_documented_file_for_a_linked_project() {
-        let out = scaffold_project_file("", "  - ../sibling\n");
-        assert!(out.contains("mmux docs"));
-        assert!(out.contains("linked-projects:\n  - ../sibling"));
-        // Processes stays a commented example when only a link was added.
-        assert!(out.contains("# processes:"));
-        let cfg: Config = serde_yaml::from_str(&out).unwrap();
-        assert!(cfg.processes.is_empty());
-        assert_eq!(cfg.linked_projects, vec!["../sibling"]);
+        assert!(cfg.workspace.is_none());
     }
 
     #[test]
@@ -749,7 +777,10 @@ mod tests {
         assert!(out.contains("autostart: true"));
         // The stop line round-trips back to the parsed config.
         let cfg: Config = serde_yaml::from_str(&out).unwrap();
-        assert_eq!(cfg.processes[0].stop.as_deref(), Some("docker compose down"));
+        assert_eq!(
+            cfg.processes[0].stop.as_deref(),
+            Some("docker compose down")
+        );
     }
 
     #[test]
@@ -802,7 +833,12 @@ mod tests {
 
     #[test]
     fn removing_the_only_process_leaves_an_empty_block() {
-        let out = delete_named_item("name: demo\nprocesses:\n  - name: A\n    cmd: x\n", "processes", "A").unwrap();
+        let out = delete_named_item(
+            "name: demo\nprocesses:\n  - name: A\n    cmd: x\n",
+            "processes",
+            "A",
+        )
+        .unwrap();
         let cfg: Config = serde_yaml::from_str(&out).unwrap();
         assert!(cfg.processes.is_empty());
         assert_eq!(cfg.name.as_deref(), Some("demo"));
@@ -810,36 +846,17 @@ mod tests {
 
     #[test]
     fn edit_and_delete_error_on_an_unknown_process() {
-        assert!(delete_named_item("processes:\n  - name: A\n    cmd: x\n", "processes", "Nope").is_err());
-        assert!(replace_named_item("processes:\n  - name: A\n    cmd: x\n", "processes", "Nope", &draft()).is_err());
-    }
-
-    #[test]
-    fn inserts_among_existing_linked_projects_at_their_indent() {
-        let text = "name: demo\n\nlinked-projects:\n  - ../a\n";
-        let out = insert_linked_project(text, "../b").unwrap();
-        assert!(out.contains("  - ../a"));
-        assert!(out.contains("  - ../b"));
-        assert!(out.find("../a").unwrap() < out.find("../b").unwrap());
-        let cfg: Config = serde_yaml::from_str(&out).unwrap();
-        assert_eq!(cfg.linked_projects, vec!["../a".to_string(), "../b".to_string()]);
-    }
-
-    #[test]
-    fn appends_a_fresh_linked_projects_block_when_absent() {
-        // A commented `# linked-projects:` example must NOT be treated as the block.
-        let out = insert_linked_project("name: demo\n# linked-projects:\n", "../b").unwrap();
-        assert!(out.contains("\nlinked-projects:\n  - ../b"));
-        let cfg: Config = serde_yaml::from_str(&out).unwrap();
-        assert_eq!(cfg.linked_projects, vec!["../b".to_string()]);
-    }
-
-    #[test]
-    fn replaces_an_empty_linked_projects_placeholder() {
-        let out = insert_linked_project("linked-projects: []\n", "../b").unwrap();
-        assert!(!out.contains("[]"));
-        let cfg: Config = serde_yaml::from_str(&out).unwrap();
-        assert_eq!(cfg.linked_projects, vec!["../b".to_string()]);
+        assert!(
+            delete_named_item("processes:\n  - name: A\n    cmd: x\n", "processes", "Nope")
+                .is_err()
+        );
+        assert!(replace_named_item(
+            "processes:\n  - name: A\n    cmd: x\n",
+            "processes",
+            "Nope",
+            &draft()
+        )
+        .is_err());
     }
 
     // ── agent manager: rewriting the global `agents:` block ──────────────────
@@ -856,10 +873,13 @@ mod tests {
         // The header comment before and the git-panel example after the block must
         // survive; the block itself is replaced by the new list.
         let text = "# mmux global config\n\nagents:\n  - name: Claude\n    cmd: claude\n    args: []\n\n# git-panel:\n#   enabled: false\n";
-        let out = replace_agents_block(text, &[
+        let out = replace_agents_block(
+            text,
+            &[
             ag("Claude", "claude", &["--dangerously-skip-permissions"]),
             ag("Gemini", "gemini", &["--yolo"]),
-        ]);
+            ],
+        );
         assert!(out.starts_with("# mmux global config"));
         assert!(out.contains("# git-panel:"));
         let cfg: Config = serde_yaml::from_str(&out).unwrap();
@@ -888,7 +908,11 @@ mod tests {
 
     #[test]
     fn scaffolds_a_documented_global_file_for_a_first_agent() {
-        let out = scaffold_global_file(&render_agents_block(&[ag("Claude", "claude", &["--dangerously-skip-permissions"])]));
+        let out = scaffold_global_file(&render_agents_block(&[ag(
+            "Claude",
+            "claude",
+            &["--dangerously-skip-permissions"],
+        )]));
         assert!(out.starts_with("# mmux global config"));
         assert!(out.contains("mmux docs"));
         assert!(out.contains("agents:\n  - name: Claude"));
@@ -903,7 +927,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.yaml");
         let _ = std::fs::remove_file(&path);
-        write_agents(&path, &[ag("Claude", "claude", &["--dangerously-skip-permissions"])]).unwrap();
+        write_agents(
+            &path,
+            &[ag("Claude", "claude", &["--dangerously-skip-permissions"])],
+        )
+        .unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("mmux docs"));
         assert!(written.contains("agents:\n  - name: Claude"));

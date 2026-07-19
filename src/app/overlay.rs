@@ -2,9 +2,9 @@
 //!
 //! An [`Overlay`] is a single modal — a text [`Prompt`](Overlay::Prompt), a yes/no
 //! [`Confirm`](Overlay::Confirm), the Ctrl+P file [`Picker`](Overlay::Picker), the
-//! guided [`NewProcess`](Overlay::NewProcess) form, the "Link a project"
-//! [`LinkProject`](Overlay::LinkProject) browser, the [`Agents`](Overlay::Agents)
-//! manager, or the stateless [`About`](Overlay::About) card. While one is open it eats
+//! guided [`NewProcess`](Overlay::NewProcess) form, the [`Agents`](Overlay::Agents)
+//! manager, the [`Workspace`](Overlay::Workspace) manager, or the stateless
+//! [`About`](Overlay::About) card. While one is open it eats
 //! every key (see [`App::overlay_key`]); the rendering lives in [`super::view::overlay`].
 
 use super::git::first_line;
@@ -36,12 +36,14 @@ pub(crate) enum Overlay {
     About,
     /// The "+ New Process" guided form (state in [`super::procform`]).
     NewProcess(super::procform::ProcForm),
-    /// The "Link another project" directory browser (state in [`super::linkbrowse`]).
-    LinkProject(super::linkbrowse::LinkBrowser),
     /// The agent manager (sidebar `a`): toggle the built-in harnesses on/off and cycle
     /// each one's launch mode, then write them to the global config (state in
     /// [`crate::agentmgr`]).
     Agents(crate::agentmgr::AgentManager),
+    /// The workspace manifest manager (sidebar `w` in a manifest session): edit the
+    /// workspace name, toggle folders, and reorder them (state in
+    /// [`crate::workspacemgr`]).
+    Workspace(crate::workspacemgr::WorkspaceManager),
 }
 
 #[derive(Clone, Copy)]
@@ -49,7 +51,9 @@ pub(crate) enum PromptKind {
     /// A commit-message prompt. `push` carries whether submitting should also kick off a
     /// background push: the prompt starts `false` (⏎ commits), and `Ctrl+⏎` upgrades it to
     /// commit-&-push.
-    Commit { push: bool },
+    Commit {
+        push: bool,
+    },
     NewBranch,
 }
 
@@ -101,7 +105,12 @@ impl Overlay {
         hint: &'static str,
         action: Confirmed,
     ) -> Overlay {
-        Overlay::Confirm { title, body, hint, action }
+        Overlay::Confirm {
+            title,
+            body,
+            hint,
+            action,
+        }
     }
 
     /// The pre-quit confirmation. Quitting tears down the inner tmux session, stopping
@@ -132,6 +141,12 @@ impl Overlay {
     pub(crate) fn agents() -> Overlay {
         Overlay::Agents(crate::agentmgr::AgentManager::new())
     }
+
+    pub(crate) fn workspace(root: &std::path::Path) -> anyhow::Result<Overlay> {
+        Ok(Overlay::Workspace(
+            crate::workspacemgr::WorkspaceManager::new(root)?,
+        ))
+    }
 }
 
 impl App {
@@ -145,12 +160,6 @@ impl App {
             self.procform_key(k);
             return;
         }
-        // The link browser likewise needs `&mut self` on ⏎ (to grow the workspace),
-        // so it's taken out and driven by its own handler.
-        if matches!(self.overlay, Some(Overlay::LinkProject(_))) {
-            self.linkbrowse_key(k);
-            return;
-        }
         // The About card's actions (check / apply update) need `&mut self`, so it gets
         // its own handler rather than threading through the `Act` resolution below.
         if matches!(self.overlay, Some(Overlay::About)) {
@@ -161,6 +170,10 @@ impl App {
         // needs `&mut self` and gets its own handler.
         if matches!(self.overlay, Some(Overlay::Agents(_))) {
             self.agentmgr_key(k);
+            return;
+        }
+        if matches!(self.overlay, Some(Overlay::Workspace(_))) {
+            self.workspacemgr_key(k);
             return;
         }
         enum Act {
@@ -218,7 +231,9 @@ impl App {
                 // a plain control byte that survives tmux on any terminal.
                 KeyCode::Enter => {
                     let kind = match kind {
-                        PromptKind::Commit { push } => PromptKind::Commit { push: *push || ctrl },
+                        PromptKind::Commit { push } => PromptKind::Commit {
+                            push: *push || ctrl,
+                        },
                         other => *other,
                     };
                     Act::Submit(kind, buf.clone())
@@ -251,12 +266,12 @@ impl App {
                 KeyCode::Char('d') if matches!(action, Confirmed::Quit) => Act::Detach,
                 _ => Act::Close,
             },
-            // Handled above by `procform_key` / `linkbrowse_key` / `about_key` /
-            // `agentmgr_key`; arms kept for match exhaustiveness.
+            // Handled above by their dedicated key handlers; arms kept for match
+            // exhaustiveness.
             Some(Overlay::NewProcess(_))
-            | Some(Overlay::LinkProject(_))
             | Some(Overlay::About)
-            | Some(Overlay::Agents(_)) => Act::None,
+            | Some(Overlay::Agents(_))
+            | Some(Overlay::Workspace(_)) => Act::None,
             None => Act::None,
         };
         match act {
@@ -369,6 +384,52 @@ impl App {
         self.overlay = Some(Overlay::Agents(m));
     }
 
+    /// Keys for the manifest workspace manager. `n` edits its display name; the list
+    /// uses the same checkbox vocabulary as the agent manager, with `J/K` additionally
+    /// changing persisted sidebar order. Saving structural edits never tears down or
+    /// remaps live sessions: `R` can append new members, while removals/order apply on
+    /// reopen.
+    fn workspacemgr_key(&mut self, k: KeyEvent) {
+        let Some(Overlay::Workspace(mut m)) = self.overlay.take() else {
+            return;
+        };
+        if m.editing_name {
+            match k.code {
+                KeyCode::Esc | KeyCode::Enter => {
+                    m.editing_name = false;
+                    m.error = None;
+                }
+                KeyCode::Backspace => {
+                    m.name.pop();
+                    m.error = None;
+                }
+                KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                    m.name.push(c);
+                    m.error = None;
+                }
+                _ => {}
+            }
+            self.overlay = Some(Overlay::Workspace(m));
+            return;
+        }
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('q') => return,
+            KeyCode::Up | KeyCode::Char('k') => m.move_cursor(-1),
+            KeyCode::Down | KeyCode::Char('j') => m.move_cursor(1),
+            KeyCode::Char('K') => m.reorder(-1),
+            KeyCode::Char('J') => m.reorder(1),
+            KeyCode::Char(' ') => m.toggle_enabled(),
+            KeyCode::Char('a') => m.toggle_all(),
+            KeyCode::Char('n') => m.editing_name = true,
+            KeyCode::Enter if m.validate() => {
+                self.apply_workspace_manager(&m);
+                return;
+            }
+            _ => {}
+        }
+        self.overlay = Some(Overlay::Workspace(m));
+    }
+
     /// Keys for the "+ New Process" form. We take the form out of `self.overlay` for
     /// the duration so the handler can freely read project config (for validation)
     /// while mutating the form, then put it back unless the user finished/cancelled.
@@ -422,9 +483,11 @@ impl App {
                 }
                 // A duplicate name is rejected — but when editing, the entry keeping its
                 // own name isn't a duplicate of itself.
-                let dup = self.projects[form.project].cfg.processes.iter().any(|p| {
-                    p.name == val && form.edit.as_deref() != Some(p.name.as_str())
-                });
+                let dup = self.projects[form.project]
+                    .cfg
+                    .processes
+                    .iter()
+                    .any(|p| p.name == val && form.edit.as_deref() != Some(p.name.as_str()));
                 if dup {
                     form.error = Some(format!("a process named “{val}” already exists"));
                     return;
@@ -455,46 +518,5 @@ impl App {
             Step::Review => {}
         }
         form.error = None;
-    }
-
-    /// Keys for the "Link another project" browser. Like the process form it's taken
-    /// out of `self.overlay` for the duration: ⏎ links the highlighted directory (which
-    /// needs `&mut self` to grow the workspace, so it's done after the take), ←/→ walk
-    /// the tree, and typing filters the current level.
-    fn linkbrowse_key(&mut self, k: KeyEvent) {
-        let Some(Overlay::LinkProject(mut b)) = self.overlay.take() else {
-            return;
-        };
-        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-        match k.code {
-            KeyCode::Esc => return, // cancelled — leave the overlay cleared
-            KeyCode::Enter => {
-                if let Some(dir) = b.pick() {
-                    self.link_project(dir); // grows the workspace, flashes, stays closed
-                    return;
-                }
-            }
-            KeyCode::Right | KeyCode::Tab => b.descend(),
-            KeyCode::Left => b.ascend(),
-            KeyCode::Up => b.move_sel(-1),
-            KeyCode::Down => b.move_sel(1),
-            KeyCode::Char('p') | KeyCode::Char('k') if ctrl => b.move_sel(-1),
-            KeyCode::Char('n') | KeyCode::Char('j') if ctrl => b.move_sel(1),
-            // Backspace edits the filter, or — once it's empty — steps up a level.
-            KeyCode::Backspace => {
-                if b.query.is_empty() {
-                    b.ascend();
-                } else {
-                    b.query.pop();
-                    b.refilter();
-                }
-            }
-            KeyCode::Char(c) if !ctrl => {
-                b.query.push(c);
-                b.refilter();
-            }
-            _ => {}
-        }
-        self.overlay = Some(Overlay::LinkProject(b));
     }
 }

@@ -1,23 +1,25 @@
 //! Interactive `mmux init` — a first-run setup wizard.
 //!
-//! One flow, two entry points: [`run`] walks the user through the three things a
-//! workspace needs — which agents to offer, how the project starts, and any
-//! sibling `linked-projects` to show alongside it — then writes the YAML.
+//! One flow, two entry points: [`run`] walks the user through the two things a
+//! project needs — which agents to offer and how the project starts — then
+//! writes the YAML. Bundling several projects is handled separately by
+//! [`run_workspace`] (`mmux workspace`), which shares its checkbox model with the
+//! manifest-only TUI popup.
 //!
 //! WHERE it writes is decided by a single fact: does a global
 //! `~/.mmux/config.yaml` exist yet?
 //!
 //!   * **No global yet**  → the agents you pick seed a fresh GLOBAL config (your
-//!     reusable defaults for every project); the start command + linked projects
-//!     go in the project's `./mmux.yaml`.
+//!     reusable defaults for every project); the start command goes in the
+//!     project's `./mmux.yaml`.
 //!   * **Global exists**  → everything (agents included) goes in `./mmux.yaml`,
 //!     layering on top of your global agents.
 //!
 //! So the wizard never needs to know how it was triggered — `mmux init` and the
 //! "no global config yet, just run `mmux`" first-run path call the same [`run`].
 //!
-//! [`run_agents`] is a third entry point (`mmux agents`): an agents-only re-run that
-//! edits the global config in place — the command-line twin of the in-TUI agent manager.
+//! [`run_agents`] and [`run_workspace`] are focused management entry points, each the
+//! command-line twin of its in-TUI manager.
 //!
 //! The agents step is an inline, arrow-navigable checkbox picker over the built-in
 //! [`crate::agentmgr::AgentManager`] (shared with the in-TUI popup and `mmux agents`, so
@@ -29,6 +31,7 @@
 
 use crate::agentmgr::{AgentManager, Mode};
 use crate::config::{self, yaml_args, yaml_scalar};
+use crate::workspacemgr::WorkspaceManager;
 use anyhow::{Context, Result};
 use ratatui::crossterm::{
     cursor::MoveToPreviousLine,
@@ -76,7 +79,6 @@ pub fn run(dir: &Path) -> Result<()> {
 
     let agents = ask_agents()?;
     let processes = ask_processes()?;
-    let linked = ask_linked(dir)?;
 
     let mut wrote: Vec<String> = Vec::new();
 
@@ -89,11 +91,11 @@ pub fn run(dir: &Path) -> Result<()> {
         }
     }
 
-    // The project file gets the start command, linked projects, and — unless the
-    // agents went global — the agents too.
+    // The project file gets the start command and — unless the agents went
+    // global — the agents too.
     let local_agents: &[Agent] = if agents_in_global { &[] } else { &agents };
     let name = dir_name(dir);
-    let local = build_local_yaml(&name, local_agents, wrote_global_agents, &processes, &linked);
+    let local = build_local_yaml(&name, local_agents, wrote_global_agents, &processes);
     if write_local(&local_path, &local)? {
         wrote.push(pretty(&local_path));
     }
@@ -115,7 +117,13 @@ pub fn run_agents() -> Result<()> {
         anyhow::bail!("can't locate ~/.mmux (is HOME set?)");
     };
     println!("\n{}", bold("Manage agents"));
-    println!("{}", dim(&format!("Built-in AI coding harnesses, saved to {}.", pretty(&path))));
+    println!(
+        "{}",
+        dim(&format!(
+            "Built-in AI coding harnesses, saved to {}.",
+            pretty(&path)
+        ))
+    );
     // Seeded from the current global config (its agents pre-checked); custom agents are
     // preserved on save. Cancel leaves the file untouched.
     let mut m = AgentManager::new();
@@ -126,8 +134,54 @@ pub fn run_agents() -> Result<()> {
     let drafts = m.drafts();
     config::write_agents(&path, &drafts).with_context(|| format!("writing {}", pretty(&path)))?;
     println!("\n{}", bold("Done."));
-    println!("  • {} {}", pretty(&path), dim(&format!("({} agent(s) configured)", drafts.len())));
-    println!("{}", dim("Open mmux — or press R inside it — to see the change."));
+    println!(
+        "  • {} {}",
+        pretty(&path),
+        dim(&format!("({} agent(s) configured)", drafts.len()))
+    );
+    println!(
+        "{}",
+        dim("Open mmux — or press R inside it — to see the change.")
+    );
+    Ok(())
+}
+
+/// `mmux workspace` — create or edit a directory-level workspace manifest with the
+/// same compact checkbox interaction as `mmux agents`. Immediate child directories
+/// are discovered automatically; existing outside paths remain available as rows.
+pub fn run_workspace(dir: &Path) -> Result<()> {
+    if !io::stdin().is_terminal() {
+        anyhow::bail!("`mmux workspace` needs an interactive terminal");
+    }
+    let mut m = WorkspaceManager::new(dir)?;
+    let path = config::workspace_config_path(&m.root);
+
+    println!("\n{}", bold("Manage workspace"));
+    println!(
+        "{}",
+        dim(&format!(
+            "Select projects below {} · saved to {}.",
+            pretty(&m.root),
+            pretty(&path)
+        ))
+    );
+    m.name = ask("Workspace name", Some(&m.name))?;
+    if !select_workspace(&mut m)? {
+        println!("{}", dim("No changes."));
+        return Ok(());
+    }
+    let folders = m.folders();
+    crate::restore::bind_project_dirs(&m.root, &m.original_projects);
+    config::write_workspace(&path, &m.name, &folders)
+        .with_context(|| format!("writing {}", pretty(&path)))?;
+
+    println!("\n{}", bold("Done."));
+    println!(
+        "  • {} {}",
+        pretty(&path),
+        dim(&format!("({} project(s))", folders.len()))
+    );
+    println!("{}", dim("Run `mmux` here to open the workspace."));
     Ok(())
 }
 
@@ -147,8 +201,14 @@ fn select_agents(m: &mut AgentManager) -> Result<bool> {
         return Ok(true);
     }
     // These two lines are static context above the redrawn rows.
-    println!("{}", dim("↑↓ move · space toggle · m mode · a all · ⏎ done · esc skip"));
-    println!("{}", dim("A green ✓ marks the harnesses found on your PATH."));
+    println!(
+        "{}",
+        dim("↑↓ move · space toggle · m mode · a all · ⏎ done · esc skip")
+    );
+    println!(
+        "{}",
+        dim("A green ✓ marks the harnesses found on your PATH.")
+    );
     let height = m.rows.len() as u16;
     let mut out = io::stdout();
     enable_raw_mode()?;
@@ -193,8 +253,16 @@ fn draw_agent_rows(out: &mut io::Stdout, m: &AgentManager, height: u16, first: b
     for (i, r) in m.rows.iter().enumerate() {
         let selected = i == m.cursor;
         let marker = if selected { "› " } else { "  " };
-        let checkbox = if r.enabled { paint(GREEN, "[x]") } else { dim("[ ]") };
-        let install = if r.installed { paint(GREEN, "✓") } else { " ".to_string() };
+        let checkbox = if r.enabled {
+            paint(GREEN, "[x]")
+        } else {
+            dim("[ ]")
+        };
+        let install = if r.installed {
+            paint(GREEN, "✓")
+        } else {
+            " ".to_string()
+        };
         let name = format!("{:<10}", r.name);
         let name = if selected {
             paint(CYAN_BOLD, &name)
@@ -217,20 +285,158 @@ fn draw_agent_rows(out: &mut io::Stdout, m: &AgentManager, height: u16, first: b
     Ok(())
 }
 
+// ── interactive workspace picker ─────────────────────────────────────────────
+
+fn select_workspace(m: &mut WorkspaceManager) -> Result<bool> {
+    println!(
+        "{}",
+        dim("↑↓ move · space toggle · J/K reorder · a all/none · ⏎ save · esc cancel")
+    );
+    println!(
+        "{}",
+        dim(&format!(
+            "Choose up to {} folders; their row order becomes sidebar order.",
+            config::MAX_PROJECTS
+        ))
+    );
+    // A bounded window keeps a parent containing many directories usable without
+    // taking over the whole terminal. The extra line is the live count/error footer.
+    let term_h = ratatui::crossterm::terminal::size()
+        .map(|(_, h)| h)
+        .unwrap_or(24);
+    let visible = m
+        .rows
+        .len()
+        .min(term_h.saturating_sub(8).clamp(5, 15) as usize)
+        .max(1);
+    let height = visible as u16 + 1;
+    let mut out = io::stdout();
+    enable_raw_mode()?;
+    let result = workspace_select_loop(&mut out, m, visible, height);
+    let _ = disable_raw_mode();
+    println!();
+    result
+}
+
+fn workspace_select_loop(
+    out: &mut io::Stdout,
+    m: &mut WorkspaceManager,
+    visible: usize,
+    height: u16,
+) -> Result<bool> {
+    let mut first = true;
+    loop {
+        draw_workspace_rows(out, m, visible, height, first)?;
+        first = false;
+        match event::read()? {
+            Event::Key(k) if k.kind == KeyEventKind::Press => match (k.code, k.modifiers) {
+                (KeyCode::Up, _) | (KeyCode::Char('k'), _) => m.move_cursor(-1),
+                (KeyCode::Down, _) | (KeyCode::Char('j'), _) => m.move_cursor(1),
+                (KeyCode::Char('K'), _) => m.reorder(-1),
+                (KeyCode::Char('J'), _) => m.reorder(1),
+                (KeyCode::Char(' '), _) => m.toggle_enabled(),
+                (KeyCode::Char('a'), _) => m.toggle_all(),
+                (KeyCode::Enter, _) if m.validate() => return Ok(true),
+                (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => return Ok(false),
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(false),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+fn draw_workspace_rows(
+    out: &mut io::Stdout,
+    m: &WorkspaceManager,
+    visible: usize,
+    height: u16,
+    first: bool,
+) -> Result<()> {
+    if !first {
+        execute!(out, MoveToPreviousLine(height))?;
+    }
+    execute!(out, Clear(ClearType::FromCursorDown))?;
+    let start = if m.cursor >= visible {
+        m.cursor + 1 - visible
+    } else {
+        0
+    };
+    for i in start..start + visible {
+        if let Some(r) = m.rows.get(i) {
+            let selected = i == m.cursor;
+            let marker = if selected { "› " } else { "  " };
+            let checkbox = if r.enabled {
+                paint(GREEN, "[x]")
+            } else {
+                dim("[ ]")
+            };
+            let label = if r.path == "." {
+                ".  (this directory)".to_string()
+            } else {
+                r.path.clone()
+            };
+            let label = if selected {
+                paint(CYAN_BOLD, &label)
+            } else if r.enabled {
+                label
+            } else {
+                dim(&label)
+            };
+            let mut badges = Vec::new();
+            if r.configured {
+                badges.push("mmux");
+            }
+            if r.git {
+                badges.push("git");
+            }
+            if !r.exists {
+                badges.push("missing");
+            }
+            let badge = if badges.is_empty() {
+                String::new()
+            } else {
+                dim(&format!("  {}", badges.join(" · ")))
+            };
+            write!(out, "{marker}{checkbox} {label}{badge}\r\n")?;
+        } else {
+            write!(out, "\r\n")?;
+        }
+    }
+    let status = m
+        .error
+        .clone()
+        .unwrap_or_else(|| format!("{} / {} selected", m.selected_count(), config::MAX_PROJECTS));
+    let status = if m.error.is_some() {
+        paint(YELLOW, &status)
+    } else {
+        dim(&status)
+    };
+    write!(out, "{status}\r\n")?;
+    out.flush()?;
+    Ok(())
+}
+
 // ── interactive sections ────────────────────────────────────────────────────
 
 fn ask_agents() -> Result<Vec<Agent>> {
     header("Agents");
-    println!("{}", dim("Interactive AI coding agents you spawn from the sidebar."));
+    println!(
+        "{}",
+        dim("Interactive AI coding agents you spawn from the sidebar.")
+    );
     // A fresh picker with installed harnesses pre-checked (see AgentManager::fresh).
     let mut m = AgentManager::fresh();
     if !select_agents(&mut m)? {
         return Ok(Vec::new()); // esc → skip agents for now (add them later with `a`)
     }
-    Ok(m
-        .drafts()
+    Ok(m.drafts()
         .into_iter()
-        .map(|d| Agent { name: d.name, cmd: d.cmd, args: d.args })
+        .map(|d| Agent {
+            name: d.name,
+            cmd: d.cmd,
+            args: d.args,
+        })
         .collect())
 }
 
@@ -242,45 +448,32 @@ fn ask_processes() -> Result<Vec<Process>> {
     );
     let mut out = Vec::new();
     loop {
-        let label = if out.is_empty() { "Start command (e.g. npm run dev)" } else { "Another start command" };
+        let label = if out.is_empty() {
+            "Start command (e.g. npm run dev)"
+        } else {
+            "Another start command"
+        };
         let Some((cmd, args)) = split_command(&ask(label, None)?) else {
             break; // blank line → done adding processes
         };
-        let default_name = if out.is_empty() { "Dev server".to_string() } else { capitalize(&cmd) };
+        let default_name = if out.is_empty() {
+            "Dev server".to_string()
+        } else {
+            capitalize(&cmd)
+        };
         let name = ask("  Name for this step", Some(&default_name))?;
         let cwd = ask("  Working directory (relative to the project)", Some("."))?;
         let stop = ask("  Stop command — runs in that dir on stop/quit (e.g. docker compose down), blank for none", None)?;
         let autostart = confirm("  Start it automatically when mmux opens?", false)?;
-        out.push(Process { name, cmd, args, cwd, stop, autostart });
+        out.push(Process {
+            name,
+            cmd,
+            args,
+            cwd,
+            stop,
+            autostart,
+        });
         if !confirm("Add another start command?", false)? {
-            break;
-        }
-    }
-    Ok(out)
-}
-
-fn ask_linked(dir: &Path) -> Result<Vec<String>> {
-    header("Other projects");
-    println!(
-        "{}",
-        dim("Show other projects alongside this one in the same workspace — extra clones, a related repo, anything; each its own sidebar group.")
-    );
-    let mut out: Vec<String> = Vec::new();
-    if !confirm("Link another project directory now?", false)? {
-        return Ok(out);
-    }
-    loop {
-        let path = ask("  Path (relative to here, e.g. ../myproject2)", None)?;
-        if path.is_empty() {
-            break;
-        }
-        if !dir.join(&path).is_dir() {
-            println!("{}", dim(&format!("  note: {path} isn't a directory yet — linking it anyway.")));
-        }
-        if !out.contains(&path) {
-            out.push(path);
-        }
-        if !confirm("  Link another?", false)? {
             break;
         }
     }
@@ -316,7 +509,6 @@ fn build_local_yaml(
     agents: &[Agent],
     agents_elsewhere: bool,
     procs: &[Process],
-    linked: &[String],
 ) -> String {
     let mut s = String::new();
     s.push_str(config::PROJECT_HEADER);
@@ -348,16 +540,10 @@ fn build_local_yaml(
         s.push('\n');
     }
 
-    // Linked projects
-    s.push_str(config::PROJECT_LINKED_COMMENT);
-    if linked.is_empty() {
-        s.push_str(config::PROJECT_LINKED_EXAMPLE);
-    } else {
-        s.push_str("linked-projects:\n");
-        for l in linked {
-            s.push_str(&format!("  - {}\n", yaml_scalar(l)));
-        }
-    }
+    // Workspace creation is a separate `mmux workspace` flow; this commented
+    // example documents the shape without `mmux init` emitting a live block.
+    s.push_str(config::PROJECT_WORKSPACE_COMMENT);
+    s.push_str(config::PROJECT_WORKSPACE_EXAMPLE);
     s
 }
 
@@ -399,7 +585,8 @@ fn process_items(procs: &[Process]) -> String {
 /// file, which by the time we get here is known not to exist.
 fn write_new(path: &Path, contents: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
     }
     std::fs::write(path, contents).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
@@ -408,7 +595,12 @@ fn write_new(path: &Path, contents: &str) -> Result<()> {
 /// Write the project file, asking before clobbering an existing one. Returns
 /// whether it actually wrote.
 fn write_local(path: &Path, contents: &str) -> Result<bool> {
-    if path.exists() && !confirm(&format!("{} already exists. Overwrite it?", pretty(path)), false)? {
+    if path.exists()
+        && !confirm(
+            &format!("{} already exists. Overwrite it?", pretty(path)),
+            false,
+        )?
+    {
         println!("{}", dim(&format!("Left {} unchanged.", pretty(path))));
         return Ok(false);
     }
@@ -464,8 +656,14 @@ fn confirm(question: &str, default_yes: bool) -> Result<bool> {
 fn intro(local_path: &Path, agents_in_global: bool) {
     println!("\n{}", bold("mmux setup"));
     if agents_in_global {
-        println!("{}", dim("First run — your agents go in the global config (~/.mmux/config.yaml,"));
-        println!("{}", dim("used in every project); this project's setup goes in its mmux.yaml."));
+        println!(
+            "{}",
+            dim("First run — your agents go in the global config (~/.mmux/config.yaml,")
+        );
+        println!(
+            "{}",
+            dim("used in every project); this project's setup goes in its mmux.yaml.")
+        );
     } else {
         println!("{}", dim(&format!("Configuring {}.", pretty(local_path))));
     }
@@ -522,11 +720,19 @@ fn color() -> bool {
 }
 
 fn bold(text: &str) -> String {
-    if color() { format!("\x1b[1m{text}\x1b[0m") } else { text.to_string() }
+    if color() {
+        format!("\x1b[1m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }
 
 fn dim(text: &str) -> String {
-    if color() { format!("\x1b[2m{text}\x1b[0m") } else { text.to_string() }
+    if color() {
+        format!("\x1b[2m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }
 
 /// SGR colour codes for the interactive picker rows.
@@ -537,7 +743,11 @@ const CYAN_BOLD: &str = "1;36";
 
 /// Wrap `text` in the SGR `code` (only when stdout is a terminal), for the picker.
 fn paint(code: &str, text: &str) -> String {
-    if color() { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_string() }
+    if color() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }
 
 fn header(text: &str) {
@@ -550,7 +760,11 @@ mod tests {
     use crate::config::Config;
 
     fn agent(name: &str, cmd: &str, args: &[&str]) -> Agent {
-        Agent { name: name.into(), cmd: cmd.into(), args: args.iter().map(|s| s.to_string()).collect() }
+        Agent {
+            name: name.into(),
+            cmd: cmd.into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
     }
 
     #[test]
@@ -561,7 +775,10 @@ mod tests {
         );
         assert_eq!(
             split_command("  cargo  watch -x run "),
-            Some(("cargo".into(), vec!["watch".into(), "-x".into(), "run".into()]))
+            Some((
+                "cargo".into(),
+                vec!["watch".into(), "-x".into(), "run".into()]
+            ))
         );
         assert_eq!(split_command("solo"), Some(("solo".into(), vec![])));
         assert_eq!(split_command("   "), None);
@@ -591,31 +808,40 @@ mod tests {
             stop: "docker compose down".into(),
             autostart: true,
         }];
-        let yaml = build_local_yaml("myproj", &[], true, &procs, &["../other".to_string()]);
+        let yaml = build_local_yaml("myproj", &[], true, &procs);
         let cfg: Config = serde_yaml::from_str(&yaml).expect("local parses");
         assert_eq!(cfg.name.as_deref(), Some("myproj"));
         assert!(cfg.agents.is_empty()); // they're in the global file
         assert_eq!(cfg.processes.len(), 1);
         assert_eq!(cfg.processes[0].name, "Dev server");
         assert!(cfg.processes[0].autostart);
-        assert_eq!(cfg.processes[0].stop.as_deref(), Some("docker compose down"));
-        assert_eq!(cfg.linked_projects, vec!["../other".to_string()]);
+        assert_eq!(
+            cfg.processes[0].stop.as_deref(),
+            Some("docker compose down")
+        );
+        // The workspace example is commented documentation, never a live block.
+        assert!(yaml.contains("# workspace:"));
+        assert!(cfg.workspace.is_none());
     }
 
     #[test]
     fn local_yaml_with_local_agents_round_trips() {
-        let agents = vec![agent("Claude", "claude", &["--dangerously-skip-permissions"])];
+        let agents = vec![agent(
+            "Claude",
+            "claude",
+            &["--dangerously-skip-permissions"],
+        )];
         let cfg: Config =
-            serde_yaml::from_str(&build_local_yaml("p", &agents, false, &[], &[])).expect("parses");
+            serde_yaml::from_str(&build_local_yaml("p", &agents, false, &[])).expect("parses");
         assert_eq!(cfg.agents.len(), 1);
         assert!(cfg.processes.is_empty());
-        assert!(cfg.linked_projects.is_empty());
+        assert!(cfg.workspace.is_none());
     }
 
     #[test]
     fn empty_local_yaml_is_still_valid() {
         // Nothing chosen: every section is a comment, but it must still parse.
-        let cfg: Config = serde_yaml::from_str(&build_local_yaml("p", &[], true, &[], &[]))
+        let cfg: Config = serde_yaml::from_str(&build_local_yaml("p", &[], true, &[]))
             .expect("commented-only file parses");
         assert!(cfg.agents.is_empty());
         assert!(cfg.processes.is_empty());

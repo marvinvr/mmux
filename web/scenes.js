@@ -174,7 +174,7 @@
     ];
   }
 
-  // A second project's Claude session (the linked-projects scene): same real
+  // A second project's Claude session (the workspace-manifest scene): same real
   // Claude Code shape, but running in ~/dev/api.
   var CLAUDE_API_LINES = [
     { tokens: [{ t: " ▐▛███▜▌  ", c: "claude" }, { t: "Claude Code " }, { t: "v2.1.193", c: "dim" }], cls: "art" },
@@ -519,19 +519,23 @@
       },
     },
 
-    /* 7 — linked projects. (the sidebar pager: one window, many projects) -- */
+    /* 7 — workspace manifest: one window, many projects. -- */
     {
       id: 7,
       caption: {
-        kicker: "// linked projects",
+        kicker: "// workspaces",
         title: "your whole workspace, one window.",
-        body: "link related projects and flip between them — the sidebar, the git panel and the pane all follow whichever one is active.",
+        body: "bundle related projects in one manifest — the sidebar, git panel and pane all follow whichever project is active.",
       },
       state: {
-        title: "~/dev/api",
-        status: "two linked projects — [ and ] flip between them",
+        title: "~/dev/private",
+        workspaceName: "private",
+        status: "workspace manifest · [ and ] switch projects",
         multiProject: true,
-        projects: [{ name: "app" }, { name: "api", active: true }],
+        projects: [
+          { name: "app", branch: "feature/auth", gitChanges: 3 },
+          { name: "api", active: true, branch: "main", gitChanges: 1 },
+        ],
         sidebar: [
           {
             kind: "AGENTS",

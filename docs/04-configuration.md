@@ -8,7 +8,7 @@ mmux is configured with YAML. There are two files, merged at launch — plus an 
 | File | Purpose |
 | --- | --- |
 | `~/.mmux/config.yaml` | **Global defaults** — the things you want in every project, typically your agents. |
-| `./mmux.yaml` | **Per-project** — this directory's processes, name, and links. `./mmux.yml` is also accepted (`.yaml` wins if both exist). |
+| `./mmux.yaml` | **Per-directory** — this project's settings, or an optional workspace manifest. `./mmux.yml` is also accepted (`.yaml` wins if both exist). |
 
 Either file alone is a valid config. But the **global** file is what the first-run check looks
 for: if `~/.mmux/config.yaml` doesn't exist when you run `mmux` — even when a project `./mmux.yaml`
@@ -30,7 +30,8 @@ The project file is layered on top of the global one, and **project values win**
   sub-fields fall back to their built-in defaults, not to the global value.)
 - `agents` and `processes` — merged **by name**: a project entry with the same `name` replaces
   the global one; otherwise it is appended.
-- `linked-projects` — the project's list, or the global's if the project lists none.
+- `workspace` — project-layer only. A `workspace:` in the global file is ignored, because a
+  manifest belongs to one launch directory and must not turn every project into the same bundle.
 - A relative `cwd` always resolves against the **project** directory — even for an agent or
   process defined in the global config. So a global `claude` agent runs in whatever project you
   opened, not in `$HOME`.
@@ -53,7 +54,7 @@ overrides exactly what it names and leaves everything else intact:
 - **`agents` and `processes` merge by `name`**, just like the global merge — and a same-named
   entry is itself merged field-by-field, so a partial override (e.g. just new `args` for `Claude`)
   needn't restate `cmd`. A name not already present is appended.
-- **Plain lists** (`args`, `linked-projects`) and scalars are **replaced** wholesale. An empty
+- **Plain lists** (`args`, `workspace.folders`) and scalars are **replaced** wholesale. An empty
   list (`processes: []`) therefore *clears* the project's — a handy way to say "none here".
 
 The layering order is: global → project → local, so a local value wins over both. Run
@@ -114,13 +115,19 @@ session goes away.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `name` | string | Workspace label; shown in the sidebar and the terminal's tab title. Defaults to the directory basename. |
+| `name` | string | Directory/session label; used for the terminal tab and, in a plain single-project session, the sidebar title. Defaults to the directory basename. |
 | `agents` | list | [Agent](#agent) templates you spawn on demand. |
 | `processes` | list | [Process](#process) definitions you start/stop and watch. |
 | `git-panel` | map | [Git panel](#git-panel) settings. |
 | `notifications` | map | [Notification](05-notifications.md) settings. |
 | `auto-update` | map | [Self-update](#auto-update) settings (Homebrew + script-installed binaries). |
-| `linked-projects` | list of paths | Other project directories to open together in one sidebar — not just clones, any related project. Honored **only** in the launch directory's config. |
+| `workspace` | map | Turn this file into a [workspace manifest](#workspace-manifests). Project-layer only; ignored in the global config. |
+
+### Workspace
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `folders` | list of paths | Member project directories, relative to the manifest directory, in base sidebar order. Up to 10. |
 
 ### Agent
 
@@ -165,7 +172,7 @@ Same as [Agent](#agent), plus:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `autostart` | bool | Start automatically when mmux first opens. Defaults to `false`. Honored only in the launch directory (linked projects' processes start stopped). |
+| `autostart` | bool | Start automatically when mmux first opens. Defaults to `false`; honored for every member of a workspace manifest too. |
 | `stop` | string | Optional teardown command run in the process's `cwd` **after it stops** — when you stop it (`x`) and when you quit mmux, but **not** on a restart. A shell line (run via `sh -c`), so `docker compose down` and friends work. Unset ⇒ nothing runs. |
 
 ### Git panel
@@ -240,37 +247,75 @@ can't write, and dev builds — with no badge and no network calls. Turn it off 
 with `auto-update: { enabled: false }`, or for a single run with the `MMUX_NO_UPDATE` environment
 variable.
 
-## Linked Projects
+## Workspace Manifests
 
-Linked projects are **any other projects you want open together** in one workspace — not just extra
-clones. Common cases: several clones of a repo (`./app`, `../app2` — the "clones instead of
-worktrees" setup), a related repo, a service you run alongside. List them under `linked-projects`
-and they all open in **one** mmux, each as its own group in the sidebar:
+A workspace manifest is an `mmux.yaml` that bundles project directories into one persistent
+session. The easiest setup is to enter a container directory — commonly the parent of the
+projects — and run:
 
-```yaml
-# in ./app/mmux.yaml
-linked-projects:
-  - ../app2      # another clone
-  - ../api       # a related repo
-  - ../docs      # anything you want side by side
+```sh
+mmux workspace
 ```
 
-- Switch between projects with `[` and `]`. The git panel **follows the active project** — when
-  you select a row in `app2`, the panel shows `app2`'s git — and each project's panel stays alive
-  in the background, so switching back is instant.
-- Paths are resolved relative to the config file. Loading is **one level deep** and
-  **de-duplicated by canonical path**, so you can drop the *same* config into every project (even
-  one that lists itself) and it will never expand recursively.
-- At most **8 projects** load in total (the launch directory plus up to 7 links). A missing,
-  unreadable, or over-the-cap link is skipped with a warning; only the launch directory
-  failing to load aborts startup.
-- The launch directory is always the first group, so opening mmux from any project keeps "where you
-  are" on top.
-- You can **add** a link without restarting: the `+ Link another project` button at the bottom of
-  the sidebar (or `L`) opens a [browser](03-usage.md#linking-another-project) that writes the chosen
-  path into the launch directory's `linked-projects:` and loads it in place as a new sidebar box.
-  **Removing** a link, or any other hand-edit to `linked-projects`, still takes effect only on the
-  next `mmux` (a reopen), not on a [reload](#live-reload).
+The inline picker discovers immediate subdirectories. Use `space` to include/exclude one, `J`/`K`
+to arrange sidebar order, `a` for all/none, and `Enter` to save (up to 10 projects). It writes the
+workspace name and manifest while preserving unrelated settings and comments. You can also write
+the equivalent YAML by hand:
+
+```yaml
+# ~/Development/Private/mmux.yaml
+name: Private
+workspace:
+  folders:
+    - mmux
+    - otherproject
+    - ../Work/api
+```
+
+The manifest directory is the workspace identity and tmux/restore-state key. It is **not itself a
+project** unless `.` appears in `folders`. Its `name`, `notifications`, and `auto-update` settings
+apply to the workspace session; agents, processes, and git settings come from the listed member
+projects (plus the global config) as usual.
+
+- Folders resolve relative to the manifest and load in listed order. In the live sidebar, projects
+  with agent activity form a stable group above quiet projects; the selected project stays in that
+  group until you select another project, even after its last agent closes. The manifest order is
+  preserved within both groups. Canonical path de-duplication removes repeats. Missing or unreadable
+  members are skipped with a warning.
+- Expansion is one level deep: a member that is itself a workspace manifest is loaded as a plain
+  project with a warning. Workspaces never nest.
+- At most **10 projects** load. If none are loadable, mmux warns and opens the manifest directory
+  as an ordinary single-project session.
+- Switch member projects with `[` and `]`, or click a project box. The git panel follows the active
+  project, while every member's panel and panes stay alive in the background.
+- Each member keeps normal process semantics, including `autostart`. Opening the same project both
+  solo and inside a workspace can therefore start its autostart process twice (and cause port
+  conflicts); avoid doing both at once.
+- Pressing `R` reloads the manifest and appends newly listed folders to the live sidebar, including
+  their agents, processes, git panel, and normal `autostart` behavior. Existing projects keep stable
+  runtime indices, so removing or reordering folders still takes effect on the next fresh open.
+  Quit the workspace session before reopening if it is still running. Restore snapshots identify
+  members by directory, so reordering does not move a saved agent or terminal into the wrong project.
+- The removed `linked-projects` key is ignored and produces a warning. There is no live
+  `+ Link another project` browser; use the workspace manager instead.
+
+### Managing a Workspace
+
+- **From the terminal:** run `mmux workspace` again in the manifest directory. Existing members
+  start checked and keep their order; configured outside paths remain visible even when they are
+  not immediate children, so saving never silently drops them. `mmux` and `git` tags are hints,
+  not requirements.
+- **Inside the TUI:** press `w` from the sidebar. This hotkey and its footer button appear only in
+  a manifest workspace. Press `n` to edit the name; folder selection and ordering use the same
+  keys as the terminal picker. Saving reloads safely: name changes appear immediately and new
+  members append live with their normal autostarts, while removals and ordering apply on reopen.
+
+Both editors replace only the owned `name` line and `workspace:` block. If a private
+`mmux.local.yml` already owns `workspace:`, that layer is edited so the saved choice is not hidden
+by its override.
+
+Run `mmux` in the manifest directory to open or reattach its persistent session, just like any
+ordinary project directory.
 
 ## Live Reload
 
@@ -282,11 +327,13 @@ Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the 
   onto the new command (a stopped one just picks it up on its next start);
 - a process whose definition you removed keeps running as an "orphan" rather than being killed;
 - the git panel is gained or lost if the directory's repo status changed;
+- in a manifest workspace, newly listed folders are appended live with their normal project and
+  `autostart` behavior;
 - a one-line footer flash summarizes what changed (added / restarted / orphaned / unreadable).
 
-Reload refreshes each *already-loaded* project in place. It does **not** re-read the
-`linked-projects` list to *drop* a project — only [linking another project](#linked-projects) grows
-the workspace live; removing one needs a reopen.
+Reload refreshes every loaded project in place and only grows a workspace: it never removes or
+reorders existing live members because their indices belong to running sessions. Those two changes
+still need a reopen.
 
 ## Adding a Process From the TUI
 
@@ -299,7 +346,3 @@ You don't have to hand-edit YAML to manage processes. The `+ New Process` launch
 **edits** an existing process (`e`), splicing the change back into its entry, and `D` **deletes**
 one (with a confirmation) — both comment-preserving, both followed by a reload. (The form can't set
 `env`, though — that still needs a hand edit.)
-
-Likewise, the `+ Link another project` button (or `L`) writes a new entry into the launch
-directory's `linked-projects:` — same comment-preserving append — and adds the project to the live
-workspace; see [Linking Another Project](03-usage.md#linking-another-project).

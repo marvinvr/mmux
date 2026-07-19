@@ -22,7 +22,14 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - **Sidebar (left).** One group of sections per project: `AGENTS`, `TERMINAL`, and `PROCESSES`
   (the headings are uppercase; `TERMINAL` is singular). Each section lists its running sessions
   plus a green `+ New …` launcher row. The selected row is marked with a `▌` bar and a
-  highlight.
+  highlight. In a multi-project workspace, inactive project boxes collapse so the active project
+  gets the usable sidebar height. A summary row appears only when there is agent activity: a spinner
+  and working count, a green ready count, or a red failure count. Projects
+  with any working, ready, or failed agent appear first; both the active and quiet groups preserve
+  manifest order, so counts never turn the sidebar into a constantly reshuffling leaderboard.
+  Git repositories with the git panel enabled also show a collapsed git row: the current branch is
+  on the left, while a right-aligned `git ✓` means clean and `git ±N` counts changed paths.
+  Non-git folders omit it.
 - **Main pane (center).** The live terminal of whatever is selected. Its title bar reads
   ` <name> — <status> ` and turns its border magenta when focused. It also doubles as a
   read-only [diff preview](#the-diff-preview) when you click a file in the git panel.
@@ -77,10 +84,11 @@ region they apply to.
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
 | `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and cycle each one's launch mode (`m`: normal → auto → danger); saves to the global config and reloads |
+| `w` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and sidebar order (manifest workspaces only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
 | `?` | Open the [About card](#the-about-card) (version, links, manual update check/apply) |
-| `[` · `]` | Switch to the previous / next project ([linked projects](04-configuration.md#linked-projects); no-op with one project) |
+| `[` · `]` | Switch to the previous / next project ([workspace manifests](04-configuration.md#workspace-manifests); no-op with one project) |
 | `Tab` | Jump to the git panel (or into the selected pane if there is no panel) |
 | `d` | Detach (the session keeps running in the background) |
 | `q` | Quit mmux (asks to confirm first if any agent/terminal/process is still running) |
@@ -89,8 +97,7 @@ region they apply to.
 **Opening a row** with `Enter`/`l`/`→` does the right thing for its kind: a `+ New Agent`/
 `+ New Terminal` launcher spawns and jumps into a fresh pane; `+ New Process` opens the
 [guided form](#adding-editing-and-deleting-a-process); a stopped session is (re)started and
-focused; the `+ Link another project` row (its own box at the bottom) opens the
-[directory browser](#linking-another-project); the git-panel row (in narrow mode) focuses the panel.
+focused; the git-panel row (in narrow mode) focuses the panel.
 
 > **Agents/terminals vs. processes.** Agents and terminals are throwaway instances, so `x` kills
 > the pane and removes the row outright. Processes are **config entries**, so they're managed
@@ -281,27 +288,6 @@ the stop command never restarts it — the teardown only ever runs when the proc
 > The form cannot set environment variables. For a process that needs `env`, edit `mmux.yaml`
 > directly and press `R` to reload.
 
-## Linking Another Project
-
-The **`+ Link another project`** row sits in its own box at the bottom of the sidebar — reach it with
-the arrow keys and press `Enter`, or click it. It opens a small directory browser to add a
-[linked project](04-configuration.md#linked-projects) — any other project you want in the same
-workspace, not just another clone — without leaving mmux:
-
-- It opens one level **above** your launch directory, so nearby projects (the common `../proj2`) are
-  right there.
-- **Type** to filter the current folder; `↑`/`↓` move; `→` (or `Tab`) descends into a directory and
-  `←` goes back up.
-- A short **preview** of the highlighted directory shows the path it would be linked as, its git
-  branch, and whether it has its own `mmux.yaml`. Folders already in the workspace are tagged
-  `linked` and can't be added twice.
-- **`Enter`** links the highlighted directory; `Esc` cancels.
-
-The chosen path is appended to the launch directory's `linked-projects:` (**preserving your existing
-comments and layout**) and the project appears as a **new sidebar box immediately** — running panes
-are untouched. Its processes start stopped, like any linked project. Removing a link still needs a
-reopen.
-
 ## Mouse
 
 mmux drives its own focus, scrollback, and copy from the mouse. Over the main pane, though, a
@@ -316,9 +302,8 @@ instead. Programs that don't track the mouse are unaffected: their pane drag-sel
   enter it. **Processes behave differently** — they are monitored, not driven: clicking one
   selects it (its output shows in the main pane) but keeps focus on the sidebar, and
   double-click **restarts** it in place — start if stopped, respawn if running — without jumping
-  in (the `r` key does the same). In a [multi-project](04-configuration.md#linked-projects)
-  workspace, clicking another project's box switches to it. The **`+ Link another project`** box
-  at the bottom of the sidebar opens the [project browser](#linking-another-project).
+  in (the `r` key does the same). In a [multi-project](04-configuration.md#workspace-manifests)
+  workspace, clicking another project's box switches to it.
 - **Git panel.** Single-click focuses a box and selects a row; on a changed file or a commit it also
   [previews the diff](#the-diff-preview) in the main pane. Double-click a file to stage/unstage it or
   a branch to switch to it. The scroll wheel moves the cursor (and the open preview follows it in the
@@ -392,10 +377,16 @@ the sidebar.
   fresh; processes come back via autostart or a click. To start clean instead, **close the sessions
   (`x`) before quitting** — only what's still open is remembered.
 - Run **`mmux attach`** (alias `mmux a`) to open a picker of every running mmux session on the
-  machine, plus recently opened directories that aren't currently running. Running sessions come
-  first, then the not-running recents; within each group rows are ordered most-recently-used first.
-  Each row leads with the project's name (its `mmux.yaml` `name:`, else the folder) and shows its
-  directory beside it in dim text. The picker has an always-on search bar at the top: just start typing to fuzzy-filter the
-  list by name or directory — no need to focus it first, and the best match stays selected. `↑`/`↓`
+  machine, plus recently opened directories that aren't currently running. The default view has
+  three sections: **workspaces** first (whether running or not), then **active projects**, then
+  **past projects**; rows are most-recently-used within each section. Each row leads with the
+  directory's configured `name:` (else its folder name) and shows its path in dim text. The picker
+  has an always-on search bar at the top: just start typing to fuzzy-filter the complete list by
+  name or directory — searching `workspace` also finds every workspace manifest. No need to focus
+  it first, and the best match stays selected. `↑`/`↓`
   move, `Enter`/`→` or left-click opens, `Backspace` trims the query, `Esc` clears it (then cancels
-  on a second press), `Ctrl+C` cancels. Choosing a recent directory opens (or creates) its session.
+  on a second press), and `Ctrl+C` cancels. `Delete` forgets a non-running project or workspace so
+  it stays out of the picker until you open that directory again. `Ctrl+X` asks to gracefully quit
+  the selected running target; mmux saves its restorable sessions and runs process teardown
+  commands, then leaves it in history so it can be reopened or forgotten with `Delete`. Choosing
+  any non-running target opens (or creates) its session.

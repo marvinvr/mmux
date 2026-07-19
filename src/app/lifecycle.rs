@@ -1,15 +1,15 @@
 //! Session lifecycle driven from the sidebar: spawning new agents/terminals,
 //! the start/stop/restart key actions, and the live config reload.
 
-use super::git::{first_line, GitPanel};
-use super::linkbrowse::LinkBrowser;
-use super::overlay::{Confirmed, Overlay};
+use super::git::GitPanel;
 use super::nav::Nav;
+use super::overlay::{Confirmed, Overlay};
 use super::picker::Picker;
 use super::procform::ProcForm;
 use super::session::{Kind, Recipe, Session, Status};
 use super::{App, Focus, Project};
 use crate::config::{self, Config};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -102,6 +102,48 @@ impl App {
         self.focus = Focus::Sidebar;
     }
 
+    /// Raise the workspace manager. Deliberately available only in a manifest-backed
+    /// session: creating a new workspace belongs to the terminal command
+    /// (`mmux workspace`), while this popup manages the session the user is already in.
+    pub(crate) fn open_workspace_manager(&mut self) {
+        if !self.manifest {
+            return;
+        }
+        match Overlay::workspace(&self.root) {
+            Ok(overlay) => self.overlay = Some(overlay),
+            Err(e) => self.flash(format!("couldn't open workspace editor — {e}")),
+        }
+    }
+
+    /// Persist workspace identity/membership without disturbing running sessions.
+    /// Name-only edits update the current chrome immediately. Saving also reloads so
+    /// newly listed members append live; removals and reordering still need a reopen
+    /// so existing session/project indices are never remapped underneath running panes.
+    pub(crate) fn apply_workspace_manager(&mut self, m: &crate::workspacemgr::WorkspaceManager) {
+        let folders = m.folders();
+        let before = self
+            .cfg
+            .workspace
+            .as_ref()
+            .map(|w| w.folders.clone())
+            .unwrap_or_default();
+        let path = config::workspace_config_path(&self.root);
+        // Capture stable member identities in the restore snapshot before the manifest
+        // order changes underneath it.
+        self.save_state();
+        if let Err(e) = config::write_workspace(&path, &m.name, &folders) {
+            self.flash(format!("couldn't save workspace — {e}"));
+            return;
+        }
+        self.reload();
+        if folders == before {
+            self.flash(format!("workspace updated — {} projects", folders.len()));
+        } else {
+            self.flash("workspace saved — additions applied; reopen applies removals/order");
+        }
+        self.focus = Focus::Sidebar;
+    }
+
     /// Write a finished form's process to project `pi`'s `mmux.yaml` — appended for a
     /// new process, spliced in place when editing (`form.edit`) — then reload so the
     /// change shows up live. On success the row is selected (and, for a new autostart
@@ -132,11 +174,17 @@ impl App {
         }
         // Pull the edited/new entry into the live session list, then select it.
         self.reload();
-        let verb = if form.edit.is_some() { "updated" } else { "added" };
+        let verb = if form.edit.is_some() {
+            "updated"
+        } else {
+            "added"
+        };
         self.flash(format!("{verb} process “{}”", draft.name));
-        if let Some(i) = self.sessions.iter().position(|s| {
-            s.project == pi && s.kind == Kind::Process && s.name == draft.name
-        }) {
+        if let Some(i) = self
+            .sessions
+            .iter()
+            .position(|s| s.project == pi && s.kind == Kind::Process && s.name == draft.name)
+        {
             self.select_session(i);
             // A brand-new "start automatically" process is brought up now, not only on
             // the next open (`reload` adds it stopped). An edit leaves the run state be —
@@ -153,12 +201,19 @@ impl App {
     /// no-op on any non-process row (agents/terminals are throwaway instances, not
     /// config entries). Finishing the form rewrites the entry via [`finish_new_process`].
     pub(crate) fn edit_selected(&mut self) {
-        let Some(Nav::Session(i)) = self.current_nav() else { return };
+        let Some(Nav::Session(i)) = self.current_nav() else {
+            return;
+        };
         if self.sessions[i].kind != Kind::Process {
             return;
         }
         let (pi, name) = (self.sessions[i].project, self.sessions[i].name.clone());
-        if let Some(def) = self.projects[pi].cfg.processes.iter().find(|p| p.name == name) {
+        if let Some(def) = self.projects[pi]
+            .cfg
+            .processes
+            .iter()
+            .find(|p| p.name == name)
+        {
             self.overlay = Some(Overlay::edit_process(pi, def));
         }
     }
@@ -167,7 +222,9 @@ impl App {
     /// no-op on any non-process row. The removal + reload happens in [`delete_process`]
     /// once the confirmation is accepted.
     pub(crate) fn delete_selected(&mut self) {
-        let Some(Nav::Session(i)) = self.current_nav() else { return };
+        let Some(Nav::Session(i)) = self.current_nav() else {
+            return;
+        };
         if self.sessions[i].kind != Kind::Process {
             return;
         }
@@ -187,9 +244,11 @@ impl App {
     pub(crate) fn delete_process(&mut self, pi: usize, name: &str) {
         // Kill the running instance first so reload sees it fully gone rather than
         // keeping it as a running "orphan" of a dropped process.
-        if let Some(idx) = self.sessions.iter().position(|s| {
-            s.project == pi && s.kind == Kind::Process && s.name == name
-        }) {
+        if let Some(idx) = self
+            .sessions
+            .iter()
+            .position(|s| s.project == pi && s.kind == Kind::Process && s.name == name)
+        {
             self.sessions[idx].kill();
             self.sessions.remove(idx);
         }
@@ -208,77 +267,6 @@ impl App {
     pub(crate) fn open_picker(&mut self) {
         let dir = self.projects[self.active].cfg.dir.clone();
         self.overlay = Some(Overlay::Picker(Picker::new(self.active, dir)));
-    }
-
-    /// Raise the "Link another project" directory browser. A no-op (with a flash) once
-    /// the project cap is reached. Driven by [`linkbrowse_key`](super::input).
-    pub(crate) fn open_link_browser(&mut self) {
-        if self.projects.len() >= config::MAX_PROJECTS {
-            self.flash(format!("workspace is capped at {} projects", config::MAX_PROJECTS));
-            return;
-        }
-        let root = self.projects[0].cfg.dir.clone();
-        let loaded: Vec<PathBuf> =
-            self.projects.iter().map(|p| config::canonical(&p.cfg.dir)).collect();
-        self.overlay = Some(Overlay::LinkProject(LinkBrowser::new(root, loaded)));
-    }
-
-    /// Link `dir` into the **live** workspace: append it to the root project's
-    /// `linked-projects:` (so it survives a reopen) and load it in place as a new
-    /// project box — its processes appear stopped, since linked projects never
-    /// autostart. Validates the cap and de-dups by canonical path; any problem is
-    /// flashed and nothing else changes.
-    ///
-    /// Unlike [`reload`](Self::reload) this *grows* the project set, which is why it
-    /// lives here: it appends a [`Project`] (and its process rows) and extends the
-    /// per-project bookkeeping, leaving every running pane untouched.
-    pub(crate) fn link_project(&mut self, dir: PathBuf) {
-        self.overlay = None;
-        if self.projects.len() >= config::MAX_PROJECTS {
-            self.flash(format!("workspace is capped at {} projects", config::MAX_PROJECTS));
-            return;
-        }
-        let canon = config::canonical(&dir);
-        if self.projects.iter().any(|p| config::canonical(&p.cfg.dir) == canon) {
-            self.flash("already in this workspace");
-            return;
-        }
-        // Its effective config = the global config + its own mmux.yaml. A directory
-        // with neither can't be loaded, which surfaces here as a flash rather than a
-        // half-added project. Linking is one level only, so drop its own links.
-        let mut cfg = match Config::load(&canon) {
-            Ok(c) => c,
-            Err(e) => {
-                self.flash(format!("couldn't link — {}", first_line(&format!("{e:#}"))));
-                return;
-            }
-        };
-        cfg.linked_projects.clear();
-
-        // Persist the link to the root config so it's there on the next open too.
-        let root_dir = self.projects[0].cfg.dir.clone();
-        let rel = config::relative_path(&config::canonical(&root_dir), &canon);
-        let path = config::project_config_path(&root_dir);
-        if let Err(e) = config::append_linked_project(&path, &rel) {
-            self.flash(format!("couldn't write the link — {e}"));
-            return;
-        }
-
-        // Grow the live workspace: a new project box plus its (stopped) process rows.
-        let pi = self.projects.len();
-        let proj = Project::new(cfg);
-        for p in &proj.cfg.processes {
-            let recipe = Recipe::process(p, &proj.cfg.dir);
-            let mut s = Session::new(p.name.clone(), Kind::Process, recipe, pi);
-            s.stop = p.stop.clone();
-            self.sessions.push(s);
-        }
-        self.projects.push(proj);
-        self.last_proj_sel.push(None);
-        // Jump the cursor into the freshly-linked project so the user sees it land.
-        self.focus_project(pi);
-        self.focus = Focus::Sidebar;
-        self.flash(format!("linked {rel}"));
     }
 
     /// Open `rel` (relative to project `pi`'s dir) in the user's editor as a new
@@ -309,10 +297,9 @@ impl App {
         let Some(nav) = self.current_nav() else {
             return;
         };
-        // Opening anything but the panel or the link row puts a session in the main
-        // pane, so drop a diff preview that was occupying it. (The link row raises a
-        // modal, leaving the main pane — and any preview — untouched.)
-        if !matches!(nav, Nav::Panel | Nav::Link) {
+        // Opening anything but the panel puts a session in the main pane, so drop a
+        // diff preview that was occupying it.
+        if !matches!(nav, Nav::Panel) {
             self.clear_diff();
         }
         match nav {
@@ -338,9 +325,6 @@ impl App {
                 self.focus = Focus::Terminal;
             }
             Nav::Panel => self.focus = Focus::Right,
-            // The link row raises the directory browser (the same modal the button and
-            // the old `L` key used); focus stays on the sidebar behind the overlay.
-            Nav::Link => self.open_link_browser(),
         }
     }
 
@@ -385,7 +369,9 @@ impl App {
                     };
                     self.overlay = Some(Overlay::confirm(
                         title,
-                        format!("“{name}” is still running. Closing it stops the {noun} and drops it."),
+                        format!(
+                            "“{name}” is still running. Closing it stops the {noun} and drops it."
+                        ),
                         "y close · n cancel",
                         Confirmed::CloseSession {
                             project: self.sessions[i].project,
@@ -493,7 +479,9 @@ impl App {
         } else {
             // Section is now empty: land on its launcher, the row just above the block.
             match kind {
-                Kind::Agent => Nav::NewAgent(proj, self.projects[proj].cfg.agents.len().saturating_sub(1)),
+                Kind::Agent => {
+                    Nav::NewAgent(proj, self.projects[proj].cfg.agents.len().saturating_sub(1))
+                }
                 _ => Nav::NewTerminal(proj),
             }
         };
@@ -534,6 +522,9 @@ impl App {
     /// config-defined entries, so they keep their (stopped) row to be restarted in
     /// place. Called once per loop from [`tick`](super::App::tick).
     pub(crate) fn prune_exited(&mut self) {
+        // Preserve the selected row by identity across both session-index shifts and
+        // the project-order change that can happen when a project's last agent exits.
+        let selected = self.current_nav();
         let dead: Vec<usize> = self
             .sessions
             .iter()
@@ -555,8 +546,18 @@ impl App {
         if focused_dead {
             self.focus = Focus::Sidebar;
         }
-        let navlen = self.build_nav().len();
-        self.sel = self.sel.min(navlen.saturating_sub(1));
+        let selected = selected.and_then(|n| match n {
+            Nav::Session(i) if dead.contains(&i) => None,
+            Nav::Session(i) => {
+                let shift = dead.iter().filter(|&&d| d < i).count();
+                Some(Nav::Session(i.saturating_sub(shift)))
+            }
+            other => Some(other),
+        });
+        let nav = self.build_nav();
+        self.sel = selected
+            .and_then(|want| nav.iter().position(|n| *n == want))
+            .unwrap_or_else(|| self.sel.min(nav.len().saturating_sub(1)));
     }
 
     pub(crate) fn do_restart(&mut self) {
@@ -573,7 +574,7 @@ impl App {
                     g.refresh();
                 }
             }
-            Some(Nav::Link) | None => {}
+            None => {}
         }
     }
 
@@ -584,20 +585,57 @@ impl App {
     /// command takes effect immediately — you no longer have to stop/start it by hand.
     /// Bound to `R` / `Ctrl-b R`.
     ///
-    /// Reload only ever refreshes the *existing* projects, keyed by directory — it
-    /// never adds or drops one. Growing the workspace is [`link_project`](Self::link_project)'s
-    /// job (the sidebar's standalone "Link another project" box); *removing* a linked project,
-    /// or any other `linked-projects` edit made by hand, still needs a reopen.
+    /// Existing projects are refreshed in place, keyed by directory. In a manifest
+    /// workspace, newly listed folders are appended live; existing projects are never
+    /// dropped or reordered because that would invalidate running session indices.
     pub(crate) fn reload(&mut self) {
+        let mut failed = 0usize;
+        let mut workspace_warnings = Vec::new();
+        let mut added_projects = Vec::new();
+
+        // Reload the manifest before taking the project-dir snapshot below. Existing
+        // project indices stay stable; new canonical member dirs append at the end in
+        // manifest order, then participate in the ordinary config reconciliation.
+        if self.manifest {
+            match Config::load_workspace(&self.root) {
+                Ok(ws) => {
+                    self.cfg = ws.config;
+                    workspace_warnings = ws.warnings;
+                    if ws.manifest {
+                        let mut loaded: HashSet<PathBuf> = self
+                            .projects
+                            .iter()
+                            .map(|p| config::canonical(&p.cfg.dir))
+                            .collect();
+                        for cfg in ws.projects {
+                            if loaded.insert(config::canonical(&cfg.dir)) {
+                                if self.projects.len() >= config::MAX_PROJECTS {
+                                    workspace_warnings.push(format!(
+                                        "workspace already has {} live projects — reopen to replace removed members",
+                                        config::MAX_PROJECTS
+                                    ));
+                                    break;
+                                }
+                                let pi = self.projects.len();
+                                self.projects.push(Project::new(cfg));
+                                self.last_proj_sel.push(None);
+                                added_projects.push(pi);
+                            }
+                        }
+                    }
+                }
+                Err(_) => failed += 1,
+            }
+        }
+
         // Reload each project's config by dir. A project whose config fails to load
         // keeps its current one (recorded as `None`) instead of aborting the reload.
         let dirs: Vec<PathBuf> = self.projects.iter().map(|p| p.cfg.dir.clone()).collect();
         let mut new_cfgs: Vec<Option<Config>> = Vec::with_capacity(dirs.len());
-        let mut failed = 0usize;
         for dir in &dirs {
             match Config::load(dir) {
                 Ok(mut c) => {
-                    c.linked_projects.clear(); // structural changes need a reopen
+                    c.workspace = None; // member projects never expand nested workspaces
                     new_cfgs.push(Some(c));
                 }
                 Err(_) => {
@@ -609,9 +647,10 @@ impl App {
 
         // Processes: reconcile by (project, name) in one pass, preserving live panes
         // and refreshing recipes. Agents/terminals are spawned instances, left as-is.
-        let (mut old_procs, others): (Vec<Session>, Vec<Session>) = std::mem::take(&mut self.sessions)
-            .into_iter()
-            .partition(|s| s.kind == Kind::Process);
+        let (mut old_procs, others): (Vec<Session>, Vec<Session>) =
+            std::mem::take(&mut self.sessions)
+                .into_iter()
+                .partition(|s| s.kind == Kind::Process);
 
         let (rows, cols) = self.last_inner;
         let mut next_procs: Vec<Session> = Vec::new();
@@ -629,7 +668,10 @@ impl App {
             let dir = ncfg.dir.clone();
             for p in &ncfg.processes {
                 let recipe = Recipe::process(p, &dir);
-                match old_procs.iter().position(|it| it.project == pi && it.name == p.name) {
+                match old_procs
+                    .iter()
+                    .position(|it| it.project == pi && it.name == p.name)
+                {
                     Some(pos) => {
                         let mut item = old_procs.remove(pos);
                         // Only touch a live pane when the command genuinely changed — then
@@ -673,8 +715,12 @@ impl App {
         let mut added_agents = 0usize;
         for (pi, ncfg) in new_cfgs.iter().enumerate() {
             let Some(ncfg) = ncfg else { continue };
-            let old_names: Vec<String> =
-                self.projects[pi].cfg.agents.iter().map(|a| a.name.clone()).collect();
+            let old_names: Vec<String> = self.projects[pi]
+                .cfg
+                .agents
+                .iter()
+                .map(|a| a.name.clone())
+                .collect();
             let old_counts = self.projects[pi].counts.clone();
             self.projects[pi].counts = ncfg
                 .agents
@@ -712,12 +758,43 @@ impl App {
                 self.projects[pi].cfg = ncfg;
             }
         }
+        if !self.manifest {
+            if let Some(project) = self.projects.first() {
+                self.cfg = project.cfg.clone();
+            }
+        }
+
+        // A project brought in by this reload gets the same startup semantics it
+        // would have had on a fresh open: configured autostart processes begin now.
+        let autostart: Vec<(usize, String)> = added_projects
+            .iter()
+            .flat_map(|&pi| {
+                self.projects[pi]
+                    .cfg
+                    .processes
+                    .iter()
+                    .filter(|p| p.autostart)
+                    .map(move |p| (pi, p.name.clone()))
+            })
+            .collect();
+        let mut autostarted = 0usize;
+        for (pi, name) in autostart {
+            if let Some(i) = self.sessions.iter().position(|s| {
+                s.project == pi && s.kind == Kind::Process && s.name == name && !s.is_running()
+            }) {
+                self.sessions[i].spawn(rows, cols);
+                autostarted += 1;
+            }
+        }
 
         // The nav list may have grown or shrunk; keep the selection in range.
         let navlen = self.build_nav().len();
         self.sel = self.sel.min(navlen.saturating_sub(1));
 
         let mut parts: Vec<String> = Vec::new();
+        if !added_projects.is_empty() {
+            parts.push(format!("+{} project(s)", added_projects.len()));
+        }
         if added > 0 {
             parts.push(format!("+{added} process(es)"));
         }
@@ -727,12 +804,16 @@ impl App {
         if restarted > 0 {
             parts.push(format!("{restarted} restarted"));
         }
+        if autostarted > 0 {
+            parts.push(format!("{autostarted} autostarted"));
+        }
         if orphaned > 0 {
             parts.push(format!("{orphaned} orphaned"));
         }
         if failed > 0 {
             parts.push(format!("{failed} unreadable"));
         }
+        parts.extend(workspace_warnings);
         let summary = if parts.is_empty() {
             "no changes".into()
         } else {

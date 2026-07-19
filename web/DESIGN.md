@@ -4,7 +4,7 @@ Single source of truth for the static site in `web/`. v4 is the current look: **
 terminal-honest**, in the product's own colors — tmux-green over neutral terminal greys — with the
 **pixel identity** carried by the green brand tile and a pixel display face. No gradients, no
 glows, minimal radius. (v2's blue→magenta gradient system is dead; v3 stripped it back to the
-green; v4 adds the pixel identity, the spec sheet, the try-it framing, a linked-projects scene
+green; v4 adds the pixel identity, the spec sheet, the try-it framing, a workspace-manifest scene
 and the reconnect closer.)
 
 The centerpiece is unchanged in spirit since v2: ONE thing on the page looks like a terminal — a
@@ -107,9 +107,9 @@ cross-fade beside it. **Ten scenes** (§7), weighted.
 kicker `// what you get`, h2 **everything in one place.** NOT cards: a flat, man-page-style
 `<dl class="spec">` (green term column + grey description, hairline rows) beside a
 **`.yaml-card`** — a little "file" (name-tab chip `mmux.yaml` + hand-tokenized code) showing the
-real per-project config: `name`, a `processes` entry (`cmd`/`args`/`autostart`), and
-`linked-projects`, exactly per `docs/04-configuration.md`. `.spec-note` under it says agents live
-globally in `~/.mmux/config.yaml` and links the schema docs. Five spec rows: persistent ·
+real workspace manifest: `name` and `workspace.folders`, exactly per
+`docs/04-configuration.md`. `.spec-note` under it says member projects keep their own config,
+agents can live globally in `~/.mmux/config.yaml`, and links the schema docs. Five spec rows: persistent ·
 processes · native git · notifications · one binary.
 
 ### 4.5 `<section id="how">` — try it (the live sandbox)
@@ -171,9 +171,14 @@ A single reusable, high-fidelity component. **`index.html` ships the static skel
 
 Sidebar rows (JS-produced): `.sb-section > .sb-head` + `.sb-row` (`.sb-dot[data-status]`,
 `.sb-name`, `.sb-sub`, `.sb-bell`), launchers as `.sb-row--launcher` (`.sb-plus` + name), active
-row `.sb-row--active`. With linked projects, ONE project's rows render at a time and a
-`.sb-switch` pager (`‹ name •∘ ›` — chevrons, active name, position dots) pins to the sidebar
-bottom; inactive dots use `--border-2` so they stay visible.
+row `.sb-row--active`. A manifest workspace stacks `.sb-project` member boxes, with inactive
+members showing a summary only while an agent is working/ready/failed and the active member expanded +
+border-accented. Projects with agent activity are stable-partitioned above quiet projects; the
+selected project remains sticky in that upper group until another project is selected, and
+manifest order remains intact inside both groups. A collapsed repo shows its current branch on the
+left and a `git ✓` / `git ±N` changed-path indicator on the right, below agent activity when present.
+Quiet non-git projects collapse to their borders. Sidebar content uses a consistent horizontal inset, so headers
+and status glyphs never sit directly against a box border.
 
 ### 5.2 Chrome details
 
@@ -285,9 +290,9 @@ folders stage/unstage on click; `assets/logo.png` is in it). Single project — 
   and tail them all here, just like your agents. *(vite banner; PROCESSES rows)*
 - 6 — **a git panel, pinned.** / a native git panel right where you work — changes, branches and
   history, following whichever project is active. *(the three boxes, cursor on a staged file)*
-- 7 — **your whole workspace, one window.** / link related projects and flip between them — the
-  sidebar, the git panel and the pane all follow whichever one is active. *(`multiProject`: `app`
-  + `api`, pager at the sidebar bottom, api's Claude working in `~/dev/api`)*
+- 7 — **your whole workspace, one window.** / bundle related projects with a manifest — the
+  sidebar, git panel and pane follow the active member. *(`multiProject`: `app` + `api`, stacked
+  member boxes, api's Claude working)*
 - 8 — **it taps you on the shoulder.** / a bell becomes a dot — and a real desktop notification.
   even over ssh. *(attention bell + the macOS toast + Claude's real edit-approval prompt)*
 - 9 — `weight 1.4, type:{reconnect:true}` — **it survives you.** / the whole thing lives in a
@@ -351,7 +356,7 @@ web/
       the pixel tile + Departure Mono carrying the identity. NO gradients, NO glows, no
       box-drawing as site structure.
 - [ ] The terminal is a mac window hosting a faithful ratatui TUI; every pane shows real,
-      syntax-colored content per §8 — including the linked-projects scene.
+      syntax-colored content per §8 — including the workspace-manifest scene.
 - [ ] Hero shows the one-line script install; the `#install` section tabs it (script default,
       Homebrew alternative). No cargo / from-source on the page.
 - [ ] Scroll demo scrubs 10 scenes; the closer plays

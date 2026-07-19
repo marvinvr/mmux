@@ -15,9 +15,12 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 impl App {
-    /// The workspace root directory — the key for this workspace's state file.
+    /// The launch directory (canonical) — the key for this workspace's state file.
+    /// For a manifest workspace this is the manifest's dir, NOT `projects[0]` (the
+    /// first member folder), so a workspace and that folder opened solo each keep
+    /// their own state.
     pub(crate) fn root_dir(&self) -> &Path {
-        &self.projects[0].cfg.dir
+        &self.root
     }
 
     /// Save the restore state only when the set of agents/terminals has actually
@@ -79,6 +82,11 @@ impl App {
                 name: s.name.clone(),
                 kind,
                 project: s.project,
+                project_dir: self.projects.get(s.project).map(|p| {
+                    crate::config::canonical(&p.cfg.dir)
+                        .to_string_lossy()
+                        .into_owned()
+                }),
                 cmd: s.recipe.cmd.clone(),
                 args: s.recipe.args.clone(),
                 cwd: cwd.to_string_lossy().into_owned(),
@@ -87,7 +95,11 @@ impl App {
                 session_id,
             });
         }
-        let state = State { version: restore::VERSION, sel: self.sel, sessions };
+        let state = State {
+            version: restore::VERSION,
+            sel: self.sel,
+            sessions,
+        };
         restore::save(&root, &state);
     }
 
@@ -145,9 +157,18 @@ impl App {
         }
         let (rows, cols) = self.last_inner;
         for snap in state.sessions {
-            if snap.project >= self.projects.len() {
-                continue; // a linked project went away — skip its rows
+            let project = match snap.project_dir.as_deref() {
+                Some(dir) => {
+                    let wanted = crate::config::canonical(Path::new(dir));
+                    self.projects
+                        .iter()
+                        .position(|p| crate::config::canonical(&p.cfg.dir) == wanted)
             }
+                None => (snap.project < self.projects.len()).then_some(snap.project),
+            };
+            let Some(project) = project else {
+                continue; // a workspace folder went away — skip its rows
+            };
             let recipe = Recipe {
                 cmd: snap.cmd,
                 args: snap.args,
@@ -158,7 +179,7 @@ impl App {
                 SnapKind::Agent => Kind::Agent,
                 SnapKind::Terminal => Kind::Terminal,
             };
-            let mut s = Session::new(snap.name, kind, recipe, snap.project);
+            let mut s = Session::new(snap.name, kind, recipe, project);
             if let Some(tool) = snap.tool {
                 s.agent = Some(Resume::restored(tool, snap.session_id));
             }
@@ -179,7 +200,12 @@ impl App {
         };
         match s.kind {
             Kind::Agent => {
-                if let Some(t) = self.projects[pi].cfg.agents.iter().position(|a| a.name == base) {
+                if let Some(t) = self.projects[pi]
+                    .cfg
+                    .agents
+                    .iter()
+                    .position(|a| a.name == base)
+                {
                     let c = &mut self.projects[pi].counts[t];
                     *c = (*c).max(n);
                 }

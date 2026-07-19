@@ -1,5 +1,5 @@
 //! Command-line surface: argument dispatch and the non-TUI subcommands
-//! (`init`, `agents`, `check`, `--help`, `--version`). The actual work lives elsewhere —
+//! (`init`, `agents`, `workspace`, `check`, `--help`, `--version`). The actual work lives elsewhere —
 //! this module just decides which entry point to run.
 
 use crate::config::Config;
@@ -24,8 +24,17 @@ pub fn run() -> Result<()> {
     }
     // Manage just the built-in agent harnesses (global config) from the terminal — the
     // CLI twin of the in-TUI `a` popup. Distinct from `mmux a` (the attach alias).
-    if matches!(args.first().map(String::as_str), Some("agents") | Some("agent")) {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("agents") | Some("agent")
+    ) {
         return crate::wizard::run_agents();
+    }
+    if matches!(
+        args.first().map(String::as_str),
+        Some("workspace") | Some("workspaces")
+    ) {
+        return crate::wizard::run_workspace(&std::env::current_dir()?);
     }
     if args.first().map(String::as_str) == Some("check") {
         return check();
@@ -54,15 +63,23 @@ pub fn run() -> Result<()> {
     crate::tmux::launch()
 }
 
-/// Validate the effective workspace config in the current directory (root project
-/// plus any `linked-projects`) without launching anything.
+/// Validate the effective workspace config in the current directory (a single
+/// project, or a `workspace:` manifest's folders) without launching anything.
 fn check() -> Result<()> {
     let dir = std::env::current_dir()?;
     let ws = Config::load_workspace(&dir)?;
     for w in &ws.warnings {
         println!("warning: {w}");
     }
-    let multi = ws.projects.len() > 1;
+    if ws.manifest {
+        println!(
+            "workspace {} ({}) — {} project(s)",
+            ws.config.display_name(),
+            ws.dir.display(),
+            ws.projects.len()
+        );
+    }
+    let multi = ws.manifest || ws.projects.len() > 1;
     for cfg in &ws.projects {
         if multi {
             println!("\nproject {} ({})", cfg.display_name(), cfg.dir.display());
@@ -77,7 +94,11 @@ fn check() -> Result<()> {
             println!("  agent   {:<16} {} {:?}", a.name, a.cmd, a.args);
         }
         for p in &cfg.processes {
-            let stop = p.stop.as_deref().map(|s| format!(", stop: {s}")).unwrap_or_default();
+            let stop = p
+                .stop
+                .as_deref()
+                .map(|s| format!(", stop: {s}"))
+                .unwrap_or_default();
             println!(
                 "  process {:<16} {} {:?}  (cwd: {}, autostart: {}{})",
                 p.name,
@@ -93,17 +114,27 @@ fn check() -> Result<()> {
         } else {
             println!("  git     panel disabled");
         }
-        let n = cfg.notifications.clone().unwrap_or_default();
-        if n.enabled {
-            println!(
-                "  notify  {:?}  (unfocused-only: {}, throttle: {}s)",
-                n.mechanism, n.only_when_unfocused, n.throttle_secs
-            );
-        } else {
-            println!("  notify  disabled");
+        if !ws.manifest {
+            print_notifications(cfg);
         }
     }
+    if ws.manifest {
+        println!("\nworkspace settings");
+        print_notifications(&ws.config);
+    }
     Ok(())
+}
+
+fn print_notifications(cfg: &Config) {
+    let n = cfg.notifications.clone().unwrap_or_default();
+    if n.enabled {
+        println!(
+            "  notify  {:?}  (unfocused-only: {}, throttle: {}s)",
+            n.mechanism, n.only_when_unfocused, n.throttle_secs
+        );
+    } else {
+        println!("  notify  disabled");
+    }
 }
 
 fn print_help() {
@@ -113,9 +144,10 @@ https://mmux.org
 
 USAGE:
     mmux            Open (or reattach to) the mmux session for the current directory
-    mmux attach     Pick any running or recent mmux session and open it (alias: mmux a)
-    mmux init       Interactive setup: pick agents, your start command & linked projects
+    mmux attach     Pick a workspace, active project, or past project (alias: mmux a)
+    mmux init       Interactive setup: pick your agents & start command
     mmux agents     Add/remove the built-in agent harnesses in your global config
+    mmux workspace  Create/manage a workspace from this directory's subfolders
     mmux check      Validate the effective config (global + project) and exit
     mmux docs       Explain what mmux is + how to write the config. If you (or an
                     AI agent) need setup instructions, run this — it prints them.
@@ -127,9 +159,10 @@ again in the same directory to reattach to whatever was already running.
 Config: mmux.yaml in the directory, layered on top of an optional global
 ~/.mmux/config.yaml (project values override the global ones). A private
 mmux.local.yml deep-overrides the project file. See `mmux init`/`mmux docs`.
-Add `linked-projects` to show other projects in one sidebar (see `mmux docs`).
+A `workspace:` block bundles project folders into one session (`[`/`]` switches
+members).
 
-KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · a agents · R reload config · ? about · d detach · q quit
+KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · a agents · w workspace (manifests only) · R reload config · ? about · d detach · q quit
 KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close R=reload b=send Ctrl-b"#
     );
 }
@@ -224,27 +257,36 @@ GLOBAL FILE — ~/.mmux/config.yaml
     cycle a launch mode (normal -> auto -> danger), and it writes here and reloads. A
     green check marks the ones found on your PATH.
 
-LINKED PROJECTS — one sidebar for several projects
-    Want several projects open together? List them under `linked-projects` and they
-    all open in ONE mmux, each its own group in the sidebar — extra clones of a repo,
-    a related repo, a service, whatever you want side by side. Switch between them
-    with [ and ]; the git panel follows whichever project you're on.
+WORKSPACES — several projects in ONE session
+    In a parent folder that holds several projects, run `mmux workspace`. Its
+    checkbox picker discovers immediate subdirectories: space includes/excludes,
+    J/K sets sidebar order, `a` selects all/none, and Enter saves (up to 10). You
+    can also write the resulting `workspace:` block by hand. Running `mmux` there
+    opens ONE sidebar with every listed folder as its own group; switch between
+    them with [ and ]; the git panel follows whichever project you're on.
 
-      # in ./app/mmux.yaml
-      linked-projects:
-        - ../app2
-        - ../api
-        - ../docs
+      # in ~/Development/Private/mmux.yaml
+      name: Private
+      workspace:
+        folders:
+          - mmux             # relative to this file; `.` includes this directory
+          - otherproject
 
-    It's loaded ONE level deep and de-duplicated by path, so you can drop the very
-    same config into every project (even one that lists itself) and it will never
-    expand recursively — at most 8 projects load. Changing the list takes effect
-    on the next `mmux` (a reopen), not on `R` reload.
+    Folders load ONE level deep (a member that is itself a workspace loads as a
+    plain project), de-duplicated by path, at most 10. Each member keeps its normal
+    process behavior, including `autostart`; avoid opening the same autostarting
+    project both solo and in a workspace. `R` reload appends newly listed folders
+    live; removals and reordering take effect on the next open. `workspace:` is
+    project-layer only; putting it in ~/.mmux/config.yaml has no effect. `mmux check`
+    validates every listed member.
+    Inside a manifest workspace, press `w` in the sidebar to reopen the manager;
+    `n` edits its name. Saving appends new members live without touching existing
+    panes; removals and ordering apply when the workspace is reopened.
 
 FIELD REFERENCE
     top level   name (str, optional) · agents[] · processes[] · git-panel (optional)
                 · notifications (optional) · auto-update (optional)
-                · linked-projects[] (paths, root config only)
+                · workspace (optional manifest with folders[] — see WORKSPACES)
     agent       name* · cmd* · args[] · cwd · env{{}}
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
                 · stop (shell line run in the dir when stopped/quit, not on restart)
@@ -258,10 +300,11 @@ FIELD REFERENCE
 
 QUICK START
     cd ~/some/project
-    mmux init      # interactive setup wizard (agents, start command, linked projects)
+    mmux init      # interactive setup wizard (agents + start command)
     mmux agents    # add/remove the built-in harnesses in ~/.mmux/config.yaml
+    mmux workspace # create/manage an ordered workspace from this directory
     mmux check     # print the effective merged config without launching the TUI
     mmux           # open / reattach
-    mmux a         # `mmux attach`: pick ANY running mmux session and join it"##
+    mmux a         # `mmux attach`: pick a workspace, active project, or past project"##
     );
 }

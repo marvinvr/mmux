@@ -53,9 +53,10 @@ notifications:
 | `throttle_secs` | `5` | Minimum seconds between popups from the same session. |
 | `command` | *(unset)* | Shell command for `mechanism: command`. |
 
-Notification settings are read from the **launch directory's** config only; per-linked-project
-overrides do not apply. As with the other whole-block fields, a project that sets
-`notifications:` replaces the global block entirely.
+Notification settings are read from the **launch directory's** config only. In a workspace
+manifest that means the manifest config, not an individual member project's override. As with the
+other whole-block fields, a project or manifest that sets `notifications:` replaces the global
+block entirely.
 
 ## Mechanisms
 

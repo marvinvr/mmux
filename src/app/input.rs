@@ -21,6 +21,16 @@ impl App {
         if k.kind != KeyEventKind::Press {
             return;
         }
+        // Private control path used by `mmux attach` to gracefully quit a selected
+        // running target. tmux injects F20, which is deliberately not a user-facing
+        // binding; the attach picker owns the confirmation. Handle it before overlays
+        // so a modal in the remote TUI cannot swallow the management request.
+        if k.code == KeyCode::F(20) {
+            self.overlay = None;
+            self.pending_leader = false;
+            self.should_quit = true;
+            return;
+        }
         // An open modal eats every key, regardless of which region has focus.
         if self.overlay.is_some() {
             self.overlay_key(k);
@@ -103,6 +113,8 @@ impl App {
             // Manage the built-in agent harnesses (add/remove, danger mode) — the popup
             // writes to the global config and reloads. Available from any sidebar row.
             KeyCode::Char('a') => self.open_agent_manager(),
+            // Manifest-only: manage the workspace name, folders, and sidebar order.
+            KeyCode::Char('w') if self.manifest => self.open_workspace_manager(),
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
             // is showing); otherwise a no-op.
             KeyCode::Char('U') => self.apply_update(),
@@ -267,7 +279,9 @@ impl App {
             _ => return false, // wheel handled separately
         };
         let button = match m.kind {
-            MouseEventKind::Down(b) | MouseEventKind::Up(b) | MouseEventKind::Drag(b) => button_code(b),
+            MouseEventKind::Down(b) | MouseEventKind::Up(b) | MouseEventKind::Drag(b) => {
+                button_code(b)
+            }
             _ => 0,
         };
         let (ox, oy) = self.regions.main_inner.map_or((0, 0), |r| (r.x, r.y));
@@ -296,13 +310,13 @@ impl App {
         self.drag = None;
         self.pending_url = None;
         // Footer shortcut buttons sit on their own row below everything else.
-        if let Some(&(_, action)) = self.regions.footer_btns.iter().find(|(rect, _)| hit(Some(*rect), c, r)) {
+        if let Some(&(_, action)) = self
+            .regions
+            .footer_btns
+            .iter()
+            .find(|(rect, _)| hit(Some(*rect), c, r))
+        {
             self.footer_action(action);
-            return;
-        }
-        // The standalone "Link another project" box at the bottom of the sidebar.
-        if hit(self.regions.link_btn, c, r) {
-            self.open_link_browser();
             return;
         }
         if hit(self.regions.sidebar, c, r) {
@@ -399,6 +413,7 @@ impl App {
             FooterAction::ApplyUpdate => self.apply_update(),
             FooterAction::About => self.open_about(),
             FooterAction::ManageAgents => self.open_agent_manager(),
+            FooterAction::ManageWorkspace => self.open_workspace_manager(),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
             FooterAction::GitStageAll => self.git_toggle_all(),
@@ -425,7 +440,9 @@ impl App {
     /// bottom edge newer ones. The actual scrolling repeats from `tick` so it keeps
     /// going while the button is held still at the edge (no further mouse events).
     fn on_left_drag(&mut self, c: u16, r: u16) {
-        let Some(inner) = self.regions.main_inner else { return };
+        let Some(inner) = self.regions.main_inner else {
+            return;
+        };
         self.drag_scroll = if inner.height == 0 || self.drag.is_none() {
             0
         } else if r <= inner.y {
@@ -465,11 +482,18 @@ impl App {
     /// Anchor a selection at `(c, r)` inside the target pane's content rect, in the
     /// pane's current scrollback frame of reference.
     fn arm_selection(&mut self, target: SelTarget, c: u16, r: u16) {
-        let Some(inner) = self.regions.main_inner else { return };
+        let Some(inner) = self.regions.main_inner else {
+            return;
+        };
         self.drag_scroll = 0;
         let off = self.current_offset();
         let cell = cell_at(inner, off, c, r);
-        self.drag = Some(Selection { target, anchor: cell, head: cell, moved: false });
+        self.drag = Some(Selection {
+            target,
+            anchor: cell,
+            head: cell,
+            moved: false,
+        });
     }
 
     /// Scrollback offset of the pane the main selection is over (0 when live or
@@ -496,10 +520,17 @@ impl App {
     /// Anchor a diff selection at `(c, r)`. Endpoints are `(line index, content column)`
     /// — see [`diff_cell`](Self::diff_cell).
     fn arm_diff_selection(&mut self, c: u16, r: u16) {
-        let Some(inner) = self.regions.main_inner else { return };
+        let Some(inner) = self.regions.main_inner else {
+            return;
+        };
         self.drag_scroll = 0;
         let cell = self.diff_cell(inner, c, r);
-        self.drag = Some(Selection { target: SelTarget::Diff, anchor: cell, head: cell, moved: false });
+        self.drag = Some(Selection {
+            target: SelTarget::Diff,
+            anchor: cell,
+            head: cell,
+            moved: false,
+        });
     }
 
     /// Move the diff drag head to the cell under `(c, r)`.
@@ -519,7 +550,9 @@ impl App {
     /// the sign — and clamped into that line's content, so the gutter and `+`/`-` are
     /// never part of a selection.
     fn diff_cell(&self, inner: Rect, c: u16, r: u16) -> (i32, u16) {
-        let Some(v) = self.diff.as_ref() else { return (0, 0) };
+        let Some(v) = self.diff.as_ref() else {
+            return (0, 0);
+        };
         if v.lines.is_empty() {
             return (0, 0);
         }
@@ -540,7 +573,9 @@ impl App {
         let (lo, sc, hi, ec) = sel.ordered();
         let mut out: Vec<String> = Vec::new();
         for i in lo..=hi {
-            let Some(line) = v.lines.get(i as usize) else { continue };
+            let Some(line) = v.lines.get(i as usize) else {
+                continue;
+            };
             let chars: Vec<char> = line.content().chars().collect();
             // Column span per line: full-line for the middle, open-ended at the edges.
             let (a, b) = if lo == hi {
@@ -574,7 +609,9 @@ impl App {
         if dir == 0 || self.drag.is_none() {
             return;
         }
-        let Some(inner) = self.regions.main_inner else { return };
+        let Some(inner) = self.regions.main_inner else {
+            return;
+        };
         // The diff pager scrolls its own offset and re-pins the head to the edge line;
         // dir 1 (top edge) reveals earlier lines, so its scroll delta is negative.
         if matches!(self.drag, Some(sel) if sel.target == SelTarget::Diff) {
@@ -583,7 +620,8 @@ impl App {
             let line = if dir > 0 {
                 v.scroll
             } else {
-                (v.scroll + inner.height.saturating_sub(1) as usize).min(v.lines.len().saturating_sub(1))
+                (v.scroll + inner.height.saturating_sub(1) as usize)
+                    .min(v.lines.len().saturating_sub(1))
             } as i32;
             if let Some(sel) = self.drag.as_mut() {
                 sel.moved = true;
@@ -595,7 +633,11 @@ impl App {
             p.scroll(dir * DRAG_SCROLL_STEP);
         }
         let off = self.current_offset();
-        let edge_row = if dir > 0 { 0 } else { inner.height.saturating_sub(1) };
+        let edge_row = if dir > 0 {
+            0
+        } else {
+            inner.height.saturating_sub(1)
+        };
         let line = edge_row as i32 - off as i32;
         if let Some(sel) = self.drag.as_mut() {
             if (line, sel.head.1) != sel.anchor {
@@ -615,7 +657,9 @@ impl App {
         let Some(pane) = pane else { return };
         // `contents_block` takes an exclusive end column; +1 to include the cell
         // the cursor was released on.
-        let Some(raw) = pane.contents_block(lo, hi, sc, ec + 1) else { return };
+        let Some(raw) = pane.contents_block(lo, hi, sc, ec + 1) else {
+            return;
+        };
         let text = trim_block(&raw);
         if text.is_empty() {
             return;
@@ -731,7 +775,8 @@ impl App {
                 if let Some(g) = self.active_git_mut() {
                     g.section = Section::Branches;
                 }
-                if let Some(&(_, idx)) = self.regions.git_branch_rows.iter().find(|(y, _)| *y == r) {
+                if let Some(&(_, idx)) = self.regions.git_branch_rows.iter().find(|(y, _)| *y == r)
+                {
                     // Branch keys live in a separate namespace so a file and a branch
                     // at the same index aren't mistaken for a double-click together.
                     let double = self.is_double_click(BRANCH_CLICK_KEY + idx);
@@ -747,7 +792,8 @@ impl App {
                 if let Some(g) = self.active_git_mut() {
                     g.section = Section::Commits;
                 }
-                if let Some(&(_, idx)) = self.regions.git_commit_rows.iter().find(|(y, _)| *y == r) {
+                if let Some(&(_, idx)) = self.regions.git_commit_rows.iter().find(|(y, _)| *y == r)
+                {
                     if let Some(g) = self.active_git_mut() {
                         g.commit_cursor = idx.min(g.log.len().saturating_sub(1));
                     }
@@ -833,9 +879,9 @@ impl App {
             Some(Overlay::NewProcess(form)) if form.step != Step::Review => {
                 form.buf.push_str(&s);
             }
-            Some(Overlay::LinkProject(b)) => {
-                b.query.push_str(&s);
-                b.refilter();
+            Some(Overlay::Workspace(m)) if m.editing_name => {
+                m.name.push_str(&s);
+                m.error = None;
             }
             _ if self.focus == Focus::Terminal => self.send_focused(s.into_bytes()),
             _ => {}
@@ -888,7 +934,10 @@ fn url_at(line: &str, col: usize) -> Option<String> {
     }
     let mut hi = tok.len();
     while hi > lo
-        && matches!(tok[hi - 1], '.' | ',' | ';' | ':' | '!' | '?' | ')' | '>' | ']' | '}' | '"' | '\'')
+        && matches!(
+            tok[hi - 1],
+            '.' | ',' | ';' | ':' | '!' | '?' | ')' | '>' | ']' | '}' | '"' | '\''
+        )
     {
         hi -= 1;
     }
@@ -978,10 +1027,20 @@ mod tests {
     use super::*;
 
     // A 10×5 content rect inset by the pane border at (1, 1).
-    const INNER: Rect = Rect { x: 1, y: 1, width: 10, height: 5 };
+    const INNER: Rect = Rect {
+        x: 1,
+        y: 1,
+        width: 10,
+        height: 5,
+    };
 
     fn sel(anchor: (i32, u16), head: (i32, u16)) -> Selection {
-        Selection { target: SelTarget::Main, anchor, head, moved: true }
+        Selection {
+            target: SelTarget::Main,
+            anchor,
+            head,
+            moved: true,
+        }
     }
 
     #[test]
@@ -1007,7 +1066,10 @@ mod tests {
         let line = "see https://example.com/path for details";
         // Anywhere inside the token resolves to the whole URL.
         assert_eq!(url_at(line, 4).as_deref(), Some("https://example.com/path"));
-        assert_eq!(url_at(line, 20).as_deref(), Some("https://example.com/path"));
+        assert_eq!(
+            url_at(line, 20).as_deref(),
+            Some("https://example.com/path")
+        );
         // Whitespace and non-URL words don't.
         assert_eq!(url_at(line, 3), None); // the space
         assert_eq!(url_at(line, 0), None); // "see"
@@ -1018,13 +1080,22 @@ mod tests {
     fn url_at_strips_wrappers_and_trailing_punctuation() {
         assert_eq!(url_at("(https://a.co)", 5).as_deref(), Some("https://a.co"));
         assert_eq!(url_at("<https://a.co>", 5).as_deref(), Some("https://a.co"));
-        assert_eq!(url_at("visit https://a.co.", 10).as_deref(), Some("https://a.co"));
-        assert_eq!(url_at("\"https://a.co\",", 5).as_deref(), Some("https://a.co"));
+        assert_eq!(
+            url_at("visit https://a.co.", 10).as_deref(),
+            Some("https://a.co")
+        );
+        assert_eq!(
+            url_at("\"https://a.co\",", 5).as_deref(),
+            Some("https://a.co")
+        );
     }
 
     #[test]
     fn url_at_schemes_www_and_rejects_bare_words() {
-        assert_eq!(url_at("www.example.com", 2).as_deref(), Some("https://www.example.com"));
+        assert_eq!(
+            url_at("www.example.com", 2).as_deref(),
+            Some("https://www.example.com")
+        );
         // No scheme and not www → not a link (paths, versions, code).
         assert_eq!(url_at("src/app/input.rs", 4), None);
         assert_eq!(url_at("v0.8.0", 2), None);
