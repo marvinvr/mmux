@@ -106,53 +106,71 @@ pub struct AgentDef {
 
 /// A built-in agent harness mmux knows how to seed. Shared by the `mmux init` wizard
 /// (which offers them as a multiselect) and the in-TUI agent manager (the sidebar's
-/// `a` popup). `danger` is the single flag that opts the agent out of permission/
-/// approval prompts ("danger mode"); `None` for a harness with no such flag.
+/// `a` popup). Each optional flag set names a launch **posture** beyond the harness's
+/// interactive default: `auto` auto-accepts file edits while still prompting for riskier
+/// actions, `danger` skips approvals entirely ("danger mode"). Each is `None` when the
+/// harness has no such mode. The manager cycles a row through the modes its preset
+/// actually supports (see [`crate::agentmgr::Mode`]); a mode is a *sequence* of tokens
+/// because some harnesses spell it as a flag + value (`--permission-mode acceptEdits`).
 pub struct AgentPreset {
     pub name: &'static str,
     pub cmd: &'static str,
-    pub danger: Option<&'static str>,
+    /// Flags for the auto-accept-edits middle mode, if the harness has one.
+    pub auto: Option<&'static [&'static str]>,
+    /// Flags that skip every approval ("danger mode"); `None` for a harness with none.
+    pub danger: Option<&'static [&'static str]>,
     pub blurb: &'static str,
 }
 
 /// The agent harnesses mmux offers out of the box. Every one ships a documented
-/// danger-mode flag; add new harnesses here and they appear in both the wizard and
-/// the in-TUI agent manager automatically. Flags verified against each tool's CLI.
+/// danger-mode flag, and three also ship an auto-accept-edits middle mode; add new
+/// harnesses here and they appear in both the wizard and the in-TUI agent manager
+/// automatically. Flags verified against each tool's CLI.
 pub const PRESETS: &[AgentPreset] = &[
     AgentPreset {
         name: "Claude",
         cmd: "claude",
-        danger: Some("--dangerously-skip-permissions"),
+        // The classifier-gated "auto mode" (newer than, and above, `acceptEdits`).
+        auto: Some(&["--permission-mode", "auto"]),
+        danger: Some(&["--dangerously-skip-permissions"]),
         blurb: "Anthropic Claude Code",
     },
     AgentPreset {
         name: "Codex",
         cmd: "codex",
-        danger: Some("--dangerously-bypass-approvals-and-sandbox"),
+        // Workspace-write sandbox: edits auto-apply in the workspace, shell stays
+        // sandboxed. The middle tier between read-only and the full bypass below.
+        auto: Some(&["--sandbox", "workspace-write"]),
+        danger: Some(&["--dangerously-bypass-approvals-and-sandbox"]),
         blurb: "OpenAI Codex CLI",
     },
     AgentPreset {
         name: "Gemini",
         cmd: "gemini",
-        danger: Some("--yolo"),
+        auto: Some(&["--approval-mode", "auto_edit"]),
+        danger: Some(&["--yolo"]),
         blurb: "Google Gemini CLI",
     },
     AgentPreset {
         name: "Amp",
         cmd: "amp",
-        danger: Some("--dangerously-allow-all"),
+        auto: None, // edits-vs-commands is allowlist/config-driven, not a CLI mode
+        danger: Some(&["--dangerously-allow-all"]),
         blurb: "Sourcegraph Amp",
     },
     AgentPreset {
         name: "opencode",
         cmd: "opencode",
-        danger: Some("--yolo"),
+        auto: None, // granular approval lives in opencode.json, not a flag
+        // opencode ships no `--yolo`; `--auto` is its "approve anything not denied" switch.
+        danger: Some(&["--auto"]),
         blurb: "opencode terminal agent",
     },
     AgentPreset {
         name: "Grok",
         cmd: "grok",
-        danger: Some("--always-approve"),
+        auto: None, // only a broad `--always-approve`; no edit-only tier
+        danger: Some(&["--always-approve"]),
         blurb: "xAI Grok Build",
     },
 ];
@@ -564,7 +582,7 @@ pub struct ProcessDraft {
 
 /// An agent gathered by the in-TUI agent manager, before it's written to the config.
 /// Unlike the process form there's no wizard of fields — the manager toggles presets
-/// on/off and flips their danger flag, so a draft is just the three rendered keys.
+/// on/off and cycles their launch mode, so a draft is just the three rendered keys.
 pub struct AgentDraft {
     pub name: String,
     pub cmd: String,
@@ -620,7 +638,8 @@ mod tests {
     fn presets_are_well_formed() {
         let claude = preset_by_name("Claude").unwrap();
         assert_eq!(claude.cmd, "claude");
-        assert_eq!(claude.danger, Some("--dangerously-skip-permissions"));
+        assert_eq!(claude.danger, Some(&["--dangerously-skip-permissions"][..]));
+        assert_eq!(claude.auto, Some(&["--permission-mode", "auto"][..]));
         assert!(preset_by_name("Nope").is_none());
         // Every shipped preset has a command and a danger flag.
         assert!(PRESETS.iter().all(|p| !p.cmd.is_empty() && p.danger.is_some()));

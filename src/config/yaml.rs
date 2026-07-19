@@ -169,7 +169,7 @@ fn render_agents_block(agents: &[AgentDraft]) -> String {
 
 /// Render one `agents:` list item at the given indent, matching the hand-written style
 /// (unquoted scalars where safe, quoted args). `args` is always emitted — even `[]` —
-/// so an agent toggled out of danger mode reads clearly as "no flags".
+/// so an agent cycled back to normal mode reads clearly as "no flags".
 pub(crate) fn render_agent_item(a: &AgentDraft, indent: usize) -> String {
     let ind = " ".repeat(indent);
     let sub = " ".repeat(indent + 2);

@@ -27,7 +27,7 @@
 //! derive `Serialize`, which would emit `null`s and drop the comments. The
 //! interactive half is thin stdin/stdout prompting and never runs without a TTY.
 
-use crate::agentmgr::AgentManager;
+use crate::agentmgr::{AgentManager, Mode};
 use crate::config::{self, yaml_args, yaml_scalar};
 use anyhow::{Context, Result};
 use ratatui::crossterm::{
@@ -104,7 +104,7 @@ pub fn run(dir: &Path) -> Result<()> {
 
 /// `mmux agents` — a focused, agents-only version of the wizard for the terminal: show
 /// the built-in harnesses with their current on/off state, let the user re-pick them
-/// (+ one danger-mode question), and write the result to the **global** config. It's the
+/// (+ cycle each one's launch mode), and write the result to the **global** config. It's the
 /// command-line twin of the in-TUI agent manager (the sidebar's `a` popup); both edit
 /// the same file and preserve any non-preset agents you added by hand.
 pub fn run_agents() -> Result<()> {
@@ -139,15 +139,15 @@ pub fn run_agents() -> Result<()> {
 // answers) stays put in the scrollback. Shared by `mmux init` and `mmux agents`.
 
 /// Drive an [`AgentManager`] as an interactive checkbox picker in the terminal. ↑/↓ or
-/// `j`/`k` move, `space` toggles an agent, `d` flips its danger flag, `a` selects
-/// all/none, ⏎ confirms, Esc/`q`/Ctrl-C cancels. Returns whether the user confirmed (⏎)
-/// rather than cancelled. Raw mode is always restored before returning, even on error.
+/// `j`/`k` move, `space` toggles an agent, `m` cycles its launch mode (normal → auto →
+/// danger), `a` selects all/none, ⏎ confirms, Esc/`q`/Ctrl-C cancels. Returns whether the
+/// user confirmed (⏎) rather than cancelled. Raw mode is always restored before returning.
 fn select_agents(m: &mut AgentManager) -> Result<bool> {
     if m.rows.is_empty() {
         return Ok(true);
     }
     // These two lines are static context above the redrawn rows.
-    println!("{}", dim("↑↓ move · space toggle · d danger · a all · ⏎ done · esc skip"));
+    println!("{}", dim("↑↓ move · space toggle · m mode · a all · ⏎ done · esc skip"));
     println!("{}", dim("A green ✓ marks the harnesses found on your PATH."));
     let height = m.rows.len() as u16;
     let mut out = io::stdout();
@@ -170,7 +170,7 @@ fn agent_select_loop(out: &mut io::Stdout, m: &mut AgentManager, height: u16) ->
                 (KeyCode::Up, _) | (KeyCode::Char('k'), _) => m.move_cursor(-1),
                 (KeyCode::Down, _) | (KeyCode::Char('j'), _) => m.move_cursor(1),
                 (KeyCode::Char(' '), _) => m.toggle_enabled(),
-                (KeyCode::Char('d'), _) => m.toggle_danger(),
+                (KeyCode::Char('m'), _) => m.cycle_mode(),
                 (KeyCode::Char('a'), _) => m.toggle_all(),
                 (KeyCode::Enter, _) => return Ok(true),
                 (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => return Ok(false),
@@ -184,7 +184,7 @@ fn agent_select_loop(out: &mut io::Stdout, m: &mut AgentManager, height: u16) ->
 
 /// Redraw the `height` checkbox rows in place: on every pass but the first, step the
 /// cursor back up over them and clear to the end, then reprint. Each row is
-/// `‹cursor› [x] ✓ Name   danger  blurb`, coloured by state.
+/// `‹cursor› [x] ✓ Name   auto/danger  blurb`, coloured by state.
 fn draw_agent_rows(out: &mut io::Stdout, m: &AgentManager, height: u16, first: bool) -> Result<()> {
     if !first {
         execute!(out, MoveToPreviousLine(height))?;
@@ -203,11 +203,15 @@ fn draw_agent_rows(out: &mut io::Stdout, m: &AgentManager, height: u16, first: b
         } else {
             dim(&name)
         };
-        // Fixed-width danger cell so the blurbs line up whether or not it's shown.
-        let danger = if r.danger() { paint(YELLOW, "danger") } else { "      ".to_string() };
+        // Fixed-width (6, matching "danger") mode cell so the blurbs stay aligned.
+        let mode = match r.mode() {
+            Mode::Normal => "      ".to_string(),
+            Mode::Auto => paint(CYAN, &format!("{:<6}", "auto")),
+            Mode::Danger => paint(YELLOW, &format!("{:<6}", "danger")),
+        };
         let blurb = dim(&format!("  {}", r.blurb));
         // Raw mode: rows need an explicit carriage-return + line-feed.
-        write!(out, "{marker}{checkbox} {install} {name} {danger}{blurb}\r\n")?;
+        write!(out, "{marker}{checkbox} {install} {name} {mode}{blurb}\r\n")?;
     }
     out.flush()?;
     Ok(())
@@ -528,6 +532,7 @@ fn dim(text: &str) -> String {
 /// SGR colour codes for the interactive picker rows.
 const GREEN: &str = "32";
 const YELLOW: &str = "33";
+const CYAN: &str = "36";
 const CYAN_BOLD: &str = "1;36";
 
 /// Wrap `text` in the SGR `code` (only when stdout is a terminal), for the picker.

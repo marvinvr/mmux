@@ -1,6 +1,6 @@
 //! Shared state for managing the built-in agent harnesses ([`crate::config::PRESETS`]).
-//! It lists every preset as a toggleable row — tracking which are configured, whether
-//! each runs in danger mode, and whether the command is on `PATH` — and produces the
+//! It lists every preset as a toggleable row — tracking which are configured, which
+//! launch [`Mode`] each runs in, and whether the command is on `PATH` — and produces the
 //! [`AgentDraft`](crate::config::AgentDraft) list to write to the **global** config
 //! (`~/.mmux/config.yaml`), the natural home for agents you reuse across projects.
 //!
@@ -13,15 +13,42 @@
 
 use crate::config;
 
-/// One preset's row. `args` carries the agent's current CLI args so a toggle preserves
-/// anything hand-added — danger is just the preset's flag being present or not, flipped
-/// in place by [`Row::toggle_danger`].
+/// The launch posture an agent runs in. mmux cycles a row forward through the modes its
+/// preset actually offers: `Normal` is always available; `Auto`/`Danger` only when the
+/// preset ships flags for them (see [`crate::config::AgentPreset`]). Each maps to a
+/// sequence of CLI tokens present in the row's `args`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Mode {
+    /// The harness's own interactive default — every action prompts.
+    Normal,
+    /// Auto-accept file edits; still prompt for riskier actions (shell, network).
+    Auto,
+    /// Skip all approvals ("danger" / yolo).
+    Danger,
+}
+
+impl Mode {
+    /// The short tag shown next to a row (empty for the plain default).
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Mode::Normal => "",
+            Mode::Auto => "auto",
+            Mode::Danger => "danger",
+        }
+    }
+}
+
+/// One preset's row. `args` carries the agent's current CLI args so cycling the mode
+/// preserves anything hand-added — a [`Mode`] is just the presence (or absence) of the
+/// preset's `auto`/`danger` flag tokens, rewritten in place by [`Row::cycle_mode`].
 pub(crate) struct Row {
     pub name: &'static str,
     pub cmd: &'static str,
     pub blurb: &'static str,
-    /// The preset's danger flag, if it has one (every shipped preset does).
-    pub danger_flag: Option<&'static str>,
+    /// The preset's auto-accept-edits flags, if it has that mode.
+    pub auto_flags: Option<&'static [&'static str]>,
+    /// The preset's danger flags, if it has that mode (every shipped preset does).
+    pub danger_flags: Option<&'static [&'static str]>,
     /// Whether this agent is configured (shown/spawnable).
     pub enabled: bool,
     /// Whether the agent's command was found on `PATH` — a hint that enabling it will
@@ -32,18 +59,74 @@ pub(crate) struct Row {
 }
 
 impl Row {
-    /// Whether danger mode is on — the preset's flag is present in `args`.
-    pub(crate) fn danger(&self) -> bool {
-        matches!(self.danger_flag, Some(f) if self.args.iter().any(|a| a == f))
+    /// The mode this row currently launches in, read back from its `args`: danger wins
+    /// over auto if both flag sets are somehow present, else auto, else the plain default.
+    pub(crate) fn mode(&self) -> Mode {
+        if self.danger_flags.is_some_and(|s| contains_seq(&self.args, s)) {
+            Mode::Danger
+        } else if self.auto_flags.is_some_and(|s| contains_seq(&self.args, s)) {
+            Mode::Auto
+        } else {
+            Mode::Normal
+        }
     }
 
-    /// Flip danger mode: add or remove the preset's flag, leaving any other args be.
-    pub(crate) fn toggle_danger(&mut self) {
-        let Some(f) = self.danger_flag else { return };
-        if self.args.iter().any(|a| a == f) {
-            self.args.retain(|a| a != f);
+    /// The modes this row can cycle through, in order — always Normal, then Auto and
+    /// Danger for whichever the preset ships flags for.
+    fn modes(&self) -> Vec<Mode> {
+        let mut modes = vec![Mode::Normal];
+        if self.auto_flags.is_some() {
+            modes.push(Mode::Auto);
+        }
+        if self.danger_flags.is_some() {
+            modes.push(Mode::Danger);
+        }
+        modes
+    }
+
+    /// Advance to the next available mode, wrapping past the last back to Normal.
+    pub(crate) fn cycle_mode(&mut self) {
+        let modes = self.modes();
+        let cur = modes.iter().position(|&m| m == self.mode()).unwrap_or(0);
+        self.set_mode(modes[(cur + 1) % modes.len()]);
+    }
+
+    /// Rewrite `args` to launch in `mode`: strip every known mode-flag sequence (so we
+    /// never stack two modes), then append the target's, leaving hand-added args be.
+    fn set_mode(&mut self, mode: Mode) {
+        if let Some(s) = self.auto_flags {
+            strip_seq(&mut self.args, s);
+        }
+        if let Some(s) = self.danger_flags {
+            strip_seq(&mut self.args, s);
+        }
+        let seq = match mode {
+            Mode::Normal => None,
+            Mode::Auto => self.auto_flags,
+            Mode::Danger => self.danger_flags,
+        };
+        if let Some(s) = seq {
+            self.args.extend(s.iter().map(|t| t.to_string()));
+        }
+    }
+}
+
+/// Whether `args` contains `seq` as a contiguous run of tokens.
+fn contains_seq(args: &[String], seq: &[&str]) -> bool {
+    !seq.is_empty() && args.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+}
+
+/// Remove every contiguous occurrence of `seq` from `args` (flag *and* its value token).
+fn strip_seq(args: &mut Vec<String>, seq: &[&str]) {
+    if seq.is_empty() {
+        return;
+    }
+    let mut i = 0;
+    while i + seq.len() <= args.len() {
+        if args[i..i + seq.len()].iter().zip(seq).all(|(a, b)| a == b) {
+            args.drain(i..i + seq.len());
         } else {
-            self.args.push(f.to_string());
+            i += 1;
         }
     }
 }
@@ -70,7 +153,8 @@ impl AgentManager {
                     name: p.name,
                     cmd: p.cmd,
                     blurb: p.blurb,
-                    danger_flag: p.danger,
+                    auto_flags: p.auto,
+                    danger_flags: p.danger,
                     enabled: existing.is_some(),
                     installed: on_path(p.cmd),
                     args: existing.map(|a| a.args.clone()).unwrap_or_default(),
@@ -97,7 +181,8 @@ impl AgentManager {
                     name: p.name,
                     cmd: p.cmd,
                     blurb: p.blurb,
-                    danger_flag: p.danger,
+                    auto_flags: p.auto,
+                    danger_flags: p.danger,
                     enabled: installed,
                     installed,
                     args: Vec::new(),
@@ -121,9 +206,10 @@ impl AgentManager {
         }
     }
 
-    pub(crate) fn toggle_danger(&mut self) {
+    /// Cycle the highlighted row forward through its available launch modes.
+    pub(crate) fn cycle_mode(&mut self) {
         if let Some(r) = self.rows.get_mut(self.cursor) {
-            r.toggle_danger();
+            r.cycle_mode();
         }
     }
 
@@ -179,11 +265,13 @@ mod tests {
     use super::*;
 
     fn row(name: &'static str, enabled: bool, args: &[&str]) -> Row {
+        // A Claude-shaped preset: a multi-token auto mode and a single-token danger mode.
         Row {
             name,
             cmd: "x",
             blurb: "",
-            danger_flag: Some("--yolo"),
+            auto_flags: Some(&["--permission-mode", "auto"]),
+            danger_flags: Some(&["--dangerously-skip-permissions"]),
             enabled,
             installed: true,
             args: args.iter().map(|s| s.to_string()).collect(),
@@ -191,15 +279,33 @@ mod tests {
     }
 
     #[test]
-    fn danger_toggle_flips_the_flag_only() {
-        let mut r = row("Gemini", true, &["--keep"]);
-        assert!(!r.danger());
-        r.toggle_danger();
-        assert!(r.danger());
-        assert_eq!(r.args, vec!["--keep", "--yolo"]);
-        r.toggle_danger();
-        assert!(!r.danger());
-        assert_eq!(r.args, vec!["--keep"]); // hand-added arg survives
+    fn cycle_walks_normal_auto_danger_and_wraps() {
+        let mut r = row("Claude", true, &["--keep"]);
+        assert_eq!(r.mode(), Mode::Normal);
+
+        r.cycle_mode();
+        assert_eq!(r.mode(), Mode::Auto);
+        assert_eq!(r.args, vec!["--keep", "--permission-mode", "auto"]);
+
+        r.cycle_mode();
+        assert_eq!(r.mode(), Mode::Danger);
+        // Auto's tokens are stripped before danger's is added; hand-added arg survives.
+        assert_eq!(r.args, vec!["--keep", "--dangerously-skip-permissions"]);
+
+        r.cycle_mode();
+        assert_eq!(r.mode(), Mode::Normal);
+        assert_eq!(r.args, vec!["--keep"]);
+    }
+
+    #[test]
+    fn cycle_skips_auto_when_the_preset_has_none() {
+        let mut r = row("Grok", true, &[]);
+        r.auto_flags = None; // danger-only harness (Amp/opencode/Grok)
+        assert_eq!(r.mode(), Mode::Normal);
+        r.cycle_mode();
+        assert_eq!(r.mode(), Mode::Danger); // auto is skipped
+        r.cycle_mode();
+        assert_eq!(r.mode(), Mode::Normal);
     }
 
     #[test]

@@ -7,7 +7,7 @@
 //! [`centered`] rect) and a handful of modal-only helpers. The overlay STATE and its
 //! key handling live in [`crate::app::overlay`].
 
-use crate::agentmgr::AgentManager;
+use crate::agentmgr::{AgentManager, Mode};
 use crate::app::overlay::{Overlay, PromptKind};
 use crate::app::linkbrowse::{DirEntry, LinkBrowser, Preview};
 use crate::app::picker::Picker;
@@ -379,8 +379,8 @@ fn preview_lines(p: Option<&Preview>) -> Vec<Line<'static>> {
     ]
 }
 
-/// The agent manager: one checkbox row per built-in harness (enabled + a danger tag),
-/// its blurb dimmed alongside, with the cursor row marked. Toggled/saved in
+/// The agent manager: one checkbox row per built-in harness (enabled + a launch-mode
+/// tag), its blurb dimmed alongside, with the cursor row marked. Toggled/saved in
 /// [`agentmgr_key`](crate::app::overlay); the write targets the global config.
 fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
     let w = area.width.saturating_sub(6).clamp(40, 68);
@@ -420,14 +420,19 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
         } else {
             ("  ", Style::default())
         };
-        // A fixed-width danger cell so the blurbs stay aligned whether or not it's shown.
-        let danger = if r.danger() { format!("{:<8}", "danger") } else { format!("{:<8}", "") };
+        // A fixed-width (8) mode cell so the blurbs stay aligned whatever mode is shown.
+        let mode = r.mode();
+        let mode_color = match mode {
+            Mode::Normal => Color::DarkGray,
+            Mode::Auto => Color::Cyan,
+            Mode::Danger => Color::Yellow,
+        };
         lines.push(Line::from(vec![
             Span::styled(if selected { "› " } else { "  " }, Style::default().fg(Color::Cyan)),
             Span::styled(checkbox, check_style),
             Span::styled(install, install_style),
             Span::styled(format!("{:<10}", r.name), name_style),
-            Span::styled(danger, Style::default().fg(Color::Yellow)),
+            Span::styled(format!("{:<8}", mode.label()), Style::default().fg(mode_color)),
             Span::styled(format!("  {}", r.blurb), Style::default().fg(Color::DarkGray)),
         ]));
     }
@@ -436,7 +441,7 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
     f.render_widget(Paragraph::new(lines), body);
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "space toggle · d danger · ⏎ save · esc cancel · ✓ on PATH",
+            "space toggle · m mode · ⏎ save · esc cancel · ✓ on PATH",
             Style::default().fg(Color::DarkGray),
         ))),
         Rect { x: inner.x, y: inner.y + inner.height - 1, width: inner.width, height: 1 },

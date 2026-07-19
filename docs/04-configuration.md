@@ -134,21 +134,29 @@ session goes away.
 
 **Built-in presets.** mmux ships presets for the common harnesses — **Claude** (`claude`),
 **Codex** (`codex`), **Gemini** (`gemini`), **Amp** (`amp`), **opencode** (`opencode`), and
-**Grok** (`grok`, xAI's Grok Build) — each with the flag that opts it out of permission/approval
-prompts ("danger mode"). The [`mmux init`](01-quick-start.md#2-set-up-a-project) wizard offers them
-as an **inline checkbox picker** — arrow keys to move, `space` to toggle, `d` to flip danger mode,
-`a` for all/none, `⏎` to confirm (installed harnesses start pre-checked) — and whatever you pick
-seeds your **global** config so it's available everywhere.
+**Grok** (`grok`, xAI's Grok Build) — each with a **launch mode** you can cycle:
+
+| Mode | What it does | Example flags |
+| --- | --- | --- |
+| *(normal)* | The harness's own interactive default — every action prompts. | *(none)* |
+| `auto` | Auto-accept file edits; still prompt for riskier actions (shell, network). Claude/Codex/Gemini only. | `--permission-mode auto`, `--sandbox workspace-write`, `--approval-mode auto_edit` |
+| `danger` | Skip **all** approvals ("danger" / yolo). | `--dangerously-skip-permissions`, `--yolo`, `--always-approve` |
+
+The [`mmux init`](01-quick-start.md#2-set-up-a-project) wizard offers them as an **inline checkbox
+picker** — arrow keys to move, `space` to toggle, **`m` to cycle the mode** (normal → auto →
+danger, wrapping; `auto` is skipped for harnesses that don't have it), `a` for all/none, `⏎` to
+confirm (installed harnesses start pre-checked) — and whatever you pick seeds your **global** config
+so it's available everywhere.
 
 **Managing agents.** Two ways, both editing the **global** `~/.mmux/config.yaml` (the natural home
 for agents you reuse across projects) and preserving any non-preset agents you added by hand:
 
 - **In the TUI:** press **`a`** in the sidebar for the agent manager — a popup of every preset with
-  a checkbox, a `danger` tag, and a green `✓` on the ones found on your `PATH` (purely a hint — you
-  can enable any of them). `space` toggles an agent on/off, `d` flips its danger flag, `⏎` saves and
-  [reloads](#live-reload) so the sidebar updates immediately.
+  a checkbox, its current mode tag (`auto`/`danger`), and a green `✓` on the ones found on your
+  `PATH` (purely a hint — you can enable any of them). `space` toggles an agent on/off, **`m` cycles
+  its mode**, `⏎` saves and [reloads](#live-reload) so the sidebar updates immediately.
 - **From the terminal:** run **`mmux agents`** — the same inline checkbox picker as the setup
-  wizard (arrow keys · `space` · `d` · `a` · `⏎`), agents only. It takes effect the next time you
+  wizard (arrow keys · `space` · `m` · `a` · `⏎`), agents only. It takes effect the next time you
   open mmux (or press `R` inside it).
 
 ### Process

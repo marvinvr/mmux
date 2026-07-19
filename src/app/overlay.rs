@@ -38,8 +38,9 @@ pub(crate) enum Overlay {
     NewProcess(super::procform::ProcForm),
     /// The "Link another project" directory browser (state in [`super::linkbrowse`]).
     LinkProject(super::linkbrowse::LinkBrowser),
-    /// The agent manager (sidebar `a`): toggle the built-in harnesses on/off and flip
-    /// danger mode, then write them to the global config (state in [`crate::agentmgr`]).
+    /// The agent manager (sidebar `a`): toggle the built-in harnesses on/off and cycle
+    /// each one's launch mode, then write them to the global config (state in
+    /// [`crate::agentmgr`]).
     Agents(crate::agentmgr::AgentManager),
 }
 
@@ -346,9 +347,9 @@ impl App {
     }
 
     /// Keys for the agent manager: navigate the preset rows, `space` toggles an agent
-    /// on/off, `d` flips its danger flag, ⏎ saves (writes the global config + reloads),
-    /// Esc/`q` cancels. Taken out of `self.overlay` for the duration since saving needs
-    /// `&mut self`; put back unless the user saved or cancelled.
+    /// on/off, `m` cycles its launch mode (normal → auto → danger), ⏎ saves (writes the
+    /// global config + reloads), Esc/`q` cancels. Taken out of `self.overlay` for the
+    /// duration since saving needs `&mut self`; put back unless the user saved/cancelled.
     fn agentmgr_key(&mut self, k: KeyEvent) {
         let Some(Overlay::Agents(mut m)) = self.overlay.take() else {
             return;
@@ -358,7 +359,7 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => m.move_cursor(-1),
             KeyCode::Down | KeyCode::Char('j') => m.move_cursor(1),
             KeyCode::Char(' ') => m.toggle_enabled(),
-            KeyCode::Char('d') => m.toggle_danger(),
+            KeyCode::Char('m') => m.cycle_mode(),
             KeyCode::Enter => {
                 self.apply_agent_manager(&m); // writes the global config, reloads, flashes
                 return;

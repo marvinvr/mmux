@@ -179,7 +179,7 @@ for the rendering): full-screen modals that eat every key while open:
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
 | `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |
 | `LinkProject` | `+ Link another project` (its own sidebar box) | [Directory browser](03-usage.md#linking-another-project) → appends to `linked-projects` and grows the live workspace |
-| `Agents` | `a` in the sidebar | [Agent manager](04-configuration.md#agent) → toggle the built-in harnesses on/off + danger mode, rewrite the **global** `agents:` block, and reload |
+| `Agents` | `a` in the sidebar | [Agent manager](04-configuration.md#agent) → toggle the built-in harnesses on/off + cycle each one's launch mode (`m`: normal → auto → danger), rewrite the **global** `agents:` block, and reload |
 | `About` | `?` in the sidebar | Version, project links, and the manual self-update check/apply (stateless — reads live `UpdateState`) |
 
 The picker (`picker.rs`) lists files with the `ignore` crate (ripgrep's walking engine, in-process

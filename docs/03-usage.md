@@ -76,7 +76,7 @@ region they apply to.
 | `r` | Restart the selected session (or spawn a launcher) |
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
-| `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and toggle danger mode; saves to the global config and reloads |
+| `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and cycle each one's launch mode (`m`: normal → auto → danger); saves to the global config and reloads |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
 | `?` | Open the [About card](#the-about-card) (version, links, manual update check/apply) |
