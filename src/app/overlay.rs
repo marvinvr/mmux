@@ -3,7 +3,8 @@
 //! An [`Overlay`] is a single modal — a text [`Prompt`](Overlay::Prompt), a yes/no
 //! [`Confirm`](Overlay::Confirm), the Ctrl+P file [`Picker`](Overlay::Picker), the
 //! guided [`NewProcess`](Overlay::NewProcess) form, the [`Agents`](Overlay::Agents)
-//! manager, the [`Workspace`](Overlay::Workspace) manager, or the stateless
+//! manager, the [`Workspace`](Overlay::Workspace) manager, the compact project
+//! switcher, or the stateless
 //! [`About`](Overlay::About) card. While one is open it eats
 //! every key (see [`App::overlay_key`]); the rendering lives in [`super::view::overlay`].
 
@@ -44,6 +45,9 @@ pub(crate) enum Overlay {
     /// workspace name, toggle folders, and reorder them (state in
     /// [`crate::workspacemgr`]).
     Workspace(crate::workspacemgr::WorkspaceManager),
+    /// Compact project switcher. This is a stable project index rather than a row
+    /// position because agent activity can change the display order while it is open.
+    Projects { selected: usize },
 }
 
 #[derive(Clone, Copy)]
@@ -147,6 +151,10 @@ impl Overlay {
             crate::workspacemgr::WorkspaceManager::new(root)?,
         ))
     }
+
+    pub(crate) fn projects(selected: usize) -> Overlay {
+        Overlay::Projects { selected }
+    }
 }
 
 impl App {
@@ -174,6 +182,10 @@ impl App {
         }
         if matches!(self.overlay, Some(Overlay::Workspace(_))) {
             self.workspacemgr_key(k);
+            return;
+        }
+        if matches!(self.overlay, Some(Overlay::Projects { .. })) {
+            self.projects_key(k);
             return;
         }
         enum Act {
@@ -271,7 +283,8 @@ impl App {
             Some(Overlay::NewProcess(_))
             | Some(Overlay::About)
             | Some(Overlay::Agents(_))
-            | Some(Overlay::Workspace(_)) => Act::None,
+            | Some(Overlay::Workspace(_))
+            | Some(Overlay::Projects { .. }) => Act::None,
             None => Act::None,
         };
         match act {
@@ -386,9 +399,8 @@ impl App {
 
     /// Keys for the manifest workspace manager. `n` edits its display name; the list
     /// uses the same checkbox vocabulary as the agent manager, with `J/K` additionally
-    /// changing persisted sidebar order. Saving structural edits never tears down or
-    /// remaps live sessions: `R` can append new members, while removals/order apply on
-    /// reopen.
+    /// changing persisted manifest order. Saving structural edits reconciles additions
+    /// and removals live; manifest reordering applies on reopen.
     fn workspacemgr_key(&mut self, k: KeyEvent) {
         let Some(Overlay::Workspace(mut m)) = self.overlay.take() else {
             return;
@@ -428,6 +440,48 @@ impl App {
             _ => {}
         }
         self.overlay = Some(Overlay::Workspace(m));
+    }
+
+    /// Keys for the compact project switcher. Enter activates the chosen project and
+    /// restores the sidebar row last selected there.
+    fn projects_key(&mut self, k: KeyEvent) {
+        let Some(Overlay::Projects { mut selected }) = self.overlay.take() else {
+            return;
+        };
+        let order = self.project_display_order();
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('q') => return,
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('[') => {
+                let pos = order.iter().position(|&pi| pi == selected).unwrap_or(0);
+                selected = order[pos.saturating_sub(1)];
+            }
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char(']') => {
+                let pos = order.iter().position(|&pi| pi == selected).unwrap_or(0);
+                selected = order[(pos + 1).min(order.len().saturating_sub(1))];
+            }
+            KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => {
+                self.focus_project(selected);
+                self.focus = super::Focus::Sidebar;
+                return;
+            }
+            _ => {}
+        }
+        self.overlay = Some(Overlay::Projects { selected });
+    }
+
+    /// Move the compact project picker's selection from mouse-wheel input. Keeping
+    /// this with the keyboard handler ensures both use the same live display order.
+    pub(crate) fn move_projects_picker(&mut self, delta: i32) {
+        let selected = match self.overlay.as_ref() {
+            Some(Overlay::Projects { selected }) => *selected,
+            _ => return,
+        };
+        let order = self.project_display_order();
+        let pos = order.iter().position(|&pi| pi == selected).unwrap_or(0) as i32;
+        let next = (pos + delta).clamp(0, order.len() as i32 - 1) as usize;
+        if let Some(Overlay::Projects { selected }) = self.overlay.as_mut() {
+            *selected = order[next];
+        }
     }
 
     /// Keys for the "+ New Process" form. We take the form out of `self.overlay` for

@@ -153,11 +153,19 @@ row only when an agent is working, ready, or failed. Repositories with a panel a
 the cached current branch on the left and changed-path count on the right; quiet non-git folders
 collapse to their borders without wasting a blank row.
 This leaves the useful sidebar height to the active project without hiding background state. Rendering and
-`build_nav()` share a stable partition: projects with agent activity come first, and the selected
-project remains sticky in that upper group until another project is selected. Closing its last
-agent therefore cannot move its rows out from under the cursor. Manifest order is preserved within
-the active and quiet groups; `[`/`]`, arrows, and mouse hit regions follow the same visual order. A
+`build_nav()` share a stable partition: projects with agent rows come first. Creating the first
+agent promotes a project; closing the last agent leaves the selected project sticky in that upper
+group until another project is selected. Selecting an already-quiet project does not promote it.
+Both groups sort case-insensitively by displayed project name (manifest order breaks equal-name
+ties); `[`/`]`, arrows, and mouse hit regions follow the same visual order. A
 single-project workspace renders exactly as it always did — no project header.
+
+Compact mode deliberately narrows `build_nav()` to the active project's rows (plus its git-panel
+row), so keyboard movement cannot disappear into a project that the phone drawer does not render.
+The drawer shows only that active box and exposes a bottom `[projects]` chip. Its modal switcher
+uses the same cross-project order and derives each project's live agent + git summary; choosing one
+calls `focus_project()`, which restores that project's remembered row. Wide navigation continues
+to contain and render every project directly.
 
 `load_workspace` (in `config/mod.rs`) loads the launch config, then either returns it as a plain
 single project or expands `workspace.folders` one level deep. Members are de-duplicated by
@@ -167,8 +175,9 @@ own directory as a plain project. The shared `WorkspaceManager` discovers and or
 children for both `mmux workspace` and the manifest-only `w` overlay. Its raw-text writer owns only
 `name` and `workspace:`. `R` reload expands the manifest again and appends canonical member dirs
 that are not already live; each new `Project` gets its process rows, git panel, launchers, and
-autostarts. Existing indices are deliberately stable, so removals and manifest reordering still
-need a reopen.
+autostarts. Removing a member kills its panes, drops its per-project runtime state, compacts project
+indices throughout the unified session list, and immediately replaces the restore snapshot; Git
+working-tree state is neither checked nor changed. Manifest reordering still needs a reopen.
 
 ## The Git Panel and Overlays
 
@@ -403,5 +412,5 @@ The v1 architecture has known limits. Persistence now covers detach/disconnect *
 quit/crash/update reopen via [Session Restore](#session-restore) — but restore is a cold respawn
 (the conversation/cwd come back, not the live process or its in-flight work; a daemon would fix
 that). Selection is positional; workspace manifests are flat and capped, and live reload can only
-append members—removal/reordering still needs a reopen. These, and the planned daemon/client split, are tracked in
+add and remove members live, while reordering still needs a reopen. These, and the planned daemon/client split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

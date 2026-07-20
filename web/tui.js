@@ -306,10 +306,16 @@
     if (projects) {
       var sections = state.sidebar || [];
       var ordered = projects.filter(function (project) {
-        return projectAgentRows(sections, project.name).some(agentHasActivity);
+        return projectAgentRows(sections, project.name).length > 0;
       }).concat(projects.filter(function (project) {
-        return !projectAgentRows(sections, project.name).some(agentHasActivity);
+        return projectAgentRows(sections, project.name).length === 0;
       }));
+      ordered.sort(function (a, b) {
+        var aHasAgents = projectAgentRows(sections, a.name).length > 0;
+        var bHasAgents = projectAgentRows(sections, b.name).length > 0;
+        if (aHasAgents !== bHasAgents) return aHasAgents ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
       ordered.forEach(function (project) {
         var box = el("div", "sb-project" + (project.active ? " sb-project--active" : ""));
         box.appendChild(el("div", "sb-project-name", project.name));
@@ -340,10 +346,6 @@
       });
     });
     return rows;
-  }
-
-  function agentHasActivity(row) {
-    return row.status === "running" || row.status === "failed" || row.status === "crashed";
   }
 
   function buildProjectSummary(sections, project) {

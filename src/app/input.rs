@@ -113,8 +113,10 @@ impl App {
             // Manage the built-in agent harnesses (add/remove, danger mode) — the popup
             // writes to the global config and reloads. Available from any sidebar row.
             KeyCode::Char('a') => self.open_agent_manager(),
-            // Manifest-only: manage the workspace name, folders, and sidebar order.
+            // Manifest-only: manage the workspace name, folders, and manifest order.
             KeyCode::Char('w') if self.manifest => self.open_workspace_manager(),
+            // Compact-only project switcher; desktop keeps its direct project boxes.
+            KeyCode::Char('p') if self.compact && self.projects.len() > 1 => self.open_projects(),
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
             // is showing); otherwise a no-op.
             KeyCode::Char('U') => self.apply_update(),
@@ -227,11 +229,30 @@ impl App {
     }
 
     pub(crate) fn on_mouse(&mut self, m: MouseEvent) {
-        // A modal overlay captures the mouse just as it captures keys: only its own
-        // link hitboxes (the About card's URLs) are live; every other click is
+        // A modal overlay captures the mouse just as it captures keys. About links and
+        // compact-project rows are the only live targets; every other click is
         // swallowed so it can't leak to the sidebar/footer behind the modal.
         if self.overlay.is_some() {
+            if matches!(self.overlay, Some(Overlay::Projects { .. })) {
+                match m.kind {
+                    MouseEventKind::ScrollUp => self.move_projects_picker(-1),
+                    MouseEventKind::ScrollDown => self.move_projects_picker(1),
+                    _ => {}
+                }
+            }
             if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+                if let Some(pi) = self
+                    .regions
+                    .project_picker_rows
+                    .iter()
+                    .find(|(rect, _)| hit(Some(*rect), m.column, m.row))
+                    .map(|(_, pi)| *pi)
+                {
+                    self.overlay = None;
+                    self.focus_project(pi);
+                    self.focus = Focus::Sidebar;
+                    return;
+                }
                 if let Some(url) = self
                     .regions
                     .links
@@ -414,6 +435,7 @@ impl App {
             FooterAction::About => self.open_about(),
             FooterAction::ManageAgents => self.open_agent_manager(),
             FooterAction::ManageWorkspace => self.open_workspace_manager(),
+            FooterAction::OpenProjects => self.open_projects(),
             FooterAction::GitSection => self.git_section_toggle(),
             FooterAction::GitActivate => self.git_activate(),
             FooterAction::GitStageAll => self.git_toggle_all(),

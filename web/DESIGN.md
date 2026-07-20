@@ -173,9 +173,9 @@ Sidebar rows (JS-produced): `.sb-section > .sb-head` + `.sb-row` (`.sb-dot[data-
 `.sb-name`, `.sb-sub`, `.sb-bell`), launchers as `.sb-row--launcher` (`.sb-plus` + name), active
 row `.sb-row--active`. A manifest workspace stacks `.sb-project` member boxes, with inactive
 members showing a summary only while an agent is working/ready/failed and the active member expanded +
-border-accented. Projects with agent activity are stable-partitioned above quiet projects; the
-selected project remains sticky in that upper group until another project is selected, and
-manifest order remains intact inside both groups. A collapsed repo shows its current branch on the
+border-accented. Projects with agents are grouped above quiet projects; after its last agent closes,
+the selected project remains sticky in that upper group until another project is selected. Both
+groups sort alphabetically by displayed name. A collapsed repo shows its current branch on the
 left and a `git ✓` / `git ±N` changed-path indicator on the right, below agent activity when present.
 Quiet non-git projects collapse to their borders. Sidebar content uses a consistent horizontal inset, so headers
 and status glyphs never sit directly against a box border.

@@ -162,7 +162,7 @@ mmux.local.yml deep-overrides the project file. See `mmux init`/`mmux docs`.
 A `workspace:` block bundles project folders into one session (`[`/`]` switches
 members).
 
-KEYS (sidebar):  ↑/↓ move · [ ] switch project · Enter open · s start · x close · r restart · a agents · w workspace (manifests only) · R reload config · ? about · d detach · q quit
+KEYS (sidebar):  ↑/↓ move · [ ] switch project · p projects (phone) · Enter open · s start · x close · r restart · a agents · w workspace (manifests only) · R reload config · ? about · d detach · q quit
 KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close R=reload b=send Ctrl-b"#
     );
 }
@@ -260,10 +260,12 @@ GLOBAL FILE — ~/.mmux/config.yaml
 WORKSPACES — several projects in ONE session
     In a parent folder that holds several projects, run `mmux workspace`. Its
     checkbox picker discovers immediate subdirectories: space includes/excludes,
-    J/K sets sidebar order, `a` selects all/none, and Enter saves (up to 10). You
+    J/K sets manifest order, `a` selects all/none, and Enter saves (up to 10). You
     can also write the resulting `workspace:` block by hand. Running `mmux` there
     opens ONE sidebar with every listed folder as its own group; switch between
-    them with [ and ]; the git panel follows whichever project you're on.
+    them with [ and ]; the git panel follows whichever project you're on. In phone
+    mode the drawer shows only the active folder; `p` opens the all-project status
+    switcher.
 
       # in ~/Development/Private/mmux.yaml
       name: Private
@@ -275,13 +277,14 @@ WORKSPACES — several projects in ONE session
     Folders load ONE level deep (a member that is itself a workspace loads as a
     plain project), de-duplicated by path, at most 10. Each member keeps its normal
     process behavior, including `autostart`; avoid opening the same autostarting
-    project both solo and in a workspace. `R` reload appends newly listed folders
-    live; removals and reordering take effect on the next open. `workspace:` is
+    project both solo and in a workspace. `R` reload adds and removes listed folders
+    live (removal kills their mmux panes but never touches Git files); reordering
+    takes effect on the next open. `workspace:` is
     project-layer only; putting it in ~/.mmux/config.yaml has no effect. `mmux check`
     validates every listed member.
     Inside a manifest workspace, press `w` in the sidebar to reopen the manager;
-    `n` edits its name. Saving appends new members live without touching existing
-    panes; removals and ordering apply when the workspace is reopened.
+    `n` edits its name. Saving adds and removes members live; removed members' panes
+    are killed. Ordering applies when the workspace is reopened.
 
 FIELD REFERENCE
     top level   name (str, optional) · agents[] · processes[] · git-panel (optional)

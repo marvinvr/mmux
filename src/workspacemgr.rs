@@ -161,7 +161,7 @@ impl WorkspaceManager {
         self.error = None;
     }
 
-    /// Move the highlighted row, which also defines the persisted sidebar order.
+    /// Move the highlighted row, which also defines the persisted manifest order.
     pub(crate) fn reorder(&mut self, delta: i32) {
         if self.rows.is_empty() {
             return;

@@ -22,13 +22,17 @@ pub enum Nav {
 }
 
 impl App {
-    /// The ordered nav list: agent-active projects first (stable in manifest order),
-    /// then quiet projects, each with its launchers/sessions; finally the compact panel.
-    /// The selected project stays in the upper group until another project is selected,
-    /// so closing its last agent cannot move the rows underneath the cursor.
+    /// The ordered nav list. Wide layouts contain every project in display order;
+    /// compact layouts contain only the active project, because project switching is
+    /// handled by the mobile project picker. The compact git-panel row comes last.
     pub(crate) fn build_nav(&self) -> Vec<Nav> {
         let mut nav = Vec::new();
-        for pi in self.project_display_order() {
+        let order = if self.compact && self.projects.len() > 1 {
+            vec![self.active]
+        } else {
+            self.project_display_order()
+        };
+        for pi in order {
             let proj = &self.projects[pi];
             for t in 0..proj.cfg.agents.len() {
                 nav.push(Nav::NewAgent(pi, t));
@@ -45,30 +49,32 @@ impl App {
         nav
     }
 
-    /// Stable-partition projects by agent activity. A project with any working,
-    /// ready, or failed agent belongs to the upper group. The selected project is
-    /// sticky in that group until selection moves elsewhere, even if its last agent
-    /// closes. Neither counts nor the mix of states rank projects within a group, so
-    /// the manifest stays the stable tie-breaker.
+    /// Stable-partition projects by agent presence. A project enters the upper group
+    /// when its first agent is created. If the selected project loses its last agent,
+    /// `sticky_agent_project` holds it there until selection moves elsewhere; selecting
+    /// an already-quiet project never promotes it. Agent counts and states do not rank
+    /// projects within a group; display names sort case-insensitively, with manifest
+    /// order as the stable tie-breaker for equal names.
     pub(crate) fn project_display_order(&self) -> Vec<usize> {
         let mut active = Vec::new();
         let mut quiet = Vec::new();
         for pi in 0..self.projects.len() {
-            let has_agent_activity = self.sessions.iter().any(|s| {
-                s.project == pi
-                    && s.kind == Kind::Agent
-                    && (s.is_running()
-                        || matches!(s.status(), super::Status::Failed)
-                        || s.error.is_some())
-            });
-            if has_agent_activity || pi == self.active {
+            if self.project_has_agents(pi) || self.sticky_agent_project == Some(pi) {
                 active.push(pi);
             } else {
                 quiet.push(pi);
             }
         }
+        active.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
+        quiet.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
         active.extend(quiet);
         active
+    }
+
+    pub(crate) fn project_has_agents(&self, pi: usize) -> bool {
+        self.sessions
+            .iter()
+            .any(|s| s.project == pi && s.kind == Kind::Agent)
     }
 
     fn push_sessions(&self, nav: &mut Vec<Nav>, pi: usize, kind: Kind) {
@@ -145,7 +151,9 @@ impl App {
     /// it still exists and still belongs to `pi`) or that project's first row.
     pub(crate) fn focus_project(&mut self, pi: usize) {
         let changed = self.active != pi;
-        // Set this first because the selected project participates in display order.
+        if changed {
+            self.sticky_agent_project = None;
+        }
         self.active = pi;
         let nav = self.build_nav();
         let remembered = self.last_proj_sel.get(pi).copied().flatten();

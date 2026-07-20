@@ -1,8 +1,7 @@
 //! Rendering for the modal overlays that float above the whole UI.
 //!
-//! One dispatcher ([`render_overlay`]) fans out to the six modal renderers — the
-//! commit / new-branch text prompt, the yes/no confirmation, the Ctrl+P file picker,
-//! the "+ New Process" guided form, the agent manager, and the "About mmux" card.
+//! One dispatcher ([`render_overlay`]) fans out to the prompt, confirmation, picker,
+//! guided-form, and manager renderers; live-App cards are routed beside it in `draw`.
 //! They share the modal chrome ([`modal_frame`] over a [`centered`] rect) and a
 //! handful of modal-only helpers. The overlay STATE and its key handling live in
 //! [`crate::app::overlay`].
@@ -11,7 +10,8 @@ use crate::agentmgr::{AgentManager, Mode};
 use crate::app::overlay::{Overlay, PromptKind};
 use crate::app::picker::Picker;
 use crate::app::procform::{ProcForm, Step, STEPS};
-use crate::app::UpdateState;
+use crate::app::session::Kind;
+use crate::app::{App, Status, UpdateState};
 use crate::workspacemgr::WorkspaceManager;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -44,9 +44,165 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
         Overlay::NewProcess(form) => render_procform(f, area, form),
         Overlay::Agents(m) => render_agentmgr(f, area, m),
         Overlay::Workspace(m) => render_workspacemgr(f, area, m),
-        // Drawn by `render_about` (it needs live update state), routed there in `draw`.
-        Overlay::About => {}
+        // Drawn by renderers that need live App state, routed separately in `draw`.
+        Overlay::About | Overlay::Projects { .. } => {}
     }
+}
+
+/// Compact project switcher: two lines per project, with the active marker/name above
+/// aggregate agent and git state. Returns hit rects so a tap on either line switches.
+pub(crate) fn render_projects(
+    f: &mut Frame,
+    area: Rect,
+    app: &App,
+    selected: usize,
+) -> Vec<(Rect, usize)> {
+    let order = app.project_display_order();
+    let w = area.width.saturating_sub(2).clamp(24, 58);
+    let wanted_h = order.len() as u16 * 2 + 3;
+    let h = wanted_h.min(area.height.saturating_sub(2).max(5));
+    let inner = modal_frame(f, area, w, h, " Projects ", Color::Magenta);
+    if inner.width == 0 || inner.height < 3 || order.is_empty() {
+        return Vec::new();
+    }
+
+    let hint_y = inner.y + inner.height - 1;
+    let visible = ((inner.height - 1) / 2).max(1) as usize;
+    let selected_pos = order.iter().position(|&pi| pi == selected).unwrap_or(0);
+    let scroll = list_scroll(selected_pos, visible);
+    let mut lines = Vec::new();
+    let mut hits = Vec::new();
+    for (slot, &pi) in order.iter().skip(scroll).take(visible).enumerate() {
+        let selected_row = pi == selected;
+        let active = pi == app.active;
+        let marker = match (selected_row, active) {
+            (true, true) => "› ● ",
+            (true, false) => "›   ",
+            (false, true) => "  ● ",
+            (false, false) => "    ",
+        };
+        let name_w = inner.width.saturating_sub(4) as usize;
+        let name = truncate_middle(&app.projects[pi].cfg.display_name(), name_w);
+        let mut title = Line::from(vec![
+            Span::styled(
+                marker,
+                Style::default().fg(if active { Color::Green } else { Color::Cyan }),
+            ),
+            Span::styled(
+                name,
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]);
+        let mut status = project_status_line(app, pi);
+        if selected_row {
+            super::theme::fill_row_bg(&mut title, inner.width, super::theme::SELECTION_BG);
+            super::theme::fill_row_bg(&mut status, inner.width, super::theme::SELECTION_BG);
+        }
+        lines.push(title);
+        lines.push(status);
+
+        hits.push((
+            Rect {
+                x: inner.x,
+                y: inner.y + slot as u16 * 2,
+                width: inner.width,
+                height: 2,
+            },
+            pi,
+        ));
+    }
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            x: inner.x,
+            y: inner.y,
+            width: inner.width,
+            height: hint_y.saturating_sub(inner.y),
+        },
+    );
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "↑↓ select · ⏎ activate · esc cancel",
+            Style::default().fg(Color::DarkGray),
+        ))),
+        Rect {
+            x: inner.x,
+            y: hint_y,
+            width: inner.width,
+            height: 1,
+        },
+    );
+    hits
+}
+
+fn project_status_line(app: &App, pi: usize) -> Line<'static> {
+    let mut working = 0;
+    let mut ready = 0;
+    let mut failed = 0;
+    for s in app
+        .sessions
+        .iter()
+        .filter(|s| s.project == pi && s.kind == Kind::Agent)
+    {
+        if s.is_running() {
+            if s.busy() {
+                working += 1;
+            } else {
+                ready += 1;
+            }
+        } else if matches!(s.status(), Status::Failed) || s.error.is_some() {
+            failed += 1;
+        }
+    }
+
+    let mut spans = vec![Span::raw("    ")];
+    if working + ready + failed == 0 {
+        spans.push(Span::styled("agents —", Style::default().fg(Color::DarkGray)));
+    } else {
+        spans.push(Span::styled("agents ", Style::default().fg(Color::DarkGray)));
+        if working > 0 {
+            spans.push(Span::styled(
+                format!("{}{}", app.spinner(), working),
+                Style::default().fg(Color::Gray),
+            ));
+        }
+        if ready > 0 {
+            spans.push(Span::styled(
+                format!(" ●{ready}"),
+                Style::default()
+                    .fg(super::theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+        if failed > 0 {
+            spans.push(Span::styled(
+                format!(" ○{failed}"),
+                Style::default().fg(Color::Red),
+            ));
+        }
+    }
+
+    spans.push(Span::styled("  ·  ", Style::default().fg(Color::DarkGray)));
+    if let Some(g) = app.projects[pi].git.as_ref() {
+        let branch = if g.branch.is_empty() { "HEAD" } else { &g.branch };
+        spans.push(Span::styled(
+            truncate_middle(branch, 16),
+            Style::default().fg(Color::Magenta),
+        ));
+        if g.files.is_empty() {
+            spans.push(Span::styled(" ✓", Style::default().fg(Color::DarkGray)));
+        } else {
+            spans.push(Span::styled(
+                format!(" ±{}", g.files.len()),
+                Style::default().fg(Color::Yellow),
+            ));
+        }
+    } else {
+        spans.push(Span::styled("git —", Style::default().fg(Color::DarkGray)));
+    }
+    Line::from(spans)
 }
 
 /// The mmux mark as half-block pixel art — the same green tile (beveled, with the
@@ -468,7 +624,7 @@ fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
     let hint = if m.editing_name {
         "type a name · ⏎ done · esc done"
     } else {
-        "space toggle · J/K order · a all · n name · ⏎ save · esc cancel"
+        "space toggle · J/K manifest · a all · n name · ⏎ save · esc cancel"
     };
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(

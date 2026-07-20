@@ -22,11 +22,13 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - **Sidebar (left).** One group of sections per project: `AGENTS`, `TERMINAL`, and `PROCESSES`
   (the headings are uppercase; `TERMINAL` is singular). Each section lists its running sessions
   plus a green `+ New …` launcher row. The selected row is marked with a `▌` bar and a
-  highlight. In a multi-project workspace, inactive project boxes collapse so the active project
-  gets the usable sidebar height. A summary row appears only when there is agent activity: a spinner
+  highlight. In a wide multi-project workspace, inactive project boxes collapse so the active
+  project gets the usable sidebar height. A summary row appears only when there is agent activity: a spinner
   and working count, a green ready count, or a red failure count. Projects
-  with any working, ready, or failed agent appear first; both the active and quiet groups preserve
-  manifest order, so counts never turn the sidebar into a constantly reshuffling leaderboard.
+  with one or more agent rows appear first; creating the first agent promotes a project. Closing the
+  last agent keeps the selected project in place until you select another project, at which point it
+  returns to the quiet group. Merely selecting a quiet project does not promote it. Within each
+  group, projects are sorted alphabetically by their displayed name.
   Git repositories with the git panel enabled also show a collapsed git row: the current branch is
   on the left, while a right-aligned `git ✓` means clean and `git ±N` counts changed paths.
   Non-git folders omit it.
@@ -84,7 +86,8 @@ region they apply to.
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
 | `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and cycle each one's launch mode (`m`: normal → auto → danger); saves to the global config and reloads |
-| `w` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and sidebar order (manifest workspaces only) |
+| `w` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and manifest order (manifest workspaces only) |
+| `p` | Open the project switcher in [phone mode](#narrow-terminals-and-phones) (multi-project workspaces only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
 | `?` | Open the [About card](#the-about-card) (version, links, manual update check/apply) |
@@ -302,8 +305,9 @@ instead. Programs that don't track the mouse are unaffected: their pane drag-sel
   enter it. **Processes behave differently** — they are monitored, not driven: clicking one
   selects it (its output shows in the main pane) but keeps focus on the sidebar, and
   double-click **restarts** it in place — start if stopped, respawn if running — without jumping
-  in (the `r` key does the same). In a [multi-project](04-configuration.md#workspace-manifests)
-  workspace, clicking another project's box switches to it.
+  in (the `r` key does the same). In a wide
+  [multi-project](04-configuration.md#workspace-manifests) workspace, clicking another project's
+  box switches to it; on a phone, tap `[projects]` and then the project row instead.
 - **Git panel.** Single-click focuses a box and selects a row; on a changed file or a commit it also
   [previews the diff](#the-diff-preview) in the main pane. Double-click a file to stage/unstage it or
   a branch to switch to it. The scroll wheel moves the cursor (and the open preview follows it in the
@@ -354,10 +358,16 @@ bottom corners, so the same corner that opens a panel also closes it.
 - On the **drawer** or the **git panel**: **`[✕ close]`** returns to the pane — bottom-left for the
   drawer (mirroring `[☰ menu]`), bottom-right for the git panel (mirroring `[git]`). The git panel
   keeps its action buttons (stage, commit, push, …) on the left.
+- In a multi-project workspace, the drawer shows **only the active project**. Tap
+  **`[projects]`** in its bottom-right corner (or press `p`) for a scrollable switcher. Every project
+  gets a name row plus live aggregate agent state (working / ready / failed) and its branch with a
+  clean `✓` or changed-path `±N` count. Tap a project, or select it with `↑`/`↓` and `Enter`, to
+  activate it and restore the row you last used there; `Esc` cancels.
 
 Pick something in the drawer to view it full-screen. Everything stays reachable by keyboard
 (`Ctrl-b h` returns to the drawer), and in this mode the git panel also appears as a `GIT` entry in
-the sidebar.
+the sidebar. In a multi-project phone layout, inactive projects live in the `[projects]` switcher
+rather than consuming drawer height.
 
 ## Detaching, Reattaching, and the Attach Picker
 

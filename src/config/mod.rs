@@ -64,7 +64,7 @@ pub struct Config {
 /// one) is what makes a config a manifest.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorkspaceDef {
-    /// Member project folders, relative to the manifest's directory, in sidebar order.
+    /// Member project folders, relative to the manifest's directory, in load order.
     /// Each becomes its own project group; `.` includes the manifest's own directory.
     #[serde(default)]
     pub folders: Vec<String>,

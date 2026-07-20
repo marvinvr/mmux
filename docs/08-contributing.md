@@ -131,9 +131,10 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
 - **Attention detection is bell/OSC-based.** It keys off the terminal bell and program-emitted
   notification OSCs (9/777/99). An idle "agent went quiet" heuristic is still future.
 - **Workspace manifests are flat and structural.** They load at most 10 member folders and do not
-  nest. `R` can append newly listed folders live, but removing or reordering members needs a reopen
-  so runtime project indices stay stable. Restore snapshots carry both the legacy member index and
-  the canonical member directory, so manifest reordering resolves safely.
+  nest. `R` adds and removes folders live; removal kills that member's panes and compacts runtime
+  project indices without touching its Git worktree. Reordering members needs a reopen. Restore
+  snapshots carry both the legacy member index and the canonical member directory, so manifest
+  reordering resolves safely.
 
 ## Maintaining This Documentation
 

@@ -32,20 +32,24 @@ impl App {
         }
     }
 
-    /// One bordered box per project, stacked top-to-bottom. The active box expands to
-    /// fill the available height; inactive boxes stay collapsed. In compact (phone)
-    /// mode the git panel — which has no column of its own there — is appended as a
-    /// final box so it stays reachable. Works in wide and compact alike.
+    /// One bordered box per visible project, stacked top-to-bottom. Wide mode shows
+    /// every project with the active one expanded. Compact mode shows only the active
+    /// project; its footer opens the project picker for the rest. The compact git panel
+    /// is appended as a final box so it stays reachable.
     fn render_sidebar_projects(&mut self, f: &mut Frame, area: Rect) {
         self.regions.rows.clear();
         let nav = self.build_nav();
         // Border columns + one content-padding cell on each side.
         let inner_w = area.width.saturating_sub(4);
-        let order = self.project_display_order();
+        let order = if self.compact {
+            vec![self.active]
+        } else {
+            self.project_display_order()
+        };
         let active_pos = order.iter().position(|&pi| pi == self.active).unwrap_or(0);
 
-        // The boxes to stack: agent-active projects plus the sticky selected project
-        // first (stable within each activity bucket), then the compact-only git box.
+        // Projects with agent rows come first; a selected project whose last agent
+        // just closed stays in that bucket. The compact-only git box follows them.
         // Keep the real project index in the tuple because display order no longer
         // equals `App.projects` order.
         let mut blocks: Vec<(String, bool, Option<usize>, Vec<Line>, Vec<(u16, usize)>)> = order

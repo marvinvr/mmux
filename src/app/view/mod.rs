@@ -47,6 +47,8 @@ pub(crate) struct Regions {
     // Per-project sidebar box rects (multi-project mode, wide or compact): a click
     // that misses a row but lands in one of these switches to that project.
     pub project_boxes: Vec<(Rect, usize)>,
+    // Two-line rows in the compact project picker; either line activates the project.
+    pub project_picker_rows: Vec<(Rect, usize)>,
     // Clickable link hitboxes drawn by mmux's own UI (currently the About card):
     // screen rect → the URL to open. Consulted before any other routing while a
     // modal is open.
@@ -80,8 +82,10 @@ pub(crate) enum FooterAction {
     About,
     /// Open the agent manager popup (add/remove harnesses, toggle danger mode).
     ManageAgents,
-    /// Open the manifest workspace manager (name, folders, sidebar order).
+    /// Open the manifest workspace manager (name, folders, manifest order).
     ManageWorkspace,
+    /// Compact-only: open the status-rich project switcher.
+    OpenProjects,
     // Git panel actions (mirror the keys in `key_git`).
     GitSection,
     GitActivate,
@@ -142,11 +146,25 @@ impl App {
         // Reset per-frame hit regions.
         self.regions = Regions::default();
 
+        // Compact navigation contains only the active project's rows. Preserve the
+        // selected row by identity when crossing the responsive-layout boundary.
+        let selected = self.current_nav();
+        let was_compact = self.compact;
         self.compact = content.width < COMPACT_W;
-        // Keep the selection valid (nav length changes between compact/wide).
-        let navlen = self.build_nav().len();
-        if navlen > 0 && self.sel >= navlen {
-            self.sel = navlen - 1;
+        if was_compact != self.compact {
+            let nav = self.build_nav();
+            self.sel = selected
+                .and_then(|want| nav.iter().position(|n| *n == want))
+                .or_else(|| {
+                    nav.iter()
+                        .position(|n| self.project_of(*n) == Some(self.active))
+                })
+                .unwrap_or(0);
+        } else {
+            let navlen = self.build_nav().len();
+            if navlen > 0 && self.sel >= navlen {
+                self.sel = navlen - 1;
+            }
         }
 
         if self.compact {
@@ -195,13 +213,22 @@ impl App {
         // A modal overlay (commit prompt / branch switcher / About card) floats above
         // everything. The About card reads live update state, so it's drawn from a method
         // with `&self` access rather than the stateless `render_overlay`.
-        match self.overlay.as_ref() {
-            Some(super::overlay::Overlay::About) => {
-                self.regions.links =
-                    overlay::render_about(f, content, &self.update, self.can_self_update());
+        let project_picker = match self.overlay.as_ref() {
+            Some(super::overlay::Overlay::Projects { selected }) => Some(*selected),
+            _ => None,
+        };
+        if let Some(selected) = project_picker {
+            let rows = overlay::render_projects(f, content, self, selected);
+            self.regions.project_picker_rows = rows;
+        } else {
+            match self.overlay.as_ref() {
+                Some(super::overlay::Overlay::About) => {
+                    self.regions.links =
+                        overlay::render_about(f, content, &self.update, self.can_self_update());
+                }
+                Some(ov) => overlay::render_overlay(f, content, ov),
+                None => {}
             }
-            Some(ov) => overlay::render_overlay(f, content, ov),
-            None => {}
         }
 
         self.render_footer(f, footer);
@@ -420,7 +447,14 @@ impl App {
             }
             // The drawer on a phone *is* the menu, so all it needs is a way back to the
             // pane — in the same bottom-left corner that opened it.
-            Focus::Sidebar if self.compact => (vec![Seg::btn("✕", "close", CloseToMain)], vec![]),
+            Focus::Sidebar if self.compact => {
+                let right = if self.projects.len() > 1 {
+                    vec![Seg::btn("", "projects", OpenProjects)]
+                } else {
+                    vec![]
+                };
+                (vec![Seg::btn("✕", "close", CloseToMain)], right)
+            }
             Focus::Sidebar => {
                 let mut v = vec![Seg::hint("↑↓ move"), Seg::btn("⏎", "open", Activate)];
                 // The action chips depend on what's selected. A process is a config entry:

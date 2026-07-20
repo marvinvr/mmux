@@ -127,7 +127,7 @@ session goes away.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `folders` | list of paths | Member project directories, relative to the manifest directory, in base sidebar order. Up to 10. |
+| `folders` | list of paths | Member project directories, relative to the manifest directory, in load order. Up to 10. |
 
 ### Agent
 
@@ -258,7 +258,7 @@ mmux workspace
 ```
 
 The inline picker discovers immediate subdirectories. Use `space` to include/exclude one, `J`/`K`
-to arrange sidebar order, `a` for all/none, and `Enter` to save (up to 10 projects). It writes the
+to arrange manifest order, `a` for all/none, and `Enter` to save (up to 10 projects). It writes the
 workspace name and manifest while preserving unrelated settings and comments. You can also write
 the equivalent YAML by hand:
 
@@ -278,10 +278,11 @@ apply to the workspace session; agents, processes, and git settings come from th
 projects (plus the global config) as usual.
 
 - Folders resolve relative to the manifest and load in listed order. In the live sidebar, projects
-  with agent activity form a stable group above quiet projects; the selected project stays in that
-  group until you select another project, even after its last agent closes. The manifest order is
-  preserved within both groups. Canonical path de-duplication removes repeats. Missing or unreadable
-  members are skipped with a warning.
+  with agent rows form a group above quiet projects; the selected project stays in that group until
+  you select another project after its last agent closes. Selecting a quiet project does not promote
+  it. Each group is sorted alphabetically by displayed project name, with manifest order breaking
+  equal-name ties. Canonical path de-duplication removes repeats. Missing or unreadable members are
+  skipped with a warning.
 - Expansion is one level deep: a member that is itself a workspace manifest is loaded as a plain
   project with a warning. Workspaces never nest.
 - At most **10 projects** load. If none are loadable, mmux warns and opens the manifest directory
@@ -291,11 +292,12 @@ projects (plus the global config) as usual.
 - Each member keeps normal process semantics, including `autostart`. Opening the same project both
   solo and inside a workspace can therefore start its autostart process twice (and cause port
   conflicts); avoid doing both at once.
-- Pressing `R` reloads the manifest and appends newly listed folders to the live sidebar, including
-  their agents, processes, git panel, and normal `autostart` behavior. Existing projects keep stable
-  runtime indices, so removing or reordering folders still takes effect on the next fresh open.
-  Quit the workspace session before reopening if it is still running. Restore snapshots identify
-  members by directory, so reordering does not move a saved agent or terminal into the wrong project.
+- Pressing `R` reloads the manifest. Newly listed folders join the live sidebar with their agents,
+  processes, git panel, and normal `autostart` behavior. Removed folders immediately leave mmux:
+  their panes are killed, configured process teardowns run, and their restore entries are forgotten.
+  This never touches the project's files or Git working tree, even when it is dirty. Reordering
+  retained members still takes effect on the next fresh open; restore snapshots identify members by
+  directory, so reordering cannot move a saved agent or terminal into the wrong project.
 - The removed `linked-projects` key is ignored and produces a warning. There is no live
   `+ Link another project` browser; use the workspace manager instead.
 
@@ -308,7 +310,8 @@ projects (plus the global config) as usual.
 - **Inside the TUI:** press `w` from the sidebar. This hotkey and its footer button appear only in
   a manifest workspace. Press `n` to edit the name; folder selection and ordering use the same
   keys as the terminal picker. Saving reloads safely: name changes appear immediately and new
-  members append live with their normal autostarts, while removals and ordering apply on reopen.
+  members append live with their normal autostarts and removals apply immediately. Ordering applies
+  on reopen.
 
 Both editors replace only the owned `name` line and `workspace:` block. If a private
 `mmux.local.yml` already owns `workspace:`, that layer is edited so the saved choice is not hidden
@@ -328,12 +331,13 @@ Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the 
 - a process whose definition you removed keeps running as an "orphan" rather than being killed;
 - the git panel is gained or lost if the directory's repo status changed;
 - in a manifest workspace, newly listed folders are appended live with their normal project and
-  `autostart` behavior;
-- a one-line footer flash summarizes what changed (added / restarted / orphaned / unreadable).
+  `autostart` behavior, while removed folders and their live panes are dropped;
+- a one-line footer flash summarizes what changed (added / removed / restarted / orphaned /
+  unreadable).
 
-Reload refreshes every loaded project in place and only grows a workspace: it never removes or
-reorders existing live members because their indices belong to running sessions. Those two changes
-still need a reopen.
+Reload refreshes every retained project in place and reconciles workspace additions/removals.
+Removing a member kills its mmux panes and forgets its restore state without inspecting or changing
+its Git worktree. Manifest reordering still needs a reopen.
 
 ## Adding a Process From the TUI
 

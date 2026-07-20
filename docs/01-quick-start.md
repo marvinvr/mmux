@@ -37,7 +37,7 @@ in the sidebar — both write to the global config and take effect on the next o
 You can skip the wizard and write [`mmux.yaml`](04-configuration.md) by hand, or rely entirely on
 a global config — either file alone is enough. To bundle several project directories, `cd` to
 their parent and run **`mmux workspace`**: use `space` to select folders, `J`/`K` to set their
-sidebar order, then `Enter` to create the [workspace manifest](04-configuration.md#workspace-manifests).
+manifest order, then `Enter` to create the [workspace manifest](04-configuration.md#workspace-manifests).
 
 ## 3. Open It
 

@@ -115,10 +115,9 @@ impl App {
         }
     }
 
-    /// Persist workspace identity/membership without disturbing running sessions.
-    /// Name-only edits update the current chrome immediately. Saving also reloads so
-    /// newly listed members append live; removals and reordering still need a reopen
-    /// so existing session/project indices are never remapped underneath running panes.
+    /// Persist workspace identity/membership and reconcile it immediately. Name-only
+    /// edits update the current chrome, additions append normally, and removed members
+    /// drop their panes and runtime state. Reordering still waits for a reopen.
     pub(crate) fn apply_workspace_manager(&mut self, m: &crate::workspacemgr::WorkspaceManager) {
         let folders = m.folders();
         let before = self
@@ -138,8 +137,8 @@ impl App {
         self.reload();
         if folders == before {
             self.flash(format!("workspace updated — {} projects", folders.len()));
-        } else {
-            self.flash("workspace saved — additions applied; reopen applies removals/order");
+        } else if folders.len() == before.len() && folders.iter().all(|f| before.contains(f)) {
+            self.flash("workspace saved — ordering applies on reopen");
         }
         self.focus = Focus::Sidebar;
     }
@@ -267,6 +266,14 @@ impl App {
     pub(crate) fn open_picker(&mut self) {
         let dir = self.projects[self.active].cfg.dir.clone();
         self.overlay = Some(Overlay::Picker(Picker::new(self.active, dir)));
+    }
+
+    /// Open the compact status-rich project switcher. Desktop has direct project boxes,
+    /// but keeping the project-count guard here makes the footer action harmless.
+    pub(crate) fn open_projects(&mut self) {
+        if self.projects.len() > 1 {
+            self.overlay = Some(Overlay::projects(self.active));
+        }
     }
 
     /// Open `rel` (relative to project `pi`'s dir) in the user's editor as a new
@@ -461,6 +468,17 @@ impl App {
     fn close_session(&mut self, i: usize) {
         let proj = self.sessions[i].project;
         let kind = self.sessions[i].kind;
+        if kind == Kind::Agent
+            && proj == self.active
+            && self
+                .sessions
+                .iter()
+                .filter(|s| s.project == proj && s.kind == Kind::Agent)
+                .count()
+                == 1
+        {
+            self.sticky_agent_project = Some(proj);
+        }
         // Siblings of the same section (project + kind), in sidebar order — which is
         // just their order in `self.sessions` (see `push_sessions`).
         let siblings: Vec<usize> = self
@@ -522,8 +540,8 @@ impl App {
     /// config-defined entries, so they keep their (stopped) row to be restarted in
     /// place. Called once per loop from [`tick`](super::App::tick).
     pub(crate) fn prune_exited(&mut self) {
-        // Preserve the selected row by identity across both session-index shifts and
-        // the project-order change that can happen when a project's last agent exits.
+        // The row still exists here, so its project has not demoted yet. Capture its
+        // identity before removing anything or shifting session indices.
         let selected = self.current_nav();
         let dead: Vec<usize> = self
             .sessions
@@ -534,6 +552,17 @@ impl App {
             .collect();
         if dead.is_empty() {
             return;
+        }
+        // Keep the selected project's box where it is when the last agent quits from
+        // inside its pane. A later project switch clears this pin and lets it demote.
+        let active_loses_last_agent =
+            dead.iter().any(|&i| {
+                self.sessions[i].project == self.active && self.sessions[i].kind == Kind::Agent
+            }) && !self.sessions.iter().enumerate().any(|(i, s)| {
+                !dead.contains(&i) && s.project == self.active && s.kind == Kind::Agent
+            });
+        if active_loses_last_agent {
+            self.sticky_agent_project = Some(self.active);
         }
         // If we're sitting in one of the dying panes, fall back to the sidebar.
         let focused_dead = self.focus == Focus::Terminal
@@ -586,22 +615,35 @@ impl App {
     /// Bound to `R` / `Ctrl-b R`.
     ///
     /// Existing projects are refreshed in place, keyed by directory. In a manifest
-    /// workspace, newly listed folders are appended live; existing projects are never
-    /// dropped or reordered because that would invalidate running session indices.
+    /// workspace, newly listed folders append live and removed folders are dropped with
+    /// their panes; retained projects are not reordered until the next open.
     pub(crate) fn reload(&mut self) {
         let mut failed = 0usize;
         let mut workspace_warnings = Vec::new();
         let mut added_projects = Vec::new();
+        let mut removed_projects = Vec::new();
 
-        // Reload the manifest before taking the project-dir snapshot below. Existing
-        // project indices stay stable; new canonical member dirs append at the end in
-        // manifest order, then participate in the ordinary config reconciliation.
+        // Reload the manifest before taking the project-dir snapshot below. Removed
+        // member indices are compacted first; new canonical member dirs then append in
+        // manifest order and participate in the ordinary config reconciliation.
         if self.manifest {
             match Config::load_workspace(&self.root) {
                 Ok(ws) => {
                     self.cfg = ws.config;
                     workspace_warnings = ws.warnings;
                     if ws.manifest {
+                        // Membership comes from the raw manifest, not only `ws.projects`:
+                        // the latter omits temporarily unreadable members, which must keep
+                        // their existing panes until explicitly removed from `folders`.
+                        let wanted: HashSet<PathBuf> = self
+                            .cfg
+                            .workspace
+                            .as_ref()
+                            .into_iter()
+                            .flat_map(|w| &w.folders)
+                            .map(|folder| config::canonical(&self.root.join(folder)))
+                            .collect();
+                        removed_projects = self.remove_unlisted_projects(&wanted);
                         let mut loaded: HashSet<PathBuf> = self
                             .projects
                             .iter()
@@ -611,7 +653,7 @@ impl App {
                             if loaded.insert(config::canonical(&cfg.dir)) {
                                 if self.projects.len() >= config::MAX_PROJECTS {
                                     workspace_warnings.push(format!(
-                                        "workspace already has {} live projects — reopen to replace removed members",
+                                        "workspace already has {} live projects — ignoring additional members",
                                         config::MAX_PROJECTS
                                     ));
                                     break;
@@ -789,11 +831,32 @@ impl App {
 
         // The nav list may have grown or shrunk; keep the selection in range.
         let navlen = self.build_nav().len();
-        self.sel = self.sel.min(navlen.saturating_sub(1));
+        if removed_projects.is_empty() {
+            self.sel = self.sel.min(navlen.saturating_sub(1));
+        } else {
+            self.sel = self
+                .build_nav()
+                .iter()
+                .position(|n| self.project_of(*n) == Some(self.active))
+                .unwrap_or(0);
+            self.focus = Focus::Sidebar;
+            // `apply_workspace_manager` snapshots before rewriting the manifest. Replace
+            // that snapshot now so removed agents/terminals cannot return on reopen.
+            self.save_state();
+        }
 
         let mut parts: Vec<String> = Vec::new();
         if !added_projects.is_empty() {
             parts.push(format!("+{} project(s)", added_projects.len()));
+        }
+        match removed_projects.as_slice() {
+            [] => {}
+            [name] => parts.push(format!("removed project “{name}”")),
+            names => parts.push(format!(
+                "removed {} projects: {}",
+                names.len(),
+                names.join(", ")
+            )),
         }
         if added > 0 {
             parts.push(format!("+{added} process(es)"));
@@ -820,5 +883,67 @@ impl App {
             parts.join(", ")
         };
         self.flash(format!("reloaded — {summary}"));
+    }
+
+    /// Drop manifest members no longer listed, killing their panes and compacting every
+    /// positional project reference. A dirty Git worktree is irrelevant: the panel is
+    /// only cached UI state, and no repository files are touched here.
+    fn remove_unlisted_projects(&mut self, wanted: &HashSet<PathBuf>) -> Vec<String> {
+        let remove: HashSet<usize> = self
+            .projects
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| !wanted.contains(&config::canonical(&p.cfg.dir)))
+            .map(|(pi, _)| pi)
+            .collect();
+        if remove.is_empty() {
+            return Vec::new();
+        }
+
+        let old_active = self.active;
+        let mut project_map = vec![None; self.projects.len()];
+        let mut removed_names = Vec::new();
+        let mut kept = Vec::new();
+        for (old, project) in std::mem::take(&mut self.projects).into_iter().enumerate() {
+            if remove.contains(&old) {
+                removed_names.push(project.cfg.display_name());
+            } else {
+                project_map[old] = Some(kept.len());
+                kept.push(project);
+            }
+        }
+        self.projects = kept;
+
+        let mut sessions = Vec::new();
+        for mut session in std::mem::take(&mut self.sessions) {
+            if let Some(project) = project_map[session.project] {
+                session.project = project;
+                sessions.push(session);
+                continue;
+            }
+            // Removing a configured process has the same teardown semantics as stopping
+            // it manually, but the workspace-level summary remains the only flash.
+            let stop = if session.kind == Kind::Process && session.is_running() {
+                session.stop_command()
+            } else {
+                None
+            };
+            session.kill();
+            if let Some(mut cmd) = stop {
+                thread::spawn(move || {
+                    let _ = cmd.status();
+                });
+            }
+        }
+        self.sessions = sessions;
+
+        self.active = project_map
+            .get(old_active)
+            .and_then(|mapped| *mapped)
+            .unwrap_or_else(|| old_active.min(self.projects.len().saturating_sub(1)));
+        self.sticky_agent_project = None;
+        self.last_proj_sel = vec![None; self.projects.len()];
+        self.clear_diff();
+        removed_names
     }
 }

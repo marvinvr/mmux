@@ -295,7 +295,7 @@ fn select_workspace(m: &mut WorkspaceManager) -> Result<bool> {
     println!(
         "{}",
         dim(&format!(
-            "Choose up to {} folders; their row order becomes sidebar order.",
+            "Choose up to {} folders; their row order is saved in the manifest.",
             config::MAX_PROJECTS
         ))
     );
