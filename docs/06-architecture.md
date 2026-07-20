@@ -364,8 +364,9 @@ removes it from the snapshot, so it's easy to get a clean slate.
 
 ## Data Flow Summary
 
-- **Output:** program → PTY → reader thread → vt100 parser → `Pane` (title + when it last changed,
-  bell, notifications via `Callbacks`). The app reads it through
+- **Output:** program → PTY → reader thread → vt100 parser → `Pane` (screen + 5000 history lines,
+  including rows displaced by top-aligned scroll regions used by inline TUIs such as Codex; title
+  + when it last changed, bell, notifications via `Callbacks`). The app reads it through
   `Session::subtitle/attention/working/take_notifications` (`working` keys off the title-change
   time so a quiet agent reads as "needs you"). `Session::busy` (`working` over a fixed ~2s window)
   is the single "is this agent actively working" predicate — it's what both spins the sidebar glyph

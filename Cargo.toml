@@ -40,6 +40,12 @@ icy_sixel = "0.5"
 # still bundles the default syntax + theme sets we load lazily on the first diff.
 syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 
+# vt100 0.16 drops rows scrolled out of a top-aligned partial scroll region instead
+# of retaining them as history. Inline TUIs such as Codex use exactly that sequence
+# to commit transcript lines. Keep this exact upstream PR commit until it is released.
+[patch.crates-io]
+vt100 = { git = "https://github.com/second-state/vt100-rust", rev = "ac79c37448d381ff9821a223ba487a6ac00f93cf" }
+
 [profile.release]
 opt-level = 2
 strip = true

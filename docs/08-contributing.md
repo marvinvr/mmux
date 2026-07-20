@@ -37,7 +37,9 @@ handles it). See [Installation](02-installation.md#from-source).
   `Regions` is reset every frame — there is no cross-frame persistence.
 - **vt100 is 0.16, via `tui_term`.** Title/bell/OSCs arrive through the `Callbacks` trait
   (`pane.rs`), not `Screen` methods. Import from `tui_term::vt100` so versions can't skew — never
-  add a direct `vt100` dependency.
+  add a direct `vt100` dependency. `Cargo.toml` temporarily patches it to the exact upstream-PR
+  commit that retains rows displaced by top-aligned scroll regions; remove the override once that
+  fix ships in the selected 0.16 release.
 - **ratatui 0.30 / crossterm 0.29** via the `crossterm_0_29` feature. Always use
   `ratatui::crossterm::*`, never a standalone crossterm dep.
 - **No logging crate.** There is no `log`/`tracing`. Errors surface as `Session.error` strings
@@ -50,7 +52,8 @@ handles it). See [Installation](02-installation.md#from-source).
 ## Tests
 
 `cargo test` covers the pure, easily-isolated pieces: `keymap::encode_key`, the `input.rs`
-cell/selection geometry (`cell_at`, `Selection::ordered`), the `pane.rs` mouse-sequence encoding,
+cell/selection geometry (`cell_at`, `Selection::ordered`), the `pane.rs` mouse-sequence encoding
+and top-aligned-scroll-region history regression,
 the `picker.rs` fuzzy score, `notify.rs` escape formatting, the `config/` module (the
 project-over-global `merge` precedence in `config/mod.rs` and the comment-preserving YAML splicer in
 `config/yaml.rs`), `git::parse_change` porcelain parsing

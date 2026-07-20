@@ -620,4 +620,20 @@ mod tests {
         // A drag is button + the motion bit (0 + 32 → 64).
         assert_eq!(mouse_seq(0, true, false, 3, 5, Legacy), vec![0x1b, b'[', b'M', 64, 35, 37]);
     }
+
+    #[test]
+    fn top_aligned_scroll_region_reaches_scrollback() {
+        // Inline TUIs such as Codex commit transcript lines by scrolling a region
+        // that starts at the screen top but ends above their live input viewport.
+        let mut parser = vt100::Parser::new(6, 10, 100);
+        parser.process(b"row1\r\nrow2\r\nrow3\r\nrow4\r\nrow5\r\nrow6");
+        parser.process(b"\x1b[1;4r\x1b[4;1Hh1\r\nh2\r\nh3\r\n\x1b[r");
+
+        parser.screen_mut().set_scrollback(100);
+        assert_eq!(parser.screen().scrollback(), 3);
+        let history = parser.screen().contents();
+        assert!(history.contains("row1"));
+        assert!(history.contains("row2"));
+        assert!(history.contains("row3"));
+    }
 }

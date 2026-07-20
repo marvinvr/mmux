@@ -339,8 +339,9 @@ Click a link to open it in your default browser. This works in two places:
 
 ## Scrollback and Copy
 
-Each pane keeps 5000 lines of scrollback. Scroll it with the wheel; typing snaps back to the live
-view. To copy, **drag-select** across the main pane — the text goes to the clipboard via OSC 52
+Each pane keeps 5000 lines of scrollback, including history committed by inline TUIs such as Codex.
+Scroll it with the wheel; typing snaps back to the live view. To copy, **drag-select** across the
+main pane — the text goes to the clipboard via OSC 52
 (which works over SSH and through the tmux jail) plus a local helper
 (`pbcopy`/`wl-copy`/`xclip`/`xsel`). Selection can span scrollback with edge auto-scroll. If the
 program tracks the mouse it would otherwise eat the drag, so **hold Shift** to drag-select over it.
