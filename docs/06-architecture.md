@@ -153,12 +153,13 @@ others stay alive in the background. `last_proj_sel` remembers each project's la
 row only when an agent is working, ready, or failed. Repositories with a panel also show a row with
 the cached current branch on the left and changed-path count on the right; quiet non-git folders
 collapse to their borders without wasting a blank row.
-This leaves the useful sidebar height to the active project without hiding background state. Rendering and
-`build_nav()` share a stable partition: projects with agent rows come first. Creating the first
-agent promotes a project; closing the last agent leaves the selected project sticky in that upper
-group until another project is selected. Selecting an already-quiet project does not promote it.
-Both groups sort case-insensitively by displayed project name (manifest order breaks equal-name
-ties); `[`/`]`, arrows, and mouse hit regions follow the same visual order. A
+This leaves the useful sidebar height to the active project without hiding background state.
+Rendering and `build_nav()` share a stable partition: projects with a running agent, a running
+process, or Git changes come first. Gaining the first such signal promotes a project; losing the
+last leaves the selected project sticky in that upper group until another project is selected.
+Selecting an already-quiet project does not promote it. Both groups sort case-insensitively by
+displayed project name (manifest order breaks equal-name ties); `[`/`]`, arrows, and mouse hit
+regions follow the same visual order. A
 single-project workspace renders exactly as it always did — no project header.
 
 Compact mode deliberately narrows `build_nav()` to the active project's rows (plus its git-panel

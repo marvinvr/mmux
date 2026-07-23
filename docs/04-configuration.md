@@ -278,11 +278,11 @@ apply to the workspace session; agents, processes, and git settings come from th
 projects (plus the global config) as usual.
 
 - Folders resolve relative to the manifest and load in listed order. In the live sidebar, projects
-  with agent rows form a group above quiet projects; the selected project stays in that group until
-  you select another project after its last agent closes. Selecting a quiet project does not promote
-  it. Each group is sorted alphabetically by displayed project name, with manifest order breaking
-  equal-name ties. Canonical path de-duplication removes repeats. Missing or unreadable members are
-  skipped with a warning.
+  with a running agent, a running process, or Git changes form a group above quiet projects; the
+  selected project stays in that group until you select another project after its last such signal
+  disappears. Selecting a quiet project does not promote it. Each group is sorted alphabetically by
+  displayed project name, with manifest order breaking equal-name ties. Canonical path
+  de-duplication removes repeats. Missing or unreadable members are skipped with a warning.
 - Expansion is one level deep: a member that is itself a workspace manifest is loaded as a plain
   project with a warning. Workspaces never nest.
 - At most **10 projects** load. If none are loadable, mmux warns and opens the manifest directory

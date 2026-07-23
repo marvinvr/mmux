@@ -103,10 +103,14 @@ pub(crate) struct App {
     /// The project whose panel is shown and whose launchers act by default. Tracks
     /// the selected row's project, so the panel "follows" wherever you navigate.
     active: usize,
-    /// A selected project whose last agent just disappeared stays in the upper,
-    /// agent-bearing group until selection moves to another project. This is separate
-    /// from `active`: merely clicking a quiet project must not promote its box.
-    sticky_agent_project: Option<usize>,
+    /// Cached membership of the priority group (agent/process running or Git changes).
+    /// Keeping the previous frame's value lets [`nav`](crate::app::nav) preserve the
+    /// selected row while a project moves between ordering groups.
+    priority_projects: Vec<bool>,
+    /// A selected project whose last priority signal just disappeared stays in the
+    /// upper group until selection moves elsewhere. This is separate from `active`:
+    /// merely clicking a quiet project must not promote its box.
+    sticky_priority_project: Option<usize>,
     /// Agents, plain terminals and processes for every project, each tagged with its
     /// project index. Filtered by project + [`Kind`] to build each sidebar group.
     sessions: Vec<Session>,
@@ -249,7 +253,8 @@ impl App {
             manifest,
             projects,
             active: 0,
-            sticky_agent_project: None,
+            priority_projects: vec![false; nproj],
+            sticky_priority_project: None,
             sessions,
             sel: 0,
             last_proj_sel: vec![None; nproj],
@@ -306,6 +311,7 @@ impl App {
         // tmux singleton means a *new* inner process only starts when there's no live
         // session to attach to, so there are never live panes to clobber.
         app.restore_sessions();
+        app.reset_project_priority();
         app
     }
 
@@ -352,13 +358,14 @@ impl App {
         // Reap agents/terminals whose program has exited before anything reads the
         // selection, so a just-quit agent or editor row is gone this frame.
         self.prune_exited();
+        self.sync_project_priority();
         if let Some(n) = self.current_nav() {
             if let Some(p) = self.project_of(n) {
                 if self.active != p {
-                    self.sticky_agent_project = None;
+                    self.sticky_priority_project = None;
                     self.active = p;
-                    // Leaving the project that lost its last agent can reorder the
-                    // agent-bearing and quiet groups. Keep selection on the same row.
+                    // Leaving the project that lost its last priority signal can
+                    // reorder the priority and quiet groups.
                     // Keep selection attached to the same row rather than its old
                     // positional index in the rebuilt nav.
                     if let Some(pos) = self.build_nav().iter().position(|item| *item == n) {
@@ -398,6 +405,7 @@ impl App {
                 }
             }
         }
+        self.sync_project_priority();
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
         // Advance the background self-update (drain workers, run the periodic re-check).

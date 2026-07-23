@@ -49,32 +49,67 @@ impl App {
         nav
     }
 
-    /// Stable-partition projects by agent presence. A project enters the upper group
-    /// when its first agent is created. If the selected project loses its last agent,
-    /// `sticky_agent_project` holds it there until selection moves elsewhere; selecting
-    /// an already-quiet project never promotes it. Agent counts and states do not rank
-    /// projects within a group; display names sort case-insensitively, with manifest
-    /// order as the stable tie-breaker for equal names.
+    /// Stable-partition projects by useful background activity: a running agent, a
+    /// running configured process, or Git changes. If the selected project loses its
+    /// last signal, `sticky_priority_project` holds it there until selection moves
+    /// elsewhere; selecting an already-quiet project never promotes it. Activity
+    /// counts and states do not rank projects within a group; display names sort
+    /// case-insensitively, with manifest order as the stable tie-breaker.
     pub(crate) fn project_display_order(&self) -> Vec<usize> {
-        let mut active = Vec::new();
+        let mut priority = Vec::new();
         let mut quiet = Vec::new();
         for pi in 0..self.projects.len() {
-            if self.project_has_agents(pi) || self.sticky_agent_project == Some(pi) {
-                active.push(pi);
+            if self.priority_projects.get(pi).copied().unwrap_or(false)
+                || self.sticky_priority_project == Some(pi)
+            {
+                priority.push(pi);
             } else {
                 quiet.push(pi);
             }
         }
-        active.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
+        priority.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
         quiet.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
-        active.extend(quiet);
-        active
+        priority.extend(quiet);
+        priority
     }
 
-    pub(crate) fn project_has_agents(&self, pi: usize) -> bool {
-        self.sessions
-            .iter()
-            .any(|s| s.project == pi && s.kind == Kind::Agent)
+    fn project_has_priority(&self, pi: usize) -> bool {
+        self.sessions.iter().any(|s| {
+            s.project == pi && s.is_running() && matches!(s.kind, Kind::Agent | Kind::Process)
+        }) || self.projects[pi]
+            .git
+            .as_ref()
+            .is_some_and(|git| !git.files.is_empty())
+    }
+
+    /// Rebuild the cached priority group after session or Git state changes. The
+    /// cache makes a transition atomic from navigation's point of view: capture the
+    /// selected row under the old order, update groups, then find that same row in
+    /// the new order.
+    pub(crate) fn sync_project_priority(&mut self) {
+        let selected = self.current_nav();
+        let next: Vec<bool> = (0..self.projects.len())
+            .map(|pi| self.project_has_priority(pi))
+            .collect();
+        if self.priority_projects.get(self.active) == Some(&true)
+            && next.get(self.active) == Some(&false)
+        {
+            self.sticky_priority_project = Some(self.active);
+        }
+        self.priority_projects = next;
+        if let Some(row) = selected {
+            if let Some(pos) = self.build_nav().iter().position(|item| *item == row) {
+                self.sel = pos;
+            }
+        }
+    }
+
+    /// Reset after initialization or workspace membership changes, where old project
+    /// indices are not meaningful and therefore must not create a sticky transition.
+    pub(crate) fn reset_project_priority(&mut self) {
+        self.priority_projects = (0..self.projects.len())
+            .map(|pi| self.project_has_priority(pi))
+            .collect();
     }
 
     fn push_sessions(&self, nav: &mut Vec<Nav>, pi: usize, kind: Kind) {
@@ -152,7 +187,7 @@ impl App {
     pub(crate) fn focus_project(&mut self, pi: usize) {
         let changed = self.active != pi;
         if changed {
-            self.sticky_agent_project = None;
+            self.sticky_priority_project = None;
         }
         self.active = pi;
         let nav = self.build_nav();

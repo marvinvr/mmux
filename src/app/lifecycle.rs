@@ -477,7 +477,7 @@ impl App {
                 .count()
                 == 1
         {
-            self.sticky_agent_project = Some(proj);
+            self.sticky_priority_project = Some(proj);
         }
         // Siblings of the same section (project + kind), in sidebar order — which is
         // just their order in `self.sessions` (see `push_sessions`).
@@ -562,7 +562,7 @@ impl App {
                 !dead.contains(&i) && s.project == self.active && s.kind == Kind::Agent
             });
         if active_loses_last_agent {
-            self.sticky_agent_project = Some(self.active);
+            self.sticky_priority_project = Some(self.active);
         }
         // If we're sitting in one of the dying panes, fall back to the sidebar.
         let focused_dead = self.focus == Focus::Terminal
@@ -941,7 +941,8 @@ impl App {
             .get(old_active)
             .and_then(|mapped| *mapped)
             .unwrap_or_else(|| old_active.min(self.projects.len().saturating_sub(1)));
-        self.sticky_agent_project = None;
+        self.sticky_priority_project = None;
+        self.reset_project_priority();
         self.last_proj_sel = vec![None; self.projects.len()];
         self.clear_diff();
         removed_names
