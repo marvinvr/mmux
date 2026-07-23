@@ -320,8 +320,10 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   `tmux::session_name`). It writes on every structural change (a cheap fingerprint in `tick()`
   gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
   Each save also resolves every agent's resume id (`refresh_agent_ids`): Claude ids are minted by
-  mmux and left untouched, while a fresh Codex agent discovers the id of the session it just created
-  (`agent::sessions_for`). Each row carries its canonical project directory as well as the legacy
+  mmux and left untouched, while a fresh Codex agent records its pane launch time and adopts the
+  first top-level rollout created for that cwd afterward (`agent::sessions_for`). Discovery retries
+  until Codex writes the rollout, so it cannot capture an older or recently-active sibling. Each
+  row carries its canonical project directory as well as the legacy
   numeric index, so a manifest reorder restores it to the same member. The workspace editors bind
   older positional snapshots to directories immediately before writing a new order. Only
   agents/terminals are saved — processes come back from config.
@@ -336,8 +338,8 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
     directory each resume their **own** thread — the id is authoritative and is never reassigned
     between agents, so idle agents can't be shuffled onto a recently-active sibling's session.
     Codex has no such flag, so mmux launches it plain, **discovers** the session it created
-    (`agent::sessions_for` — the newest transcript for that cwd no sibling has already claimed),
-    and reattaches with `codex resume <uuid>`.
+    (`agent::sessions_for` — the first unclaimed top-level rollout created after that pane's
+    launch time), and reattaches with `codex resume <uuid>`.
   - **Terminals reopen at their live cwd.** `Pane::cwd()` reads the shell's working directory from
     the OS (`/proc/<pid>/cwd` on Linux, `proc_pidinfo` on macOS), so a `cd` survives — though as a
     fresh shell (no history/env/jobs). Editor panes reopen their file the same way.

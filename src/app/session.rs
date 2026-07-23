@@ -176,6 +176,9 @@ impl Session {
         // Append any Claude/Codex resume flags. The first launch *creates* the
         // session (`--session-id`); after that, and for a restored agent, launches
         // *resume* it (`--resume` / `codex resume`).
+        if let Some(r) = self.agent.as_mut() {
+            r.mark_launch();
+        }
         let mut args = self.recipe.args.clone();
         if let Some(r) = self.agent.as_ref() {
             args.extend(r.launch_args());

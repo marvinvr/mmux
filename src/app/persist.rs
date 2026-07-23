@@ -13,6 +13,7 @@ use crate::restore::{self, SnapKind, Snapshot, State};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 impl App {
     /// The launch directory (canonical) — the key for this workspace's state file.
@@ -31,6 +32,10 @@ impl App {
         let sig = self.session_signature();
         if self.restore_sig != Some(sig) {
             self.restore_sig = Some(sig);
+            self.save_state();
+        } else if self.refresh_agent_ids() {
+            // Codex can create its rollout after the structural save that added
+            // the row. Persist the id as soon as discovery succeeds.
             self.save_state();
         }
     }
@@ -110,17 +115,17 @@ impl App {
     /// `--session-id`, so it already writes — and resumes — its own thread. Those ids
     /// are authoritative and are never reassigned. Codex has no such flag, so a fresh
     /// Codex agent has to *discover* the id of the session it just created by looking
-    /// at the transcripts the tool recorded for its cwd (newest first); once it has
-    /// one, it sticks.
+    /// at the transcripts the tool recorded for its cwd; once it has one, it sticks.
     ///
     /// So: reserve every id already in use, then let only an id-less agent (a Codex
-    /// first launch) adopt the newest conversation no sibling has claimed. We
+    /// first launch) adopt the first conversation created after that pane launched.
+    /// It must also be a conversation no sibling has claimed. We
     /// deliberately do **not** chase the newest transcript for an already-bound agent.
     /// That directory is a shared history — closed agents, `/resume` targets, and plain
     /// `claude`/`codex` runs all pile up there — so "newest for this cwd" is *not*
     /// "the conversation this pane is in". Treating it that way is what made an idle
     /// agent restore onto a recently-active sibling's session.
-    fn refresh_agent_ids(&mut self) {
+    fn refresh_agent_ids(&mut self) -> bool {
         // Reserve every id already in use so discovery below can't hand the same
         // conversation to two agents.
         let mut claimed: HashSet<String> = self
@@ -128,6 +133,7 @@ impl App {
             .iter()
             .filter_map(|s| s.agent.as_ref().and_then(|r| r.id.clone()))
             .collect();
+        let mut changed = false;
         for s in &mut self.sessions {
             let Some(r) = s.agent.as_mut() else { continue };
             // Claude ids are owned; a Codex agent that already found its session keeps
@@ -135,12 +141,25 @@ impl App {
             if r.tool.owns_id() || r.id.is_some() {
                 continue;
             }
+            if !r.discovery_due() {
+                continue;
+            }
             let ranked = crate::agent::sessions_for(r.tool, &s.recipe.cwd);
-            if let Some((id, _)) = ranked.into_iter().find(|(id, _)| !claimed.contains(id)) {
+            let started_at = r.started_at.unwrap_or(SystemTime::now());
+            let found = ranked
+                .into_iter()
+                .filter(|(id, created)| *created >= started_at && !claimed.contains(id))
+                .min_by_key(|(_, created)| *created);
+            if let Some((id, _)) = found {
                 claimed.insert(id.clone());
                 r.id = Some(id);
+                r.discover_at = None;
+                changed = true;
+            } else {
+                r.defer_discovery();
             }
         }
+        changed
     }
 
     /// Rebuild the saved agents/terminals after a self-update restart: respawn

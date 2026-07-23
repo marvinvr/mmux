@@ -13,14 +13,19 @@
 //! each `Claude #N` keeps its own thread and several in one directory never get mixed
 //! up. Codex hands us no id, so a fresh Codex agent has to *discover* the session it
 //! just created via [`sessions_for`]: both tools write one transcript per conversation
-//! tagged with its `cwd`, and the newest for that cwd is the one Codex just started.
+//! tagged with its `cwd`. Codex candidates are matched against the pane's launch time,
+//! so an existing conversation from the same directory can never be adopted.
 //! Used by [`crate::app`] to persist and restore agents across a quit/crash/self-update
 //! reopen (see [`crate::restore`]).
 
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
+
+/// Avoid scanning Codex's transcript tree on every UI tick while its new rollout
+/// file is still being created.
+const DISCOVERY_RETRY: Duration = Duration::from_millis(500);
 
 /// A resumable agent CLI mmux knows how to reattach across a restart.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -59,18 +64,57 @@ pub struct Resume {
     /// `false` for a brand-new agent (its first launch *creates* the session);
     /// `true` afterwards and for any restored agent (launches *resume* it).
     pub resume: bool,
+    /// When an id-less Codex pane was launched. Its rollout must have been created
+    /// at or after this instant; otherwise it belongs to an older conversation.
+    pub started_at: Option<SystemTime>,
+    /// Monotonic throttle for retrying discovery until Codex writes its rollout.
+    pub discover_at: Option<Instant>,
 }
 
 impl Resume {
     /// A fresh resumable agent: Claude gets a minted id; Codex starts id-less.
     pub fn new(tool: Tool) -> Resume {
         let id = tool.owns_id().then(mint_uuid);
-        Resume { tool, id, resume: false }
+        Resume {
+            tool,
+            id,
+            resume: false,
+            started_at: None,
+            discover_at: None,
+        }
     }
 
     /// Restore a resumable agent from saved state — always reattaches.
     pub fn restored(tool: Tool, id: Option<String>) -> Resume {
-        Resume { tool, id, resume: true }
+        Resume {
+            tool,
+            id,
+            resume: true,
+            started_at: None,
+            discover_at: None,
+        }
+    }
+
+    /// Mark the start of a plain Codex launch whose new id is not known yet.
+    pub fn mark_launch(&mut self) {
+        if self.tool == Tool::Codex && self.id.is_none() {
+            self.started_at = Some(SystemTime::now());
+            self.discover_at = Some(Instant::now() + DISCOVERY_RETRY);
+        }
+    }
+
+    /// Whether an id-less Codex rollout is due for another discovery attempt.
+    pub fn discovery_due(&self) -> bool {
+        self.tool == Tool::Codex
+            && self.id.is_none()
+            && self
+                .discover_at
+                .is_none_or(|deadline| Instant::now() >= deadline)
+    }
+
+    /// Delay the next attempt after Codex has not written a matching rollout yet.
+    pub fn defer_discovery(&mut self) {
+        self.discover_at = Some(Instant::now() + DISCOVERY_RETRY);
     }
 
     /// The extra CLI args to append to the recipe for the *current* launch.
@@ -116,7 +160,7 @@ pub fn mint_uuid() -> String {
     )
 }
 
-/// Every conversation `tool` recorded for `cwd`, as `(session_id, mtime)` and
+/// Every conversation `tool` recorded for `cwd`, as `(session_id, started_at)` and
 /// **newest first** — used to discover the session a freshly launched Codex agent
 /// just created (see the module docs). Both tools write one `*.jsonl` per session:
 /// Claude under `~/.claude/projects/<dir>/<id>.jsonl` (id is the filename, `cwd`
@@ -156,10 +200,17 @@ fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime
         };
         if let Some((id, file_cwd)) = meta {
             if file_cwd == want {
-                out.push((id, mtime));
+                // Codex UUIDv7 ids embed creation time. File mtime instead tracks
+                // activity and made old but recently-used sessions look new.
+                let started_at = match tool {
+                    Tool::Codex => codex_id_time(&id).unwrap_or(mtime),
+                    Tool::Claude => mtime,
+                };
+                out.push((id, started_at));
             }
         }
     }
+    out.sort_by(|a, b| b.1.cmp(&a.1));
     out
 }
 
@@ -208,7 +259,23 @@ fn read_codex_meta(path: &Path) -> Option<(String, String)> {
     let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).ok()?;
     let head = String::from_utf8_lossy(&buf[..n]);
     let line = head.lines().next()?;
-    Some((json_str_field(line, "session_id")?, json_str_field(line, "cwd")?))
+    let session_id = json_str_field(line, "session_id")?;
+    // A subagent rollout carries its parent's `session_id` but its own `id`.
+    // It is not a resumable top-level TUI conversation.
+    if json_str_field(line, "id").is_some_and(|id| id != session_id) {
+        return None;
+    }
+    Some((session_id, json_str_field(line, "cwd")?))
+}
+
+/// Decode the Unix-millisecond timestamp stored in a Codex UUIDv7.
+fn codex_id_time(id: &str) -> Option<SystemTime> {
+    if id.as_bytes().get(14) != Some(&b'7') {
+        return None;
+    }
+    let prefix = id.get(..13)?.replace('-', "");
+    let millis = u64::from_str_radix(&prefix, 16).ok()?;
+    SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(millis))
 }
 
 /// Extract the value of a `"field":"value"` string entry from a flat JSON line.
@@ -282,6 +349,18 @@ mod tests {
         assert_eq!(json_str_field(line, "missing"), None);
     }
 
+    #[test]
+    fn decodes_codex_uuid_v7_time() {
+        let id = "019f8e00-3ade-79a2-95fc-b166a5dfa119";
+        let millis = codex_id_time(id)
+            .unwrap()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        assert_eq!(millis, 0x019f8e003ade);
+        assert_eq!(codex_id_time("11111111-1111-4111-8111-111111111111"), None);
+    }
+
     fn write(path: &Path, body: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, body).unwrap();
@@ -307,6 +386,26 @@ mod tests {
         let g = dir.join("22222222-2222-4222-8222-222222222222.jsonl");
         write(&g, "{\"type\":\"mode\",\"sessionId\":\"y\"}\n");
         assert_eq!(read_claude_meta(&g), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ignores_codex_subagent_rollouts() {
+        let dir = std::env::temp_dir().join(format!("mmux-codex-meta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let top = dir.join("top.jsonl");
+        write(
+            &top,
+            "{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"top\",\"id\":\"top\",\"cwd\":\"/repo\"}}\n",
+        );
+        assert_eq!(read_codex_meta(&top), Some(("top".into(), "/repo".into())));
+
+        let child = dir.join("child.jsonl");
+        write(
+            &child,
+            "{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"top\",\"id\":\"child\",\"cwd\":\"/repo\",\"thread_source\":\"subagent\"}}\n",
+        );
+        assert_eq!(read_codex_meta(&child), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
