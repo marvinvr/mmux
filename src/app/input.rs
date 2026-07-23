@@ -11,10 +11,10 @@ use super::view::FooterAction;
 use super::{App, Focus};
 use crate::pane::MouseAction;
 use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::layout::Rect;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 impl App {
     pub(crate) fn on_key(&mut self, k: KeyEvent) {
@@ -984,6 +984,196 @@ fn button_code(b: MouseButton) -> u8 {
     }
 }
 
+/// Crossterm treats an `ESC` byte at the end of a tty read as a complete Escape
+/// key. A fast mouse burst through tmux can split an SGR report immediately after
+/// that byte, turning one wheel event into Escape plus printable `[<65;…M` keys.
+/// Hold bare Escape very briefly so that exact fragment can be put back together;
+/// every other event stream is released unchanged and in order.
+pub(crate) struct InputDecoder {
+    pending: Vec<Event>,
+    deadline: Option<Instant>,
+}
+
+impl Default for InputDecoder {
+    fn default() -> Self {
+        Self {
+            pending: Vec::new(),
+            deadline: None,
+        }
+    }
+}
+
+impl InputDecoder {
+    pub(crate) fn push(&mut self, event: Event, now: Instant) -> Vec<Event> {
+        if self.pending.is_empty() {
+            if is_bare_escape(&event) {
+                self.pending.push(event);
+                self.deadline = Some(now + SPLIT_ESCAPE_GRACE);
+                return Vec::new();
+            }
+            return vec![event];
+        }
+
+        self.pending.push(event);
+        match split_sgr_mouse(&self.pending) {
+            MouseFragment::Prefix => {
+                self.deadline = Some(now + SPLIT_ESCAPE_GRACE);
+                Vec::new()
+            }
+            MouseFragment::Complete(mouse) => {
+                self.pending.clear();
+                self.deadline = None;
+                vec![Event::Mouse(mouse)]
+            }
+            MouseFragment::Invalid => {
+                self.deadline = None;
+                let mut events = std::mem::take(&mut self.pending);
+                // Preserve the same protection if the event that disproved the
+                // fragment is itself a new bare Escape.
+                if events.last().is_some_and(is_bare_escape) {
+                    let escape = events.pop().expect("last event exists");
+                    self.pending.push(escape);
+                    self.deadline = Some(now + SPLIT_ESCAPE_GRACE);
+                }
+                events
+            }
+        }
+    }
+
+    pub(crate) fn flush_expired(&mut self, now: Instant) -> Vec<Event> {
+        if self.deadline.is_some_and(|deadline| now >= deadline) {
+            self.deadline = None;
+            return std::mem::take(&mut self.pending);
+        }
+        Vec::new()
+    }
+
+    pub(crate) fn poll_timeout(&self, now: Instant, max: Duration) -> Duration {
+        self.deadline
+            .map(|deadline| deadline.saturating_duration_since(now).min(max))
+            .unwrap_or(max)
+    }
+}
+
+const SPLIT_ESCAPE_GRACE: Duration = Duration::from_millis(12);
+
+enum MouseFragment {
+    Prefix,
+    Complete(MouseEvent),
+    Invalid,
+}
+
+fn is_bare_escape(event: &Event) -> bool {
+    matches!(event, Event::Key(k)
+        if k.code == KeyCode::Esc
+            && k.modifiers == KeyModifiers::NONE
+            && k.kind == KeyEventKind::Press)
+}
+
+fn split_sgr_mouse(events: &[Event]) -> MouseFragment {
+    if !events.first().is_some_and(is_bare_escape) {
+        return MouseFragment::Invalid;
+    }
+
+    let mut tail = String::with_capacity(events.len().saturating_sub(1));
+    for event in &events[1..] {
+        match event {
+            Event::Key(KeyEvent {
+                code: KeyCode::Char(c),
+                kind: KeyEventKind::Press,
+                ..
+            }) if c.is_ascii() => tail.push(*c),
+            _ => return MouseFragment::Invalid,
+        }
+    }
+
+    if tail == "[" || tail == "[<" {
+        return MouseFragment::Prefix;
+    }
+    let Some(body) = tail.strip_prefix("[<") else {
+        return MouseFragment::Invalid;
+    };
+    if body.len() > 20 {
+        return MouseFragment::Invalid;
+    }
+
+    if let Some(end) = body.chars().last().filter(|c| matches!(c, 'M' | 'm')) {
+        let fields = &body[..body.len() - 1];
+        return parse_sgr_mouse(fields, end)
+            .map(MouseFragment::Complete)
+            .unwrap_or(MouseFragment::Invalid);
+    }
+    if body.contains('M') || body.contains('m') || !valid_sgr_mouse_prefix(body) {
+        MouseFragment::Invalid
+    } else {
+        MouseFragment::Prefix
+    }
+}
+
+fn valid_sgr_mouse_prefix(body: &str) -> bool {
+    if body.is_empty() {
+        return true;
+    }
+    let fields: Vec<_> = body.split(';').collect();
+    if fields.len() > 3 || fields[0].is_empty() {
+        return false;
+    }
+    fields.iter().enumerate().all(|(i, field)| {
+        let trailing_empty = field.is_empty() && i + 1 == fields.len() && body.ends_with(';');
+        let max_digits = if i == 0 { 3 } else { 5 };
+        trailing_empty
+            || (!field.is_empty()
+                && field.len() <= max_digits
+                && field.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+fn parse_sgr_mouse(fields: &str, end: char) -> Option<MouseEvent> {
+    let fields = fields.strip_suffix(';').unwrap_or(fields);
+    let mut fields = fields.split(';');
+    let cb: u8 = fields.next()?.parse().ok()?;
+    let x: u16 = fields.next()?.parse().ok()?;
+    let y: u16 = fields.next()?.parse().ok()?;
+    if fields.next().is_some() || x == 0 || y == 0 {
+        return None;
+    }
+
+    let button_number = (cb & 0b0000_0011) | ((cb & 0b1100_0000) >> 4);
+    let dragging = cb & 0b0010_0000 != 0;
+    let mut kind = match (button_number, dragging) {
+        (0, false) => MouseEventKind::Down(MouseButton::Left),
+        (1, false) => MouseEventKind::Down(MouseButton::Middle),
+        (2, false) => MouseEventKind::Down(MouseButton::Right),
+        (0, true) => MouseEventKind::Drag(MouseButton::Left),
+        (1, true) => MouseEventKind::Drag(MouseButton::Middle),
+        (2, true) => MouseEventKind::Drag(MouseButton::Right),
+        (3, false) => MouseEventKind::Up(MouseButton::Left),
+        (3..=5, true) => MouseEventKind::Moved,
+        (4, false) => MouseEventKind::ScrollUp,
+        (5, false) => MouseEventKind::ScrollDown,
+        (6, false) => MouseEventKind::ScrollLeft,
+        (7, false) => MouseEventKind::ScrollRight,
+        _ => return None,
+    };
+    if end == 'm' {
+        kind = match kind {
+            MouseEventKind::Down(button) => MouseEventKind::Up(button),
+            other => other,
+        };
+    }
+
+    let mut modifiers = KeyModifiers::NONE;
+    modifiers.set(KeyModifiers::SHIFT, cb & 0b0000_0100 != 0);
+    modifiers.set(KeyModifiers::ALT, cb & 0b0000_1000 != 0);
+    modifiers.set(KeyModifiers::CONTROL, cb & 0b0001_0000 != 0);
+    Some(MouseEvent {
+        kind,
+        column: x - 1,
+        row: y - 1,
+        modifiers,
+    })
+}
+
 /// What a drag-to-copy selection is happening over. The live main pane (a vt100 grid)
 /// and the diff pager are selectable; the git panel is native text and isn't.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1063,6 +1253,53 @@ mod tests {
             head,
             moved: true,
         }
+    }
+
+    fn key(code: KeyCode) -> Event {
+        Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    #[test]
+    fn split_sgr_wheel_report_does_not_leak_escape_or_text() {
+        let now = Instant::now();
+        let mut decoder = InputDecoder::default();
+        assert!(decoder.push(key(KeyCode::Esc), now).is_empty());
+
+        let mut output = Vec::new();
+        for c in "[<65;12;8M".chars() {
+            output.extend(decoder.push(key(KeyCode::Char(c)), now));
+        }
+        assert_eq!(
+            output,
+            vec![Event::Mouse(MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 11,
+                row: 7,
+                modifiers: KeyModifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn real_escape_and_following_key_are_preserved() {
+        let now = Instant::now();
+        let mut decoder = InputDecoder::default();
+        let escape = key(KeyCode::Esc);
+        let x = key(KeyCode::Char('x'));
+        assert!(decoder.push(escape.clone(), now).is_empty());
+        assert_eq!(decoder.push(x.clone(), now), vec![escape, x]);
+    }
+
+    #[test]
+    fn real_escape_is_released_after_grace_period() {
+        let now = Instant::now();
+        let mut decoder = InputDecoder::default();
+        let escape = key(KeyCode::Esc);
+        assert!(decoder.push(escape.clone(), now).is_empty());
+        assert_eq!(
+            decoder.flush_expired(now + SPLIT_ESCAPE_GRACE),
+            vec![escape]
+        );
     }
 
     #[test]

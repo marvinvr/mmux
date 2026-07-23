@@ -52,8 +52,8 @@ handles it). See [Installation](02-installation.md#from-source).
 ## Tests
 
 `cargo test` covers the pure, easily-isolated pieces: `keymap::encode_key`, the `input.rs`
-cell/selection geometry (`cell_at`, `Selection::ordered`), the `pane.rs` mouse-sequence encoding
-and top-aligned-scroll-region history regression,
+event-boundary repair plus cell/selection geometry (`cell_at`, `Selection::ordered`), the
+`pane.rs` mouse-sequence encoding and top-aligned-scroll-region history regression,
 the `picker.rs` fuzzy score, `notify.rs` escape formatting, the `config/` module (the
 project-over-global `merge` precedence in `config/mod.rs` and the comment-preserving YAML splicer in
 `config/yaml.rs`), `git::parse_change` porcelain parsing

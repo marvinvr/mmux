@@ -24,7 +24,7 @@ mod view;
 
 use diff::DiffView;
 use git::{first_line, GitPanel, JobDone};
-use input::Selection;
+use input::{InputDecoder, Selection};
 use nav::Nav;
 use overlay::Overlay;
 pub(crate) use session::{Kind, Recipe, Session, Status};
@@ -784,7 +784,20 @@ fn erase_rect(out: &mut Stdout, r: Rect) -> std::io::Result<()> {
     Ok(())
 }
 
+fn dispatch_event(app: &mut App, event: Event) {
+    match event {
+        Event::Key(k) => app.on_key(k),
+        Event::Mouse(m) => app.on_mouse(m),
+        Event::Paste(s) => app.on_paste(s),
+        _ => {}
+    }
+}
+
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
+    const FRAME_POLL: Duration = Duration::from_millis(50);
+    const MAX_EVENTS_PER_FRAME: usize = 128;
+    let mut input = InputDecoder::default();
+
     loop {
         terminal.draw(|f| app.draw(f))?;
         // Notification escapes are non-painting, so it's safe to write them straight
@@ -799,14 +812,30 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
         if app.should_quit || app.restart {
             break;
         }
-        // Poll with a timeout so live process output redraws even without input.
-        if event::poll(Duration::from_millis(50))? {
-            match event::read()? {
-                Event::Key(k) => app.on_key(k),
-                Event::Mouse(m) => app.on_mouse(m),
-                Event::Paste(s) => app.on_paste(s),
-                _ => {}
+
+        // Poll with a timeout so live process output redraws even without input. A
+        // bounded drain keeps high-resolution/free-spinning wheels from leaving a
+        // stale input backlog, while retaining the regular redraw/tick cadence.
+        let now = Instant::now();
+        for event in input.flush_expired(now) {
+            dispatch_event(app, event);
+        }
+        let timeout = input.poll_timeout(Instant::now(), FRAME_POLL);
+        if event::poll(timeout)? {
+            for _ in 0..MAX_EVENTS_PER_FRAME {
+                for event in input.push(event::read()?, Instant::now()) {
+                    dispatch_event(app, event);
+                }
+                if app.should_quit
+                    || app.restart
+                    || !event::poll(Duration::ZERO)?
+                {
+                    break;
+                }
             }
+        }
+        for event in input.flush_expired(Instant::now()) {
+            dispatch_event(app, event);
         }
         app.tick();
     }

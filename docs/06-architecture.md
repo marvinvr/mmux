@@ -69,8 +69,9 @@ then `run_loop` cycles:
 2. **collect notifications** — drain every pane's captured events and write the resulting escape
    bytes straight to stdout (they're non-painting, so this is safe after the frame);
 3. break if `should_quit`;
-4. **poll** events for 50 ms (so live program output keeps redrawing at ~20 fps even with no
-   input), dispatching `Key`/`Mouse`/`Paste`;
+4. **poll** events for up to 50 ms (so live program output keeps redrawing at ~20 fps even with no
+   input), dispatching `Key`/`Mouse`/`Paste`; each frame drains a bounded burst so a free-spinning
+   wheel cannot leave seconds of stale input queued;
 5. **tick** — housekeeping (below).
 
 `tick()` runs every loop: it steps drag auto-scroll, prunes exited agent/terminal rows, makes the
@@ -373,7 +374,10 @@ removes it from the snapshot, so it's easy to get a clean slate.
   and gates the close-confirmation, so the prompt fires for exactly the agents that show a spinner.
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader
   via `leader_command`, then by focus). In a pane, `keymap::encode_key` translates the key to PTY
-  bytes and `Pane::send` queues them.
+  bytes and `Pane::send` queues them. Before dispatch, `InputDecoder` repairs the one unsafe
+  crossterm read boundary: if tmux's SGR mouse report is split immediately after `ESC`, it briefly
+  holds that apparent Escape and reconstructs the mouse event instead of cancelling the inner
+  program and forwarding the printable `[<…M` tail.
 - **Notifications:** captured pane events → `collect_notifications` → `notify.rs` builds the OSC
   escape (wrapped in tmux passthrough when inside tmux) → written to stdout → the outer terminal
   renders the popup. See [Notifications](05-notifications.md).
