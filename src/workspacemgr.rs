@@ -1,7 +1,7 @@
 //! Shared state for creating and editing a directory-level workspace manifest.
 //!
 //! Like [`crate::agentmgr::AgentManager`], this is deliberately front-end-neutral:
-//! [`crate::wizard`] drives it as the inline `mmux workspace` checkbox picker, while
+//! [`crate::wizard`] drives it as the inline `mmux init workspace` checkbox picker, while
 //! the TUI wraps the same rows in an overlay. Discovery is shallow on purpose — a
 //! workspace manifest names its immediate project folders, not an arbitrarily deep
 //! filesystem tree. Already-configured paths outside the directory are retained as

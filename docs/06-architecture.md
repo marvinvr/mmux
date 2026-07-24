@@ -174,8 +174,8 @@ single project or expands `workspace.folders` one level deep. Members are de-dup
 canonical path and capped at 10; a nested member manifest is flattened to a plain project with a
 warning. Missing/unreadable folders warn and skip, while an all-invalid manifest falls back to its
 own directory as a plain project. The shared `WorkspaceManager` discovers and orders immediate
-children for both `mmux workspace` and the manifest-only `w` overlay. Its raw-text writer owns only
-`name` and `workspace:`. `R` reload expands the manifest again and appends canonical member dirs
+children for both `mmux init workspace` and the manifest-only `w` overlay. Its raw-text writer
+owns only `name` and `workspace:`. `R` reload expands the manifest again and appends canonical member dirs
 that are not already live; each new `Project` gets its process rows, git panel, launchers, and
 autostarts. Removing a member kills its panes, drops its per-project runtime state, compacts project
 indices throughout the unified session list, and immediately replaces the restore snapshot; Git

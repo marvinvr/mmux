@@ -1,5 +1,5 @@
 //! Command-line surface: argument dispatch and the non-TUI subcommands
-//! (`init`, `agents`, `workspace`, `check`, `--help`, `--version`). The actual work lives elsewhere —
+//! (`init`, `agents`, `check`, `--help`, `--version`). The actual work lives elsewhere —
 //! this module just decides which entry point to run.
 
 use crate::config::Config;
@@ -20,7 +20,15 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
     if args.first().map(String::as_str) == Some("init") {
-        return crate::wizard::run(&std::env::current_dir()?);
+        let kind = match args.get(1).map(String::as_str) {
+            None => None,
+            Some("project") => Some(crate::wizard::InitKind::Project),
+            Some("workspace") => Some(crate::wizard::InitKind::Workspace),
+            Some(other) => anyhow::bail!(
+                "unknown init type `{other}`; use `mmux init`, `mmux init project`, or `mmux init workspace`"
+            ),
+        };
+        return crate::wizard::run(&std::env::current_dir()?, kind);
     }
     // Manage just the built-in agent harnesses (global config) from the terminal — the
     // CLI twin of the in-TUI `a` popup. Distinct from `mmux a` (the attach alias).
@@ -34,7 +42,11 @@ pub fn run() -> Result<()> {
         args.first().map(String::as_str),
         Some("workspace") | Some("workspaces")
     ) {
-        return crate::wizard::run_workspace(&std::env::current_dir()?);
+        eprintln!("`mmux workspace` is now `mmux init workspace`; opening workspace setup.");
+        return crate::wizard::run(
+            &std::env::current_dir()?,
+            Some(crate::wizard::InitKind::Workspace),
+        );
     }
     if args.first().map(String::as_str) == Some("check") {
         return check();
@@ -145,9 +157,9 @@ https://mmux.org
 USAGE:
     mmux            Open (or reattach to) the mmux session for the current directory
     mmux attach     Pick a workspace, active project, or past project (alias: mmux a)
-    mmux init       Interactive setup: pick your agents & start command
+    mmux init       Choose and set up a project or multi-project workspace
+                    (`mmux init project|workspace` skips the first choice)
     mmux agents     Add/remove the built-in agent harnesses in your global config
-    mmux workspace  Create/manage a workspace from this directory's subfolders
     mmux check      Validate the effective config (global + project) and exit
     mmux docs       Explain what mmux is + how to write the config. If you (or an
                     AI agent) need setup instructions, run this — it prints them.
@@ -202,12 +214,15 @@ CONFIG: TWO LAYERS, MERGED
     project sets them.
     Relative `cwd`s always resolve against the PROJECT directory, so a global agent
     runs in whatever project you're in. Either file alone is enough; you don't need both.
+    With neither file present, bare `mmux` opens the same project/workspace chooser
+    as `mmux init`; an existing config opens directly.
 
 PROJECT FILE — ./mmux.yaml
-    Run `mmux init` for an interactive setup wizard, or write it yourself:
+    Run `mmux init` and choose Project (`mmux init project` skips the choice), or
+    write it yourself:
 
       # `name` is optional; defaults to the directory's name.
-      name: my-workspace
+      name: my-project
 
       agents:
         - name: Claude                 # label shown in the sidebar
@@ -258,7 +273,7 @@ GLOBAL FILE — ~/.mmux/config.yaml
     green check marks the ones found on your PATH.
 
 WORKSPACES — several projects in ONE session
-    In a parent folder that holds several projects, run `mmux workspace`. Its
+    In a parent folder that holds several projects, run `mmux init workspace`. Its
     checkbox picker discovers immediate subdirectories: space includes/excludes,
     J/K sets manifest order, `a` selects all/none, and Enter saves (up to 10). You
     can also write the resulting `workspace:` block by hand. Running `mmux` there
@@ -303,9 +318,10 @@ FIELD REFERENCE
 
 QUICK START
     cd ~/some/project
-    mmux init      # interactive setup wizard (agents + start command)
+    mmux init      # choose project or workspace setup
+    mmux init project   # project setup directly
+    mmux init workspace # workspace setup directly
     mmux agents    # add/remove the built-in harnesses in ~/.mmux/config.yaml
-    mmux workspace # create/manage an ordered workspace from this directory
     mmux check     # print the effective merged config without launching the TUI
     mmux           # open / reattach
     mmux a         # `mmux attach`: pick a workspace, active project, or past project"##

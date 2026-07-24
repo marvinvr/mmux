@@ -35,13 +35,18 @@ pub fn launch() -> Result<()> {
 /// current dir) and by the attach picker when opening a *recent* directory that has no
 /// running session yet — in both cases it attaches-or-creates that directory's session.
 pub fn launch_in(dir: PathBuf) -> Result<()> {
-    if crate::config::global_config_path().is_none() {
-        // No global config ⇒ no agents seeded (the wizard homes agents globally),
-        // so treat it as a first run and walk the user through setup — even when a
-        // local config already exists, since it may define processes but no agents.
-        crate::wizard::run(&dir)?;
+    if crate::config::global_config_path().is_none()
+        && crate::config::config_path(&dir).is_none()
+        && crate::config::local_config_path(&dir).is_none()
+    {
+        // With neither config layer present there is no project/workspace intent to
+        // infer, so bare `mmux` enters the same chooser as `mmux init`.
+        crate::wizard::run_first(&dir)?;
         // If they declined to write anything, there's still nothing to launch.
-        if crate::config::config_path(&dir).is_none() && crate::config::global_config_path().is_none() {
+        if crate::config::config_path(&dir).is_none()
+            && crate::config::local_config_path(&dir).is_none()
+            && crate::config::global_config_path().is_none()
+        {
             return Ok(());
         }
     }

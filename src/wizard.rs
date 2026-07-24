@@ -1,10 +1,8 @@
-//! Interactive `mmux init` — a first-run setup wizard.
+//! Interactive `mmux init` — setup for a project or a multi-project workspace.
 //!
-//! One flow, two entry points: [`run`] walks the user through the two things a
-//! project needs — which agents to offer and how the project starts — then
-//! writes the YAML. Bundling several projects is handled separately by
-//! [`run_workspace`] (`mmux workspace`), which shares its checkbox model with the
-//! manifest-only TUI popup.
+//! [`run`] starts with the project/workspace choice unless the caller supplied one
+//! explicitly. Project setup walks through agents and start commands; workspace
+//! setup shares its folder picker with the manifest-only TUI popup.
 //!
 //! WHERE it writes is decided by a single fact: does a global
 //! `~/.mmux/config.yaml` exist yet?
@@ -15,11 +13,10 @@
 //!   * **Global exists**  → everything (agents included) goes in `./mmux.yaml`,
 //!     layering on top of your global agents.
 //!
-//! So the wizard never needs to know how it was triggered — `mmux init` and the
-//! "no global config yet, just run `mmux`" first-run path call the same [`run`].
+//! Bare `mmux` with no local or global config calls [`run_first`], so onboarding
+//! uses this exact same choice instead of silently assuming a project.
 //!
-//! [`run_agents`] and [`run_workspace`] are focused management entry points, each the
-//! command-line twin of its in-TUI manager.
+//! [`run_agents`] remains the focused command-line twin of the in-TUI agent manager.
 //!
 //! The agents step is an inline, arrow-navigable checkbox picker over the built-in
 //! [`crate::agentmgr::AgentManager`] (shared with the in-TUI popup and `mmux agents`, so
@@ -42,6 +39,12 @@ use ratatui::crossterm::{
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitKind {
+    Project,
+    Workspace,
+}
+
 /// A chosen agent, ready to render into YAML.
 #[derive(Debug, Clone, PartialEq)]
 struct Agent {
@@ -62,20 +65,64 @@ struct Process {
     autostart: bool,
 }
 
-/// Run the wizard for `dir`, writing the global and/or project config per the
-/// rule in the module docs. Falls back to the static starter when stdin isn't a
-/// terminal (piped/headless), so scripted `mmux init` keeps working.
-pub fn run(dir: &Path) -> Result<()> {
+/// Run `mmux init`, optionally skipping the first choice. A non-interactive
+/// invocation keeps the historical project-starter behaviour; workspace setup
+/// needs a terminal for its folder picker.
+pub fn run(dir: &Path, requested: Option<InitKind>) -> Result<()> {
+    run_inner(dir, requested, false)
+}
+
+/// First-run entry point used by bare `mmux` when neither config layer exists.
+pub fn run_first(dir: &Path) -> Result<()> {
+    run_inner(dir, None, true)
+}
+
+fn run_inner(dir: &Path, requested: Option<InitKind>, first_run: bool) -> Result<()> {
     if !io::stdin().is_terminal() {
-        return crate::config::write_starter(dir);
+        return match requested {
+            Some(InitKind::Workspace) => {
+                anyhow::bail!("`mmux init workspace` needs an interactive terminal")
+            }
+            _ => crate::config::write_starter(dir),
+        };
     }
 
+    let existing = configured_kind(dir)?;
+    setup_intro(first_run);
+    let kind = match requested {
+        Some(kind) => Some(kind),
+        None => select_kind(existing)?,
+    };
+    let Some(kind) = kind else {
+        println!("{}", dim("Nothing written."));
+        return Ok(());
+    };
+
+    if existing == Some(InitKind::Workspace)
+        && kind == InitKind::Project
+        && !confirm(
+            "This directory is a workspace. Convert it to a single project?\n\
+             Its member list will be removed; other settings will be kept.",
+            false,
+        )?
+    {
+        println!("{}", dim("Nothing written."));
+        return Ok(());
+    }
+
+    match kind {
+        InitKind::Project => run_project(dir, existing == Some(InitKind::Workspace)),
+        InitKind::Workspace => run_workspace(dir),
+    }
+}
+
+fn run_project(dir: &Path, converting: bool) -> Result<()> {
     // No global config yet ⇒ agents become the user's global defaults.
     let agents_in_global = crate::config::global_config_path().is_none();
     // Write to whichever project file already exists, else a fresh mmux.yaml.
     let local_path = crate::config::config_path(dir).unwrap_or_else(|| dir.join("mmux.yaml"));
 
-    intro(&local_path, agents_in_global);
+    project_intro(&local_path, agents_in_global);
 
     let agents = ask_agents()?;
     let processes = ask_processes()?;
@@ -96,11 +143,110 @@ pub fn run(dir: &Path) -> Result<()> {
     let local_agents: &[Agent] = if agents_in_global { &[] } else { &agents };
     let name = dir_name(dir);
     let local = build_local_yaml(&name, local_agents, wrote_global_agents, &processes);
-    if write_local(&local_path, &local)? {
+    if write_project(
+        dir,
+        &local_path,
+        &local,
+        &name,
+        local_agents,
+        &processes,
+        converting,
+    )? {
         wrote.push(pretty(&local_path));
     }
 
     summary(&wrote);
+    if !wrote.is_empty() {
+        println!("{}", dim("Run `mmux` here to open the project."));
+    }
+    Ok(())
+}
+
+fn configured_kind(dir: &Path) -> Result<Option<InitKind>> {
+    if crate::config::config_path(dir).is_none() && crate::config::local_config_path(dir).is_none()
+    {
+        return Ok(None);
+    }
+    let cfg = crate::config::Config::load(dir)?;
+    Ok(Some(if cfg.workspace.is_some() {
+        InitKind::Workspace
+    } else {
+        InitKind::Project
+    }))
+}
+
+fn setup_intro(first_run: bool) {
+    println!("\n{}", bold("mmux setup"));
+    if first_run {
+        println!("{}", dim("No mmux configuration was found."));
+    }
+}
+
+fn select_kind(existing: Option<InitKind>) -> Result<Option<InitKind>> {
+    println!("\n{}", bold("What do you want to set up here?"));
+    println!("{}", dim("↑↓ choose · ⏎ continue · esc cancel"));
+    let mut selected = existing.unwrap_or(InitKind::Project);
+    let mut out = io::stdout();
+    enable_raw_mode()?;
+    let result = loop {
+        draw_kind_rows(&mut out, selected, existing)?;
+        match event::read()? {
+            Event::Key(k) if k.kind == KeyEventKind::Press => match (k.code, k.modifiers) {
+                (KeyCode::Up, _)
+                | (KeyCode::Down, _)
+                | (KeyCode::Char('j'), _)
+                | (KeyCode::Char('k'), _) => {
+                    selected = match selected {
+                        InitKind::Project => InitKind::Workspace,
+                        InitKind::Workspace => InitKind::Project,
+                    };
+                }
+                (KeyCode::Enter, _) => break Some(selected),
+                (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => break None,
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => break None,
+                _ => {}
+            },
+            _ => {}
+        }
+        execute!(out, MoveToPreviousLine(2))?;
+    };
+    let _ = disable_raw_mode();
+    println!();
+    Ok(result)
+}
+
+fn draw_kind_rows(
+    out: &mut io::Stdout,
+    selected: InitKind,
+    existing: Option<InitKind>,
+) -> Result<()> {
+    execute!(out, Clear(ClearType::FromCursorDown))?;
+    for (kind, name, description) in [
+        (
+            InitKind::Project,
+            "Project",
+            "One codebase with its own processes and Git.",
+        ),
+        (
+            InitKind::Workspace,
+            "Workspace",
+            "Several project folders in one mmux session.",
+        ),
+    ] {
+        let marker = if selected == kind { "› " } else { "  " };
+        let name = if selected == kind {
+            paint(CYAN_BOLD, &format!("{name:<10}"))
+        } else {
+            format!("{name:<10}")
+        };
+        let current = if existing == Some(kind) {
+            dim("  currently configured")
+        } else {
+            String::new()
+        };
+        write!(out, "{marker}{name} {}{current}\r\n", dim(description))?;
+    }
+    out.flush()?;
     Ok(())
 }
 
@@ -146,17 +292,28 @@ pub fn run_agents() -> Result<()> {
     Ok(())
 }
 
-/// `mmux workspace` — create or edit a directory-level workspace manifest with the
-/// same compact checkbox interaction as `mmux agents`. Immediate child directories
+/// Create or edit a directory-level workspace manifest. Immediate child directories
 /// are discovered automatically; existing outside paths remain available as rows.
-pub fn run_workspace(dir: &Path) -> Result<()> {
-    if !io::stdin().is_terminal() {
-        anyhow::bail!("`mmux workspace` needs an interactive terminal");
-    }
+fn run_workspace(dir: &Path) -> Result<()> {
+    let agents_in_global = crate::config::global_config_path().is_none();
+    let agents = if agents_in_global {
+        println!();
+        println!(
+            "{}",
+            dim("First run — choose agents to make available in every workspace project.")
+        );
+        ask_agents()?
+    } else {
+        Vec::new()
+    };
     let mut m = WorkspaceManager::new(dir)?;
     let path = config::workspace_config_path(&m.root);
 
-    println!("\n{}", bold("Manage workspace"));
+    println!("\n{}", bold("Workspace setup"));
+    println!(
+        "{}",
+        dim("A workspace opens several project folders together in one persistent session.")
+    );
     println!(
         "{}",
         dim(&format!(
@@ -167,21 +324,32 @@ pub fn run_workspace(dir: &Path) -> Result<()> {
     );
     m.name = ask("Workspace name", Some(&m.name))?;
     if !select_workspace(&mut m)? {
-        println!("{}", dim("No changes."));
+        println!("{}", dim("Nothing written."));
         return Ok(());
     }
     let folders = m.folders();
+    let mut wrote = Vec::new();
+    if agents_in_global && !agents.is_empty() {
+        if let Some(global_path) = crate::config::global_config_target() {
+            write_new(&global_path, &build_global_yaml(&agents))?;
+            wrote.push(pretty(&global_path));
+        }
+    }
     crate::restore::bind_project_dirs(&m.root, &m.original_projects);
     config::write_workspace(&path, &m.name, &folders)
         .with_context(|| format!("writing {}", pretty(&path)))?;
+    wrote.push(pretty(&path));
 
-    println!("\n{}", bold("Done."));
+    summary(&wrote);
     println!(
-        "  • {} {}",
-        pretty(&path),
-        dim(&format!("({} project(s))", folders.len()))
+        "{}",
+        dim(&format!("{} project(s) selected.", folders.len()))
     );
     println!("{}", dim("Run `mmux` here to open the workspace."));
+    println!(
+        "{}",
+        dim("Run `mmux init` inside a member project to configure its processes.")
+    );
     Ok(())
 }
 
@@ -540,8 +708,8 @@ fn build_local_yaml(
         s.push('\n');
     }
 
-    // Workspace creation is a separate `mmux workspace` flow; this commented
-    // example documents the shape without `mmux init` emitting a live block.
+    // Project setup leaves workspace creation to the other `mmux init` branch; this
+    // commented example documents the shape without emitting a live block.
     s.push_str(config::PROJECT_WORKSPACE_COMMENT);
     s.push_str(config::PROJECT_WORKSPACE_EXAMPLE);
     s
@@ -592,19 +760,51 @@ fn write_new(path: &Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
-/// Write the project file, asking before clobbering an existing one. Returns
-/// whether it actually wrote.
-fn write_local(path: &Path, contents: &str) -> Result<bool> {
-    if path.exists()
-        && !confirm(
-            &format!("{} already exists. Overwrite it?", pretty(path)),
-            false,
-        )?
-    {
+/// Write the project setup. Existing files are updated section-by-section so
+/// notification, panel, and other unrelated settings survive a rerun.
+fn write_project(
+    dir: &Path,
+    path: &Path,
+    fresh_contents: &str,
+    name: &str,
+    agents: &[Agent],
+    processes: &[Process],
+    converting: bool,
+) -> Result<bool> {
+    if path.exists() && !converting && !confirm(&format!("Update {}?", pretty(path)), false)? {
         println!("{}", dim(&format!("Left {} unchanged.", pretty(path))));
         return Ok(false);
     }
-    write_new(path, contents)?;
+    if path.exists() {
+        let agents: Vec<config::AgentDraft> = agents
+            .iter()
+            .map(|a| config::AgentDraft {
+                name: a.name.clone(),
+                cmd: a.cmd.clone(),
+                args: a.args.clone(),
+            })
+            .collect();
+        let processes: Vec<config::ProcessDraft> = processes
+            .iter()
+            .map(|p| config::ProcessDraft {
+                name: p.name.clone(),
+                cmd: p.cmd.clone(),
+                args: p.args.clone(),
+                cwd: (p.cwd != ".").then(|| p.cwd.clone()),
+                autostart: p.autostart,
+                stop: (!p.stop.trim().is_empty()).then(|| p.stop.clone()),
+            })
+            .collect();
+        config::write_project_setup(path, name, &agents, &processes)?;
+    } else {
+        write_new(path, fresh_contents)?;
+    }
+    if converting {
+        let workspace_path = config::workspace_config_path(dir);
+        if workspace_path != path {
+            config::remove_workspace(&workspace_path)?;
+        }
+    }
     Ok(true)
 }
 
@@ -653,8 +853,8 @@ fn confirm(question: &str, default_yes: bool) -> Result<bool> {
 
 // ── presentation ─────────────────────────────────────────────────────────────
 
-fn intro(local_path: &Path, agents_in_global: bool) {
-    println!("\n{}", bold("mmux setup"));
+fn project_intro(local_path: &Path, agents_in_global: bool) {
+    println!("\n{}", bold("Project setup"));
     if agents_in_global {
         println!(
             "{}",
@@ -676,11 +876,11 @@ fn summary(wrote: &[String]) {
         println!("{}", dim("Nothing written."));
         return;
     }
-    println!("{}", bold("Done.") );
+    println!("{}", bold("Done."));
     for w in wrote {
         println!("  • {w}");
     }
-    println!("{}", dim("Edit those to fine-tune, then run `mmux`."));
+    println!("{}", dim("Edit those files to fine-tune the setup."));
 }
 
 /// Display a path with `$HOME` collapsed to `~`.

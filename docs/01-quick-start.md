@@ -17,27 +17,35 @@ with [Rust](https://rustup.rs) (`cargo install --path .`).
 mmux needs **tmux** on your `PATH`. The [git panel](03-usage.md#the-git-panel) uses the `git`
 CLI, and the [Ctrl+P file picker](03-usage.md#the-file-picker) opens files in your `$EDITOR`.
 
-## 2. Set Up a Project
+## 2. Set Up a Project or Workspace
 
 ```sh
 cd ~/some/project
 mmux init
 ```
 
-`mmux init` is an interactive wizard: it offers the built-in agent presets — Claude, Codex,
-Gemini, Amp, opencode, and Grok — as an **inline checkbox picker** you arrow through (`space` to
-toggle, `m` to cycle the launch mode: normal → auto → danger, `⏎` to confirm; installed ones start
-checked), then asks for any start commands you want to watch. On a machine with no global config yet,
-your agents are saved to `~/.mmux/config.yaml` so they are available in every project; the rest
-goes in this project's `mmux.yaml`.
+`mmux init` first asks whether this directory is a **Project** (one codebase with its own processes
+and Git panel) or a **Workspace** (several project folders in one persistent session). Use
+`mmux init project` or `mmux init workspace` to skip that first choice.
+
+Project setup offers the built-in agent presets — Claude, Codex, Gemini, Amp, opencode, and Grok —
+as an **inline checkbox picker** you arrow through (`space` to toggle, `m` to cycle the launch mode:
+normal → auto → danger, `⏎` to confirm; installed ones start checked), then asks for start commands
+you want to watch. On a machine with no global config yet, your agents are saved to
+`~/.mmux/config.yaml` so they are available in every project; the rest goes in this project's
+`mmux.yaml`.
 
 To change your agents later, run **`mmux agents`** (the same picker, agents only) or press **`a`**
 in the sidebar — both write to the global config and take effect on the next open / reload.
 
 You can skip the wizard and write [`mmux.yaml`](04-configuration.md) by hand, or rely entirely on
-a global config — either file alone is enough. To bundle several project directories, `cd` to
-their parent and run **`mmux workspace`**: use `space` to select folders, `J`/`K` to set their
-manifest order, then `Enter` to create the [workspace manifest](04-configuration.md#workspace-manifests).
+a global config — either file alone is enough. Workspace setup discovers immediate child folders;
+use `space` to select them, `J`/`K` to set manifest order, then `Enter` to create the
+[workspace manifest](04-configuration.md#workspace-manifests).
+
+When neither a local nor global config exists, running bare `mmux` opens this same choice before
+launching. An existing local config or workspace manifest is already a valid setup and opens
+directly.
 
 ## 3. Open It
 
@@ -71,7 +79,7 @@ reconnecting over SSH.
 
 ```sh
 mmux agents   # add/remove the built-in agent harnesses in your global config
-mmux workspace # create/manage a workspace from this directory's subfolders
+mmux init workspace # create/manage a workspace from this directory's subfolders
 mmux check    # print the effective merged config, no TUI
 mmux docs     # print a self-contained setup & config guide
 ```

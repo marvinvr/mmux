@@ -51,11 +51,10 @@ Homebrew install notifies you and applies the upgrade with one confirmation. See
 
 ```sh
 cd ~/some/project
-mmux init      # interactive setup: agents + start commands
+mmux init      # choose project or workspace setup
 mmux           # open / reattach
 
 mmux a         # `mmux attach`: pick a workspace, active project, or past project
-mmux workspace # create/manage a workspace from the current directory's subfolders
 ```
 
 In the TUI: `↑`/`↓` move · `Enter` opens a `+ New …` row or jumps into a session · `s`/`x`/`r`
@@ -78,7 +77,7 @@ agents:
 
 ```yaml
 # ./mmux.yaml — this project's bits
-name: my-workspace
+name: my-project
 processes:
   - name: Dev server
     cmd: npm
@@ -90,7 +89,7 @@ processes:
 A private, git-ignored `./mmux.local.yml` can **deep-override** the project file — overriding just
 the keys it names (down to a single nested field) and leaving the rest intact.
 
-To bundle several projects, run `mmux workspace` in their parent directory. It offers the
+To bundle several projects, run `mmux init workspace` in their parent directory. It offers the
 subdirectories as an ordered checkbox list and writes a manifest like this:
 
 ```yaml

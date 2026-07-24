@@ -10,11 +10,10 @@ mmux is configured with YAML. There are two files, merged at launch — plus an 
 | `~/.mmux/config.yaml` | **Global defaults** — the things you want in every project, typically your agents. |
 | `./mmux.yaml` | **Per-directory** — this project's settings, or an optional workspace manifest. `./mmux.yml` is also accepted (`.yaml` wins if both exist). |
 
-Either file alone is a valid config. But the **global** file is what the first-run check looks
-for: if `~/.mmux/config.yaml` doesn't exist when you run `mmux` — even when a project `./mmux.yaml`
-is already present — it treats this as a first run and launches the
-[`mmux init`](01-quick-start.md#2-set-up-a-project) wizard, since a project file may define
-processes but no agents.
+Either file alone is a valid config. When **neither** a local project/workspace file nor the global
+file exists, bare `mmux` launches the [`mmux init`](01-quick-start.md#2-set-up-a-project-or-workspace)
+wizard. It first asks whether the current directory should be one project or a workspace containing
+several project folders. If either config layer already exists, mmux opens directly.
 
 Run `mmux check` to print the effective merged config without launching the TUI, or `mmux docs`
 for a self-contained guide printed straight to the terminal (handy for humans and AI agents
@@ -89,7 +88,7 @@ agents:
 
 ```yaml
 # name is optional; it defaults to the directory's name.
-name: my-workspace
+name: my-project
 
 processes:
   - name: Dev server
@@ -149,11 +148,12 @@ session goes away.
 | `auto` | Auto-accept file edits; still prompt for riskier actions (shell, network). Claude/Codex/Gemini only. | `--permission-mode auto`, `--sandbox workspace-write`, `--approval-mode auto_edit` |
 | `danger` | Skip **all** approvals ("danger" / yolo). | `--dangerously-skip-permissions`, `--yolo`, `--always-approve` |
 
-The [`mmux init`](01-quick-start.md#2-set-up-a-project) wizard offers them as an **inline checkbox
+The [`mmux init`](01-quick-start.md#2-set-up-a-project-or-workspace) wizard offers them as an **inline checkbox
 picker** — arrow keys to move, `space` to toggle, **`m` to cycle the mode** (normal → auto →
 danger, wrapping; `auto` is skipped for harnesses that don't have it), `a` for all/none, `⏎` to
-confirm (installed harnesses start pre-checked) — and whatever you pick seeds your **global** config
-so it's available everywhere.
+confirm (installed harnesses start pre-checked). When no global config exists yet, the selection
+seeds it so those agents are available everywhere; otherwise project setup writes its selection to
+the project layer.
 
 **Managing agents.** Two ways, both editing the **global** `~/.mmux/config.yaml` (the natural home
 for agents you reuse across projects) and preserving any non-preset agents you added by hand:
@@ -254,7 +254,7 @@ session. The easiest setup is to enter a container directory — commonly the pa
 projects — and run:
 
 ```sh
-mmux workspace
+mmux init workspace
 ```
 
 The inline picker discovers immediate subdirectories. Use `space` to include/exclude one, `J`/`K`
@@ -303,7 +303,7 @@ projects (plus the global config) as usual.
 
 ### Managing a Workspace
 
-- **From the terminal:** run `mmux workspace` again in the manifest directory. Existing members
+- **From the terminal:** run `mmux init workspace` again in the manifest directory. Existing members
   start checked and keep their order; configured outside paths remain visible even when they are
   not immediate children, so saving never silently drops them. `mmux` and `git` tags are hints,
   not requirements.
@@ -316,6 +316,11 @@ projects (plus the global config) as usual.
 Both editors replace only the owned `name` line and `workspace:` block. If a private
 `mmux.local.yml` already owns `workspace:`, that layer is edited so the saved choice is not hidden
 by its override.
+
+Plain `mmux init` marks and preselects the directory's current type. Choosing **Workspace** for a
+project adds a manifest while preserving unrelated settings. Choosing **Project** for a workspace
+asks for confirmation, removes only the manifest member list, and keeps unrelated settings and
+comments.
 
 Run `mmux` in the manifest directory to open or reattach its persistent session, just like any
 ordinary project directory.

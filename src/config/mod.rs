@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 mod yaml;
 pub use yaml::{
-    append_process, global_agents, remove_process, replace_process, write_agents, write_starter,
-    write_workspace,
+    append_process, global_agents, remove_process, remove_workspace, replace_process, write_agents,
+    write_project_setup, write_starter, write_workspace,
 };
 use yaml::{quote_token, shell_split};
 pub(crate) use yaml::{render_agent_item, yaml_args, yaml_scalar};

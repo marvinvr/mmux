@@ -20,7 +20,7 @@ use std::path::Path;
 // live-value headers stay bespoke — they are NOT byte-identical, by design.)
 
 /// Intro lines shared by the project scaffold and the wizard's project file.
-pub(crate) const PROJECT_HEADER: &str = "# mmux workspace config.\n\
+pub(crate) const PROJECT_HEADER: &str = "# mmux project config.\n\
     # Run `mmux` in this directory to open (or reattach to) the session.\n\
     # New here? Run `mmux docs` for the full guide, or visit https://mmux.org.\n";
 
@@ -52,8 +52,8 @@ pub(crate) const PROJECT_PROCESSES_EXAMPLE: &str = "# processes:\n\
 pub(crate) const PROJECT_WORKSPACE_COMMENT: &str =
     "# Workspace: a `workspace:` block turns this file into a workspace manifest — a\n\
     # named bundle of projects that open together in one sidebar, each folder its own\n\
-    # group (switch with [ and ]). Run `mmux workspace` in their parent folder for\n\
-    # the interactive picker, or list directories here by hand (relative to this\n\
+    # group (switch with [ and ]). Run `mmux init workspace` in their parent folder\n\
+    # for the interactive picker, or list directories here by hand (relative to this\n\
     # file; `.` includes its own directory). Up to 10 projects.\n";
 
 /// The commented-out `workspace:` example.
@@ -167,7 +167,7 @@ pub fn write_workspace(path: &Path, name: &str, folders: &[String]) -> Result<()
     let original = std::fs::read_to_string(path).unwrap_or_default();
     let updated = if original.trim().is_empty() {
         format!(
-            "# mmux workspace manifest. Run `mmux workspace` here to edit it.\n\
+            "# mmux workspace manifest. Run `mmux init workspace` here to edit it.\n\
              name: {}\n\n{}",
             yaml_scalar(name.trim()),
             render_workspace_block(folders)
@@ -182,6 +182,44 @@ pub fn write_workspace(path: &Path, name: &str, folders: &[String]) -> Result<()
     }
     std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
+}
+
+/// Update the sections owned by project setup while retaining unrelated settings
+/// and comments. An empty agents/processes selection removes that project-level
+/// block, allowing global defaults to remain effective.
+pub fn write_project_setup(
+    path: &Path,
+    name: &str,
+    agents: &[AgentDraft],
+    processes: &[ProcessDraft],
+) -> Result<()> {
+    let original =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let mut updated = replace_top_level_scalar(&original, "name", name.trim());
+    updated = if agents.is_empty() {
+        remove_top_level_block(&updated, "agents")
+    } else {
+        replace_top_level_block(&updated, "agents", &render_agents_block(agents))
+    };
+    updated = if processes.is_empty() {
+        remove_top_level_block(&updated, "processes")
+    } else {
+        let mut block = String::from("processes:\n");
+        for process in processes {
+            block.push_str(&render_item(process, 2));
+        }
+        replace_top_level_block(&updated, "processes", &block)
+    };
+    updated = remove_top_level_block(&updated, "workspace");
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))
+}
+
+/// Remove only the workspace manifest block from its owning config layer.
+pub fn remove_workspace(path: &Path) -> Result<()> {
+    let original =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let updated = remove_top_level_block(&original, "workspace");
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))
 }
 
 fn render_workspace_block(folders: &[String]) -> String {
@@ -216,6 +254,17 @@ fn replace_top_level_block(text: &str, key: &str, replacement: &str) -> String {
     {
         Some(k) => splice_lines(&lines, k, block_end(&lines, k), replacement),
         None => append_block(text, replacement),
+    }
+}
+
+fn remove_top_level_block(text: &str, key: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    match lines
+        .iter()
+        .position(|line| top_level_key(line) == Some(key))
+    {
+        Some(k) => splice_lines(&lines, k, block_end(&lines, k), ""),
+        None => text.to_string(),
     }
 }
 
@@ -283,7 +332,7 @@ fn scaffold_project_file(processes: &str) -> String {
     let mut s = String::new();
     s.push_str(PROJECT_HEADER);
     s.push_str("# `name` is optional — it defaults to this directory's name.\n");
-    s.push_str("# name: my-workspace\n\n");
+    s.push_str("# name: my-project\n\n");
 
     s.push_str(PROJECT_AGENTS_COMMENT);
     s.push_str(PROJECT_AGENTS_EXAMPLE);
@@ -613,11 +662,11 @@ pub fn write_starter(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-const STARTER: &str = r#"# mmux workspace config.
+const STARTER: &str = r#"# mmux project config.
 # Run `mmux` in this directory to open (or reattach to) the session.
 # New here? Run `mmux docs` for the full guide, or visit https://mmux.org.
 # `name` is optional — it defaults to this directory's name.
-# name: my-workspace
+# name: my-project
 
 # Agents: interactive programs you spawn on demand. Each "+ New <name>" in the
 # sidebar launches a fresh instance; its sidebar subtitle shows the terminal
@@ -723,7 +772,7 @@ mod tests {
         // bare `processes:` block — the live process sits in the processes section while
         // agents/workspace stay as commented examples.
         let out = scaffold_project_file(&render_item(&draft(), 2));
-        assert!(out.starts_with("# mmux workspace config."));
+        assert!(out.starts_with("# mmux project config."));
         assert!(out.contains("mmux docs"));
         assert!(out.contains("# agents:"));
         assert!(out.contains("processes:\n  - name: Dev server"));

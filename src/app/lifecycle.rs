@@ -104,7 +104,8 @@ impl App {
 
     /// Raise the workspace manager. Deliberately available only in a manifest-backed
     /// session: creating a new workspace belongs to the terminal command
-    /// (`mmux workspace`), while this popup manages the session the user is already in.
+    /// (`mmux init workspace`), while this popup manages the session the user is
+    /// already in.
     pub(crate) fn open_workspace_manager(&mut self) {
         if !self.manifest {
             return;
