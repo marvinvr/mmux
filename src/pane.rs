@@ -119,7 +119,9 @@ impl vt100::Callbacks for PaneEvents {
                 }
             }
             Some(b'<') => {
-                let count = param.unwrap_or(1) as usize;
+                // vt100 represents an omitted CSI number as zero; Kitty defines
+                // the omitted form as the default single stack pop.
+                let count = param.unwrap_or(1).max(1) as usize;
                 let keep = self.kitty_flags.len().saturating_sub(count);
                 self.kitty_flags.truncate(keep);
             }
@@ -677,6 +679,14 @@ mod tests {
         assert_eq!(parser.callbacks().kitty_flags(), 1);
         assert_eq!(rx.try_recv().unwrap(), Bytes::from_static(b"\x1b[?1u"));
 
+        // A second push becomes active, and an unnumbered pop restores the
+        // previous flags. vt100 reports that omitted pop count as zero.
+        parser.process(b"\x1b[>0u");
+        assert_eq!(parser.callbacks().kitty_flags(), 0);
+        parser.process(b"\x1b[<u");
+        assert_eq!(parser.callbacks().kitty_flags(), 1);
+
+        // Popping the final entry resets the terminal to legacy mode.
         parser.process(b"\x1b[<u");
         assert_eq!(parser.callbacks().kitty_flags(), 0);
     }
