@@ -63,6 +63,7 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
     let exe = std::env::current_exe().context("locating mmux binary")?;
     let exe = exe.to_string_lossy().into_owned();
 
+    configure_server();
     if !session_exists(&name) {
         let (cols, rows) = ratatui::crossterm::terminal::size().unwrap_or((120, 40));
         let dir_str = canon.to_string_lossy().into_owned();
@@ -149,6 +150,37 @@ fn session_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Let applications opt into modified-key reporting, and use the CSI-u form
+/// crossterm and the inner pane protocol both understand. These are server options
+/// in tmux, not session options; `on` only honors a pane's explicit request (unlike
+/// `always`), so ordinary shells and unrelated panes keep legacy key behavior.
+fn configure_server() {
+    for (k, v) in [("extended-keys", "on"), ("extended-keys-format", "csi-u")] {
+        let _ = Command::new("tmux").args(["set-option", "-s", k, v]).status();
+    }
+    // TERM is commonly xterm-256color even for Kitty/Ghostty/iTerm2. Mark that
+    // family as extended-key capable so tmux actually asks the outer terminal for
+    // modifiers; unsupported terminals harmlessly ignore the request. Avoid growing
+    // the server's feature list every time another mmux directory opens.
+    let has_xterm_extkeys = Command::new("tmux")
+        .args(["show-options", "-sv", "terminal-features"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout).lines().any(|line| {
+                let mut fields = line.split(':');
+                fields.next() == Some("xterm*") && fields.any(|field| field == "extkeys")
+            })
+        })
+        .unwrap_or(false);
+    if !has_xterm_extkeys {
+        let _ = Command::new("tmux")
+            .args(["set-option", "-sa", "terminal-features", ",xterm*:extkeys"])
+            .status();
+    }
+}
+
 /// Make tmux invisible and non-interfering for THIS session only (never `-g`).
 /// `title` is the project name pushed to the outer terminal's tab via set-titles.
 fn configure_session(name: &str, title: &str) {
@@ -225,6 +257,7 @@ pub fn attach_picker() -> Result<()> {
         eprintln!("tmux not found on PATH.");
         std::process::exit(1);
     }
+    configure_server();
     let entries = build_entries();
     if entries.is_empty() {
         println!("No running or recent mmux sessions.");

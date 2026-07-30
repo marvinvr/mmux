@@ -73,6 +73,12 @@ At any moment one region has keyboard focus: the **sidebar**, the **main pane** 
 program receives your keystrokes), or the **git panel**. The keys below are grouped by which
 region they apply to.
 
+Inside a focused agent prompt, modified keys are forwarded in the enhanced-keyboard mode the
+agent requests. In particular, `Shift+Enter` reaches Claude Code, Codex, and other compatible
+harnesses as a distinct key so they can insert a line break instead of submitting the prompt.
+Plain `Enter` remains unchanged, and programs that do not request enhanced keys keep normal
+terminal input.
+
 ## Sidebar Keys
 
 | Key | Action |

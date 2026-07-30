@@ -3,12 +3,25 @@
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// Encode a crossterm key event into the bytes to send to the PTY. Returns an
-/// empty vec for keys mmux doesn't forward.
-pub fn encode_key(k: &KeyEvent) -> Vec<u8> {
+/// Encode a crossterm key event into the bytes to send to the PTY. `kitty_flags`
+/// is the progressive-keyboard mode requested by the program in that pane.
+/// Returns an empty vec for keys mmux doesn't forward.
+pub fn encode_key(k: &KeyEvent, kitty_flags: u8) -> Vec<u8> {
     use KeyCode::*;
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
     let alt = k.modifiers.contains(KeyModifiers::ALT);
+
+    // With Kitty's disambiguation flag active, modified Enter must retain its
+    // modifier: prompt TUIs use Shift+Enter/Alt+Enter to insert a newline while
+    // plain Enter submits. Outside that negotiated mode, keep terminal-compatible
+    // legacy behavior (all Enter variants are CR).
+    if k.code == Enter {
+        let modifier = kitty_modifier(k.modifiers);
+        if kitty_flags & 1 != 0 && modifier != 1 {
+            return format!("\x1b[13;{modifier}u").into_bytes();
+        }
+        return vec![b'\r'];
+    }
 
     let mut out: Vec<u8> = match k.code {
         Char(c) => {
@@ -25,7 +38,6 @@ pub fn encode_key(k: &KeyEvent) -> Vec<u8> {
                 c.encode_utf8(&mut buf).as_bytes().to_vec()
             }
         }
-        Enter => vec![b'\r'],
         Backspace => vec![0x7f],
         Tab => vec![b'\t'],
         BackTab => vec![27, 91, 90],
@@ -67,6 +79,17 @@ pub fn encode_key(k: &KeyEvent) -> Vec<u8> {
     out
 }
 
+/// Kitty numbers modifiers as one plus a bitset: Shift, Alt, Ctrl, Super,
+/// Hyper, Meta. Keep this local to the protocol-specific path above.
+fn kitty_modifier(modifiers: KeyModifiers) -> u8 {
+    1 + u8::from(modifiers.contains(KeyModifiers::SHIFT))
+        + 2 * u8::from(modifiers.contains(KeyModifiers::ALT))
+        + 4 * u8::from(modifiers.contains(KeyModifiers::CONTROL))
+        + 8 * u8::from(modifiers.contains(KeyModifiers::SUPER))
+        + 16 * u8::from(modifiers.contains(KeyModifiers::HYPER))
+        + 32 * u8::from(modifiers.contains(KeyModifiers::META))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,13 +101,13 @@ mod tests {
 
     #[test]
     fn plain_char() {
-        assert_eq!(encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE)), b"a");
+        assert_eq!(encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0), b"a");
     }
 
     #[test]
     fn ctrl_c_is_0x03() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), 0),
             vec![0x03]
         );
     }
@@ -92,37 +115,72 @@ mod tests {
     #[test]
     fn ctrl_b_is_0x02() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('b'), KeyModifiers::CONTROL)),
+            encode_key(&key(KeyCode::Char('b'), KeyModifiers::CONTROL), 0),
             vec![0x02]
         );
     }
 
     #[test]
     fn enter_is_carriage_return() {
-        assert_eq!(encode_key(&key(KeyCode::Enter, KeyModifiers::NONE)), b"\r");
+        assert_eq!(encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 1), b"\r");
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 0),
+            b"\r"
+        );
+    }
+
+    #[test]
+    fn modified_enter_uses_negotiated_kitty_encoding() {
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 1),
+            b"\x1b[13;2u"
+        );
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::ALT), 1),
+            b"\x1b[13;3u"
+        );
+        assert_eq!(
+            encode_key(
+                &key(
+                    KeyCode::Enter,
+                    KeyModifiers::SHIFT | KeyModifiers::CONTROL
+                ),
+                1
+            ),
+            b"\x1b[13;6u"
+        );
     }
 
     #[test]
     fn backspace_is_del() {
         assert_eq!(
-            encode_key(&key(KeyCode::Backspace, KeyModifiers::NONE)),
+            encode_key(&key(KeyCode::Backspace, KeyModifiers::NONE), 0),
             vec![0x7f]
         );
     }
 
     #[test]
     fn arrows_are_csi() {
-        assert_eq!(encode_key(&key(KeyCode::Up, KeyModifiers::NONE)), vec![27, 91, 65]);
-        assert_eq!(encode_key(&key(KeyCode::Down, KeyModifiers::NONE)), vec![27, 91, 66]);
+        assert_eq!(
+            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), 0),
+            vec![27, 91, 65]
+        );
+        assert_eq!(
+            encode_key(&key(KeyCode::Down, KeyModifiers::NONE), 0),
+            vec![27, 91, 66]
+        );
     }
 
     #[test]
     fn alt_prefixes_esc() {
-        assert_eq!(encode_key(&key(KeyCode::Char('x'), KeyModifiers::ALT)), vec![27, b'x']);
+        assert_eq!(
+            encode_key(&key(KeyCode::Char('x'), KeyModifiers::ALT), 0),
+            vec![27, b'x']
+        );
     }
 
     #[test]
     fn unmapped_key_is_empty() {
-        assert!(encode_key(&key(KeyCode::F(20), KeyModifiers::NONE)).is_empty());
+        assert!(encode_key(&key(KeyCode::F(20), KeyModifiers::NONE), 0).is_empty());
     }
 }

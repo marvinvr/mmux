@@ -162,7 +162,8 @@ impl App {
         }
         // The `Ctrl-b` leader is handled globally in `on_key` before we reach here, so a
         // focused pane only has to translate the keystroke to bytes for the program.
-        let bytes = encode_key(&k);
+        let kitty_flags = self.focused_pane().map(|p| p.kitty_flags()).unwrap_or(0);
+        let bytes = encode_key(&k, kitty_flags);
         if !bytes.is_empty() {
             // Typing snaps back to the live view if we'd scrolled into history.
             if let Some(p) = self.focused_pane() {

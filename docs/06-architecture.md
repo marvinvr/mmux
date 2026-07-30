@@ -40,14 +40,16 @@ and singleton-per-directory:
   symlinks all map to the same session.
 - **Singleton.** A second `mmux` in the same directory computes the same name and attaches
   instead of creating. If creation loses a race, mmux falls through to attaching to the winner.
-- **Invisible & non-interfering.** `configure_session` sets options on *that session only*
-  (never `-g`): status bar off, no tmux prefix (mmux owns its own `Ctrl-b` leader), `mouse on`
+- **Invisible & non-interfering.** `configure_session` sets UI/lifecycle options on *that session
+  only* (never `-g`): status bar off, no tmux prefix (mmux owns its own `Ctrl-b` leader), `mouse on`
   (so tmux enables outer-terminal mouse reporting and forwards events to the TUI, which sets its
   own mouse mode — `off` silently drops wheel/clicks when attached over SSH), `destroy-unattached
   off` (survives detach),
   `allow-passthrough on` (lets [notification](05-notifications.md) escapes reach the outer
   terminal), and `set-clipboard on` (lets OSC 52 copies through). The outer terminal's tab title
-  is set to the project name.
+  is set to the project name. The one server-level capability is extended keys: `configure_server`
+  enables opt-in CSI-u reporting and marks the common `xterm*` terminal family capable. It does
+  not force enhanced input on ordinary panes; a program must request it.
 - Attaching runs with `TMUX` unset, so mmux works even when launched inside another tmux.
 
 `mmux attach` is a separate path: it lists running `mmux-*` sessions plus recent directories
@@ -376,8 +378,11 @@ removes it from the snapshot, so it's easy to get a clean slate.
   is the single "is this agent actively working" predicate — it's what both spins the sidebar glyph
   and gates the close-confirmation, so the prompt fires for exactly the agents that show a spinner.
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader
-  via `leader_command`, then by focus). In a pane, `keymap::encode_key` translates the key to PTY
-  bytes and `Pane::send` queues them. Before dispatch, `InputDecoder` repairs the one unsafe
+  via `leader_command`, then by focus). In a pane, the vt100 callback answers Kitty keyboard
+  negotiation and records the requested flags; `keymap::encode_key` uses those flags to preserve
+  modified Enter as CSI-u (so an agent sees `Shift+Enter` rather than a submitting Enter), then
+  `Pane::send` queues the bytes. Programs that do not opt in retain legacy key encoding. Before
+  dispatch, `InputDecoder` repairs the one unsafe
   crossterm read boundary: if tmux's SGR mouse report is split immediately after `ESC`, it briefly
   holds that apparent Escape and reconstructs the mouse event instead of cancelling the inner
   program and forwarding the printable `[<…M` tail.
