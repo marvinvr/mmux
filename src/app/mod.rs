@@ -122,6 +122,7 @@ pub(crate) struct App {
     last_proj_sel: Vec<Option<Nav>>,
     focus: Focus,
     pending_leader: bool,
+    native_copy: bool,
     should_quit: bool,
     flash: Option<(String, Instant)>, // transient footer note (e.g. the reload result)
     last_inner: (u16, u16),           // last main-pane inner size (rows, cols)
@@ -260,6 +261,7 @@ impl App {
             last_proj_sel: vec![None; nproj],
             focus: Focus::Sidebar,
             pending_leader: false,
+            native_copy: false,
             should_quit: false,
             flash: None,
             last_inner: (24, 80),
@@ -680,6 +682,13 @@ pub fn run(ws: Workspace) -> Result<()> {
 
     let res = run_loop(&mut terminal, &mut app);
 
+    // An input/read error can escape while native-copy mode has tmux's mouse option
+    // disabled. Restore it before any other teardown so a surviving session never
+    // strands its client without mmux mouse handling.
+    if app.native_copy {
+        app.leave_native_copy();
+    }
+
     // Final snapshot while the panes are still alive, so the next open — after this
     // quit, or the update restart below — restores them with each one's freshest cwd.
     if res.is_ok() {
@@ -819,6 +828,23 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
         emit_sixel(terminal, app)?;
         if app.should_quit || app.restart {
             break;
+        }
+
+        // Native-copy mode deliberately freezes the painted alternate screen while
+        // tmux mouse reporting is off. The outer terminal can then own a stable drag
+        // selection and copy it with its normal shortcut. Its mouse events never reach
+        // us; the first real key restores mouse handling and is consumed.
+        while app.native_copy {
+            match event::read()? {
+                Event::Key(k) if k.kind == event::KeyEventKind::Press => {
+                    let management_quit = k.code == event::KeyCode::F(20);
+                    app.leave_native_copy();
+                    if management_quit {
+                        app.on_key(k);
+                    }
+                }
+                _ => {}
+            }
         }
 
         // Poll with a timeout so live process output redraws even without input. A

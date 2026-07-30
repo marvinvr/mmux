@@ -175,7 +175,7 @@ A `workspace:` block bundles project folders into one session (`[`/`]` switches
 members).
 
 KEYS (sidebar):  ↑/↓ move · [ ] switch project · p projects (phone) · Enter open · s start · x close · r restart · a agents · w workspace (manifests only) · R reload config · ? about · d detach · q quit
-KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close R=reload b=send Ctrl-b"#
+KEYS (terminal): keys go to the focused pane · Ctrl-b then h=back d=detach x=close c=native copy R=reload b=send Ctrl-b"#
     );
 }
 

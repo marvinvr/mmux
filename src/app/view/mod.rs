@@ -75,6 +75,7 @@ pub(crate) enum FooterAction {
     /// Compact-only: dismiss the current full-screen panel (drawer / git / diff) and
     /// return to the pane. The bottom-corner counterpart to the `menu`/`git` openers.
     CloseToMain,
+    NativeCopy,
     SendLeaderB,
     /// Restart into a staged self-update (the bottom-right badge).
     ApplyUpdate,
@@ -568,6 +569,7 @@ impl App {
                     Seg::btn("d", "detach", Detach),
                     Seg::btn("q", "quit", Quit),
                     Seg::btn("x", "close", Stop),
+                    Seg::btn("c", "native copy", NativeCopy),
                     Seg::btn("b", "send Ctrl-b", SendLeaderB),
                 ],
                 vec![],

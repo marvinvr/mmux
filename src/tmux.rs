@@ -121,6 +121,17 @@ pub fn detach() {
     let _ = Command::new("tmux").arg("detach-client").status();
 }
 
+/// Toggle mouse reporting for the current mmux session. Disabling it gives the
+/// outer terminal its mouse back for native selection — the clipboard fallback
+/// for SSH clients such as Terminal.app that do not implement OSC 52.
+pub(crate) fn set_mouse(enabled: bool) -> bool {
+    Command::new("tmux")
+        .args(["set-option", "mouse", if enabled { "on" } else { "off" }])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Scrub terminal modes the inner TUI turned on, on the *outer* terminal we hold here.
 /// When a client detaches — or the TUI exits and tmux tears the session down — tmux
 /// doesn't reliably reset the private modes the inner TUI set, so mouse tracking is left

@@ -396,7 +396,10 @@ removes it from the snapshot, so it's easy to get a clean slate.
   diff pager. This is what lets micro/vim/… place the cursor on a click.
 - **Copy:** a non-forwarded mouse drag → a `Selection` in buffer coordinates → on release
   `Pane::contents_block` stitches the text across scrollback → `clipboard::copy` (OSC 52 + a local
-  helper).
+  helper). OSC 52 is the only generic remote-to-client clipboard channel, and Terminal.app does not
+  implement it. `Ctrl-b c` is the fallback: mmux sets this session's tmux `mouse` option off and
+  freezes redraws until the next key, letting the outer terminal own a stable native selection and
+  copy it locally; mouse reporting is restored before normal input or teardown resumes.
 - **Wheel:** over the normal screen it drives our own scrollback; over a program on the alternate
   screen (which has none) `Pane::wheel_input` hands the notch to the program — a forwarded
   mouse-wheel event if it tracks the mouse, else synthesized arrow keys ("alternate scroll").

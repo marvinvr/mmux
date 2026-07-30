@@ -132,6 +132,7 @@ to return to the sidebar first just to reach them.
 | `Ctrl-b` `x` | Close the focused session (removes an agent/terminal — confirmed first only if a **spinning** agent or a running terminal — stops a process), then return to the sidebar |
 | `Ctrl-b` `R` | Reload config, then return to the sidebar |
 | `Ctrl-b` `q` | Quit mmux (same confirmation as `q` when anything is running) |
+| `Ctrl-b` `c` | Temporarily enter native terminal copy mode (drag, copy with the terminal's normal shortcut, then press any key to restore mmux) |
 | `Ctrl-b` `b` | Send a literal `Ctrl-b` to the program (e.g. for an inner tmux) |
 
 The leader is single-shot: one sub-command (or any unrecognized key) disarms it. Typing while
@@ -351,8 +352,12 @@ main pane — the text goes to the clipboard via OSC 52
 (which works over SSH and through the tmux jail) plus a local helper
 (`pbcopy`/`wl-copy`/`xclip`/`xsel`). Selection can span scrollback with edge auto-scroll. If the
 program tracks the mouse it would otherwise eat the drag, so **hold Shift** to drag-select over it.
-Only the main pane is selectable; the git panel is native text, not a copyable grid. There is no
-keyboard copy-mode yet.
+Some SSH client terminals do not support OSC 52 — notably Apple's Terminal.app — and a helper on
+the remote host cannot reach the client clipboard. Use **`Ctrl-b c`** there: mmux freezes the
+screen and releases the mouse to the outer terminal, so you can drag a native selection and press
+`⌘C` (or that terminal's normal copy shortcut); press any key afterward to restore mmux's mouse.
+Terminal.app's own `Fn`-drag bypass also works without entering the mode. Only the main pane is
+selectable by mmux; there is no keyboard copy-mode yet.
 
 ## Narrow Terminals and Phones
 

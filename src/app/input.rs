@@ -74,6 +74,7 @@ impl App {
     fn leader_command(&mut self, k: KeyEvent) {
         match k.code {
             KeyCode::Char('d') => crate::tmux::detach(),
+            KeyCode::Char('c') => self.enter_native_copy(),
             KeyCode::Char('q') => self.request_quit(),
             KeyCode::Char('x') => {
                 self.do_stop();
@@ -91,6 +92,28 @@ impl App {
             }
             KeyCode::Char('b') => self.send_focused(vec![0x02]), // literal Ctrl-b to the pane
             _ => {}
+        }
+    }
+
+    /// Give the outer terminal temporary ownership of the mouse. This is the only
+    /// generic clipboard path over SSH when the client ignores OSC 52 (notably stock
+    /// Terminal.app): it can make a native selection and handle its own copy shortcut.
+    fn enter_native_copy(&mut self) {
+        if crate::tmux::set_mouse(false) {
+            self.native_copy = true;
+            self.flash("native copy: drag, use the terminal's copy shortcut, then press any key");
+        } else {
+            self.flash("couldn't enter native copy mode");
+        }
+    }
+
+    pub(crate) fn leave_native_copy(&mut self) {
+        let restored = crate::tmux::set_mouse(true);
+        self.native_copy = false;
+        if restored {
+            self.flash("native copy ended");
+        } else {
+            self.flash("native copy ended — couldn't restore mouse reporting");
         }
     }
 
@@ -431,6 +454,7 @@ impl App {
             }
             FooterAction::FocusSidebar => self.focus = Focus::Sidebar,
             FooterAction::CloseToMain => self.focus = Focus::Terminal,
+            FooterAction::NativeCopy => self.enter_native_copy(),
             FooterAction::SendLeaderB => self.send_focused(vec![0x02]),
             FooterAction::ApplyUpdate => self.apply_update(),
             FooterAction::About => self.open_about(),
