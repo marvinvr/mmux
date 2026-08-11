@@ -60,12 +60,13 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - For an **agent**, the green state is driven by its terminal title going quiet: an agent animates
   its title while working, so once it's been static for ~2s mmux reads it as idle/awaiting you and
   lights the row green — and it drops back to the gray spinner the moment the title starts moving
-  again. This reflects the agent's real state, so it holds even while you're viewing the pane:
-  selecting an idle agent does not make it look busy. For a **terminal** (which has no such
-  animation) the trigger is the bell instead, and — being a momentary ping — it *is* suppressed on
-  the pane you're actively viewing. The bell / notification escape *separately* raises a
-  [desktop notification](05-notifications.md), and process rows show that bell as a trailing green
-  `●`, since their name already signals up/down.
+  again. A Codex title containing `Action Required` is an explicit ready signal, so it stays green
+  even if that title has just changed. This reflects the agent's real state, so it holds even while
+  you're viewing the pane: selecting an idle agent does not make it look busy. For a **terminal**
+  (which has no such animation) the trigger is the bell instead, and — being a momentary ping — it
+  *is* suppressed on the pane you're actively viewing. The bell / notification escape *separately*
+  raises a [desktop notification](05-notifications.md), and process rows show that bell as a
+  trailing green `●`, since their name already signals up/down.
 
 ## Focus
 

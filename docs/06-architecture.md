@@ -374,9 +374,10 @@ removes it from the snapshot, so it's easy to get a clean slate.
   including rows displaced by top-aligned scroll regions used by inline TUIs such as Codex; title
   + when it last changed, bell, notifications via `Callbacks`). The app reads it through
   `Session::subtitle/attention/working/take_notifications` (`working` keys off the title-change
-  time so a quiet agent reads as "needs you"). `Session::busy` (`working` over a fixed ~2s window)
-  is the single "is this agent actively working" predicate — it's what both spins the sidebar glyph
-  and gates the close-confirmation, so the prompt fires for exactly the agents that show a spinner.
+  time so a quiet agent reads as "needs you", with Codex's `Action Required` title treated as an
+  explicit not-working signal). `Session::busy` (`working` over a fixed ~2s window) is the single
+  "is this agent actively working" predicate — it's what both spins the sidebar glyph and gates the
+  close-confirmation, so the prompt fires for exactly the agents that show a spinner.
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader
   via `leader_command`, then by focus). In a pane, the vt100 callback answers Kitty keyboard
   negotiation and records the requested flags; `keymap::encode_key` uses those flags to preserve

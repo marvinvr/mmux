@@ -238,9 +238,14 @@ impl Session {
     /// Whether this session looks like it's actively working: it's running and its
     /// terminal title changed within `within`. Agents animate the title (a spinner /
     /// moving glyph) while busy and leave it static once idle, so a running-but-quiet
-    /// agent is treated as "needs you" rather than busy. See the sidebar's `nav_row`.
+    /// agent is treated as "needs you" rather than busy. Codex's `Action Required`
+    /// title is an explicit idle signal even if the title changed recently. See the
+    /// sidebar's `nav_row`.
     pub fn working(&self, within: Duration) -> bool {
-        self.is_running() && self.pane.as_ref().map(|p| p.title_active(within)).unwrap_or(false)
+        self.is_running()
+            && self.pane.as_ref().is_some_and(|p| {
+                !p.title().contains("Action Required") && p.title_active(within)
+            })
     }
 
     /// Whether this agent is *visibly* working right now — running with a live,
