@@ -92,10 +92,9 @@ impl vt100::Callbacks for PaneEvents {
         self.bell = true;
         self.notifications.push(Notify::default());
     }
-    /// Kitty keyboard negotiation is terminal I/O rather than screen state. TUIs
-    /// push a flags value (`CSI > n u`), query it (`CSI ? u`), and pop it on exit
-    /// (`CSI < n u`). Answering the query makes this pane a real enhanced-keyboard
-    /// endpoint instead of silently swallowing the handshake in the vt100 parser.
+    /// Terminal capability negotiation is terminal I/O rather than screen state.
+    /// Answer the primary device-attributes query and Kitty's enhanced-keyboard
+    /// negotiation instead of silently swallowing either handshake in the parser.
     fn unhandled_csi(
         &mut self,
         _: &mut vt100::Screen,
@@ -104,10 +103,19 @@ impl vt100::Callbacks for PaneEvents {
         params: &[&[u16]],
         c: char,
     ) {
+        let param = params.first().and_then(|p| p.first()).copied();
+        if c == 'c' && i1.is_none() && param.unwrap_or(0) == 0 {
+            // VT100 with advanced video options: the conventional reply for the
+            // xterm-256color terminal we advertise. Grok waits for DA1 before it
+            // draws its first frame, so dropping this query leaves a black pane.
+            if let Some(tx) = &self.replies {
+                let _ = tx.send(Bytes::from_static(b"\x1b[?1;2c"));
+            }
+            return;
+        }
         if c != 'u' {
             return;
         }
-        let param = params.first().and_then(|p| p.first()).copied();
         match i1 {
             // We currently implement disambiguation (bit 0). Do not claim event-type
             // or alternate-key reporting until the forwarding path preserves those.
@@ -689,6 +697,20 @@ mod tests {
         // Popping the final entry resets the terminal to legacy mode.
         parser.process(b"\x1b[<u");
         assert_eq!(parser.callbacks().kitty_flags(), 0);
+    }
+
+    #[test]
+    fn grok_startup_queries_receive_terminal_replies() {
+        let (tx, rx) = mpsc::channel();
+        let mut parser =
+            vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
+
+        // Grok probes both in sequence and waits for both replies before drawing
+        // its first frame. This is the exact startup exchange emitted by 1.0.3.
+        parser.process(b"\x1b[?u\x1b[c");
+
+        assert_eq!(rx.try_recv().unwrap(), Bytes::from_static(b"\x1b[?0u"));
+        assert_eq!(rx.try_recv().unwrap(), Bytes::from_static(b"\x1b[?1;2c"));
     }
 
     #[test]

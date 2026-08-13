@@ -132,7 +132,8 @@ struct Session {
 A `Pane` (in `pane.rs`) owns one PTY via `portable-pty`, parsed by `vt100` on a reader thread,
 with a writer thread draining an input channel and a reaper thread waiting on the child. A
 `Callbacks` impl captures the OSC window title (the sidebar subtitle), the bell, and notification
-OSCs. Scrollback is 5000 lines.
+OSCs, and answers terminal capability queries (primary device attributes and Kitty keyboard mode)
+through the pane's input queue. Scrollback is 5000 lines.
 
 ## Workspaces and Projects
 
