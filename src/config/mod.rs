@@ -148,7 +148,7 @@ pub struct AgentPreset {
 }
 
 /// The agent harnesses mmux offers out of the box. Every one ships a documented
-/// danger-mode flag, and three also ship an auto-accept-edits middle mode; add new
+/// danger-mode flag, and four also ship an auto middle mode; add new
 /// harnesses here and they appear in both the wizard and the in-TUI agent manager
 /// automatically. Flags verified against each tool's CLI.
 pub const PRESETS: &[AgentPreset] = &[
@@ -194,7 +194,9 @@ pub const PRESETS: &[AgentPreset] = &[
     AgentPreset {
         name: "Grok",
         cmd: "grok",
-        auto: None, // only a broad `--always-approve`; no edit-only tier
+        // Classifier-gated auto mode (same flag as Claude); dangerous tools may
+        // still prompt. `--always-approve` is the full skip below.
+        auto: Some(&["--permission-mode", "auto"]),
         danger: Some(&["--always-approve"]),
         blurb: "xAI Grok Build",
     },

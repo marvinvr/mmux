@@ -145,7 +145,7 @@ session goes away.
 | Mode | What it does | Example flags |
 | --- | --- | --- |
 | *(normal)* | The harness's own interactive default — every action prompts. | *(none)* |
-| `auto` | Auto-accept file edits; still prompt for riskier actions (shell, network). Claude/Codex/Gemini only. | `--permission-mode auto`, `--sandbox workspace-write`, `--approval-mode auto_edit` |
+| `auto` | Auto-accept file edits; still prompt for riskier actions (shell, network). Claude/Codex/Gemini/Grok. | `--permission-mode auto`, `--sandbox workspace-write`, `--approval-mode auto_edit` |
 | `danger` | Skip **all** approvals ("danger" / yolo). | `--dangerously-skip-permissions`, `--yolo`, `--always-approve` |
 
 The [`mmux init`](01-quick-start.md#2-set-up-a-project-or-workspace) wizard offers them as an **inline checkbox

@@ -299,8 +299,8 @@ mod tests {
 
     #[test]
     fn cycle_skips_auto_when_the_preset_has_none() {
-        let mut r = row("Grok", true, &[]);
-        r.auto_flags = None; // danger-only harness (Amp/opencode/Grok)
+        let mut r = row("Amp", true, &[]);
+        r.auto_flags = None; // danger-only harness (Amp/opencode)
         assert_eq!(r.mode(), Mode::Normal);
         r.cycle_mode();
         assert_eq!(r.mode(), Mode::Danger); // auto is skipped
