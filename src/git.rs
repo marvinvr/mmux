@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Unit separator — a byte that can't occur in a path or a commit subject, so we
 /// use it to delimit `--format` fields instead of guessing at spaces/tabs.
@@ -59,6 +59,15 @@ pub fn is_repo(dir: &Path) -> bool {
         .args(["rev-parse", "--is-inside-work-tree"])
         .output()
         .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Whether this repository has somewhere to fetch from. Kept separate from
+/// [`fetch`] so the periodic worker does not repeatedly launch doomed network jobs
+/// for local-only repositories.
+pub fn has_remote(dir: &Path) -> bool {
+    run(dir, &["remote"])
+        .map(|s| s.lines().any(|line| !line.trim().is_empty()))
         .unwrap_or(false)
 }
 
@@ -394,6 +403,12 @@ pub fn pull(dir: &Path) -> Result<String, String> {
     run(dir, &["pull"]).map(|_| "pulled".into())
 }
 
+/// Quietly refresh remote-tracking refs without touching the worktree or current
+/// branch. This is only called from the git panel's periodic background worker.
+pub fn fetch(dir: &Path) -> Result<String, String> {
+    run(dir, &["fetch", "--quiet"]).map(|_| "fetched".into())
+}
+
 /// `git push` (blocks on the network — run off the UI thread). A branch with no
 /// upstream is *published* rather than refused: we set the upstream to the default
 /// remote on the way out, so the first push of a new branch just works instead of
@@ -457,6 +472,11 @@ fn run_lossy(dir: &Path, args: &[&str]) -> String {
 fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .current_dir(dir)
+        // Native-panel jobs have nowhere useful to accept an interactive credential
+        // prompt. Credential helpers still work; a missing credential fails instead
+        // of leaving a hidden background worker stuck on terminal input.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
         .args(args)
         .output()
         .map_err(|e| format!("git not found: {e}"))?;

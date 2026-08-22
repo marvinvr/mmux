@@ -198,8 +198,10 @@ cursor through all three.
   Nothing is cached.
 - **`app/git.rs`** is the `GitPanel` state machine plus the `impl App` git-action methods. It
   refreshes on a 1500 ms throttle while visible (and immediately after any mutation). Network ops
-  (pull/push) block, so they run on a throwaway thread and report back over an `mpsc` channel
-  drained in `tick()`. Its diff-lifecycle bridges (`git_open_diff`/`git_show_commit`/
+  block, so periodic fetch (five-minute cadence, per-repository startup stagger) and explicit
+  pull/push run on a throwaway thread and report back over an `mpsc` channel drained in `tick()`.
+  Fetch is quiet, skips repositories without remotes, and shares the per-panel network-op guard so
+  it cannot overlap pull/push. Its diff-lifecycle bridges (`git_open_diff`/`git_show_commit`/
   `git_preview_follow`/`diff_upkeep`) drive the centre-pane `DiffView` pager — whose model lives in
   its own module, **`app/diff.rs`** — which serves both a live working-file preview (follows the
   Changes cursor, self-refreshes) and a static commit diff (`git show`, rendered with per-file

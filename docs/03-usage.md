@@ -152,7 +152,7 @@ It has three boxes:
   starts at the repo's top-level files and folders — there is no whole-repo row taking up the first
   line (stage everything with `a`). The filename color encodes the change: green
   (added/untracked), red (deleted/unmerged), cyan (renamed/copied), yellow (modified). The box
-  title shows a `pulling…`/`pushing…` note during network operations.
+  title shows a `fetching…`/`pulling…`/`pushing…` note during network operations.
 - **Branches** — local branches, current one marked, with upstream tracking notes (ahead/behind).
 - **Commits** — recent history (up to 200 commits), scrollable and selectable. Select a commit to
   show its full diff in the main pane, copy its hash or message, or revert / uncommit it.
@@ -192,7 +192,10 @@ branch that has no upstream publishes it (`--set-upstream` to `origin`, or to th
 when there's no `origin`) rather than failing. Pull and push never block the UI; a second press while one is in flight is
 ignored. Revert and uncommit go through a confirmation and refresh the panel; neither loses work
 (revert adds a commit, uncommit keeps the changes staged). The panel re-reads git state on a short
-throttle, so commits an agent makes in the main pane show up on their own.
+throttle, so commits an agent makes in the main pane show up on their own. For repositories with a
+remote, mmux also runs a quiet background `git fetch` every five minutes so branch tracking and
+remote commits stay current. The first fetch is spread across the first 30 seconds per repository,
+fetches never overlap pull/push, and local-only directories make no network calls.
 
 ### The Diff Preview
 

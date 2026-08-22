@@ -9,12 +9,14 @@
 //! one is the active project's. A selected commit's diff opens in the centre pager
 //! (`git show`, see [`DiffView`]).
 //!
-//! Network ops (pull/push) block, so they run on a throwaway thread and report
-//! back over a channel drained in [`App::tick`](super::App::tick). Status, branch
+//! Network ops (periodic fetch, pull and push) block, so they run on a throwaway
+//! thread and report back over a channel drained in [`App::tick`](super::App::tick). Status, branch
 //! and log reads are cheap synchronous forks, refreshed on a throttle while the
 //! panel is visible and immediately after any mutating action.
 
 use crate::git::{self, Branch, Commit, FileEntry, Stage, TreeRow};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -30,6 +32,12 @@ const REFRESH_EVERY: Duration = Duration::from_millis(1500);
 /// Inactive project boxes need only branch + changed-path counts. Refresh those less
 /// often and without paying for branches/log until the project becomes visible.
 const STATUS_REFRESH_EVERY: Duration = Duration::from_secs(5);
+/// Refresh remote-tracking refs often enough for ahead/behind state to be useful,
+/// without turning a long-lived workspace into a noisy remote poller.
+const FETCH_EVERY: Duration = Duration::from_secs(5 * 60);
+/// Spread the first fetches of a multi-project workspace instead of hitting every
+/// remote in the same frame just after startup.
+const FETCH_START_SPREAD_SECS: u64 = 30;
 /// How many recent commits to keep for the Commits box. Enough to scroll through real
 /// history; reading this many `git log` subjects is still a sub-millisecond fork.
 const LOG_LINES: usize = 200;
@@ -46,30 +54,36 @@ pub(crate) enum Section {
 pub(crate) struct JobDone {
     pub verb: &'static str, // "pull" / "push"
     pub result: Result<String, String>,
+    announce: bool,
 }
 
-/// The two backgrounded remote ops. One place ties each to its busy-label, its
+/// The backgrounded remote ops. One place ties each to its busy-label, its
 /// `JobDone.verb` tag, and the `git` fn it runs — the string used to be spelled out
 /// separately in `git_start` and `start_job`.
+#[derive(Clone, Copy)]
 pub(crate) enum RemoteOp {
+    Fetch,
     Pull,
     Push,
 }
 impl RemoteOp {
     fn label(&self) -> &'static str {
         match self {
+            RemoteOp::Fetch => "fetching…",
             RemoteOp::Pull => "pulling…",
             RemoteOp::Push => "pushing…",
         }
     }
     fn verb(&self) -> &'static str {
         match self {
+            RemoteOp::Fetch => "fetch",
             RemoteOp::Pull => "pull",
             RemoteOp::Push => "push",
         }
     }
     fn run(&self, dir: &std::path::Path) -> Result<String, String> {
         match self {
+            RemoteOp::Fetch => git::fetch(dir),
             RemoteOp::Pull => git::pull(dir),
             RemoteOp::Push => git::push(dir),
         }
@@ -97,6 +111,7 @@ pub(crate) struct GitPanel {
     pub busy: Option<&'static str>,
     last_refresh: Option<Instant>,
     last_status_refresh: Option<Instant>,
+    next_fetch: Instant,
     tx: Sender<JobDone>,
     rx: Receiver<JobDone>,
 }
@@ -105,6 +120,7 @@ impl GitPanel {
     /// Build a panel for `dir` and take an initial snapshot.
     pub(crate) fn new(dir: PathBuf) -> GitPanel {
         let (tx, rx) = mpsc::channel();
+        let next_fetch = Instant::now() + initial_fetch_delay(&dir);
         let mut g = GitPanel {
             dir,
             branch: String::new(),
@@ -119,6 +135,7 @@ impl GitPanel {
             busy: None,
             last_refresh: None,
             last_status_refresh: None,
+            next_fetch,
             tx,
             rx,
         };
@@ -170,6 +187,20 @@ impl GitPanel {
         self.rows = git::tree_rows(&self.files);
         self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
         self.last_status_refresh = Some(Instant::now());
+    }
+
+    /// Periodically update remote-tracking refs. Panels only exist for git repos;
+    /// checking again here handles a worktree removed while mmux is still open.
+    /// Repositories without remotes stay entirely local.
+    pub(crate) fn maybe_fetch(&mut self) {
+        let now = Instant::now();
+        if now < self.next_fetch || self.busy.is_some() {
+            return;
+        }
+        self.next_fetch = now + FETCH_EVERY;
+        if git::is_repo(&self.dir) && git::has_remote(&self.dir) {
+            self.start_job(RemoteOp::Fetch);
+        }
     }
 
     /// Move the cursor within the active section.
@@ -312,17 +343,19 @@ impl GitPanel {
         res
     }
 
-    /// Kick off a background pull/push. A no-op if one is already running, so a
+    /// Kick off a background fetch/pull/push. A no-op if one is already running, so a
     /// double-tap can't launch two.
     pub(crate) fn start_job(&mut self, op: RemoteOp) {
         if self.busy.is_some() {
             return;
         }
         self.busy = Some(op.label());
+        self.next_fetch = Instant::now() + FETCH_EVERY;
+        let announce = !matches!(op, RemoteOp::Fetch);
         let tx = self.tx.clone();
         let dir = self.dir.clone();
         thread::spawn(move || {
-            let _ = tx.send(JobDone { verb: op.verb(), result: op.run(&dir) });
+            let _ = tx.send(JobDone { verb: op.verb(), result: op.run(&dir), announce });
         });
     }
 
@@ -330,15 +363,27 @@ impl GitPanel {
     /// the finished jobs so the app can flash their outcome. Called from `tick`.
     pub(crate) fn poll_jobs(&mut self) -> Vec<JobDone> {
         let mut done = Vec::new();
+        let mut completed = false;
         while let Ok(j) = self.rx.try_recv() {
-            done.push(j);
+            completed = true;
+            if j.announce {
+                done.push(j);
+            }
         }
-        if !done.is_empty() {
+        if completed {
             self.busy = None;
             self.refresh();
         }
         done
     }
+}
+
+/// Fetch soon after startup, but deterministically fan a workspace's repositories
+/// across a short window. The regular cadence begins once that first fetch starts.
+fn initial_fetch_delay(dir: &std::path::Path) -> Duration {
+    let mut hash = DefaultHasher::new();
+    dir.hash(&mut hash);
+    Duration::from_secs(1 + hash.finish() % FETCH_START_SPREAD_SECS)
 }
 
 /// Clamp-step a cursor within `len` items.

@@ -350,8 +350,8 @@ impl App {
 
     /// Per-loop housekeeping. First follow the selection — the project of the
     /// selected row becomes active, so its git panel is the one shown. Then drain
-    /// any finished background pull/push jobs (flashing the result) and give the
-    /// visible panel a throttled full refresh and inactive panels a slower status
+    /// any finished background fetch/pull/push jobs (flashing explicit pull/push
+    /// results) and give the visible panel a throttled full refresh and inactive panels a slower status
     /// refresh so external changes show up in collapsed project summaries.
     pub(crate) fn tick(&mut self) {
         // Keep a held-at-edge drag selection auto-scrolling even when the mouse
@@ -394,6 +394,13 @@ impl App {
                 Err(e) => format!("{} failed — {}", j.verb, first_line(&e)),
             };
             self.flash(msg);
+        }
+        // Keep remote-tracking refs current for every repository. Initial fetches are
+        // staggered per path, and each panel prevents overlapping network jobs.
+        for project in self.projects.iter_mut() {
+            if let Some(g) = project.git.as_mut() {
+                g.maybe_fetch();
+            }
         }
         // Keep the visible panel fully fresh; inactive projects only refresh status
         // on a slower throttle for their collapsed branch/change summaries.

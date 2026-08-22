@@ -183,7 +183,9 @@ Same as [Agent](#agent), plus:
 
 The [git panel](03-usage.md#the-git-panel) is built in and shown automatically whenever the
 directory is a git repository. There is no command, width, or title to configure — its width
-follows the left sidebar. The only knob is turning it off:
+follows the left sidebar. While enabled, Git repositories with a remote are quietly fetched every
+five minutes in the background; repositories without a remote are never fetched. The only knob is
+turning the panel (and its background fetch) off:
 
 ```yaml
 git-panel:
