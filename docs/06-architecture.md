@@ -375,10 +375,11 @@ removes it from the snapshot, so it's easy to get a clean slate.
 
 - **Output:** program → PTY → reader thread → vt100 parser → `Pane` (screen + 5000 history lines,
   including rows displaced by top-aligned scroll regions used by inline TUIs such as Codex; title
-  + when it last changed, bell, notifications via `Callbacks`). The app reads it through
-  `Session::subtitle/attention/working/take_notifications` (`working` keys off the title-change
-  time so a quiet agent reads as "needs you", with Codex's `Action Required` title treated as an
-  explicit not-working signal). `Session::busy` (`working` over a fixed ~2s window) is the single
+  + when it last changed, OSC 9;4 progress state, bell, notifications via `Callbacks`). The app
+  reads it through
+  `Session::subtitle/attention/working/take_notifications` (`working` prefers explicit progress
+  state and falls back to title-change time, with Codex's `Action Required` title treated as an
+  explicit not-working signal). `Session::busy` (with a fixed ~2s title-fallback window) is the single
   "is this agent actively working" predicate — it's what both spins the sidebar glyph and gates the
   close-confirmation, so the prompt fires for exactly the agents that show a spinner.
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader

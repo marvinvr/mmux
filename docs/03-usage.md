@@ -47,7 +47,7 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   long-lived process what you want to know is "is it up, and did it die badly".
 - **Agent and terminal rows** hold color back for the one thing that matters there — "does it
   need *me*". A leading glyph + name color carry the whole state: a busy agent shows a small gray
-  **spinner** (rotating braille dots) before its name (a running terminal keeps a static `·`), a
+  **spinner** (a rotating half-circle) before its name (a running terminal keeps a static `·`), a
   session that **crashed** (exited non-zero on its own) or **failed to launch** shows a red hollow
   `○`, and a session waiting on you lights up **green** (`●`). So when you scan the sidebar, the
   only colored agent is the one to go look at — and the spinning ones are still grinding. Unlike
@@ -55,12 +55,12 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   (`/quit`, Ctrl-D) or `exit`ing a terminal removes its row outright rather than leaving a dim
   "exited" husk. A crash is the exception: it stays put, painted red, so you don't miss it.
 - Every session row shows a dim **subtitle** — the terminal title the program sets (e.g. what
-  Claude is currently doing, including its own working/idle animation), falling back to its last
-  error.
-- For an **agent**, the green state is driven by its terminal title going quiet: an agent animates
-  its title while working, so once it's been static for ~2s mmux reads it as idle/awaiting you and
-  lights the row green — and it drops back to the gray spinner the moment the title starts moving
-  again. A Codex title containing `Action Required` is an explicit ready signal, so it stays green
+  an agent is currently doing), falling back to its last error.
+- For an **agent**, an explicit `OSC 9;4` terminal-progress report drives the working/ready state
+  when available (Claude Code emits indeterminate while working and clears it when done). For older
+  agents, mmux falls back to the terminal title: once an animated title has been static for ~2s it
+  reads the agent as idle/awaiting you. A Codex title containing `Action Required` is an explicit
+  ready signal, so it stays green
   even if that title has just changed. This reflects the agent's real state, so it holds even while
   you're viewing the pane: selecting an idle agent does not make it look busy. For a **terminal**
   (which has no such animation) the trigger is the bell instead, and — being a momentary ping — it

@@ -13,10 +13,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 /// How long after an agent's terminal title last changed we still count it as
-/// "working". Agents animate the title while busy; once it's been static this
-/// long the agent is treated as idle/awaiting you. This is the single window
-/// behind [`Session::busy`], shared by the sidebar spinner and the close
-/// confirmation so the two never disagree about "is it working".
+/// "working" when it does not emit explicit OSC 9;4 progress state. This is the
+/// fallback window behind [`Session::busy`], shared by the sidebar spinner and
+/// the close confirmation so the two never disagree about "is it working".
 const TITLE_IDLE: Duration = Duration::from_secs(2);
 
 /// Which sidebar bucket a session belongs to. Drives ordering, the badge, and
@@ -235,23 +234,22 @@ impl Session {
         self.pane.as_ref().map(Pane::attention).unwrap_or(false)
     }
 
-    /// Whether this session looks like it's actively working: it's running and its
-    /// terminal title changed within `within`. Agents animate the title (a spinner /
-    /// moving glyph) while busy and leave it static once idle, so a running-but-quiet
-    /// agent is treated as "needs you" rather than busy. Codex's `Action Required`
-    /// title is an explicit idle signal even if the title changed recently. See the
-    /// sidebar's `nav_row`.
+    /// Whether this session looks like it's actively working. OSC 9;4 progress is
+    /// authoritative when the program emits it; animated terminal titles remain the
+    /// fallback for older agents. Codex's `Action Required` title is an explicit idle
+    /// signal even if another activity signal just changed. See the sidebar's `nav_row`.
     pub fn working(&self, within: Duration) -> bool {
         self.is_running()
             && self.pane.as_ref().is_some_and(|p| {
-                !p.title().contains("Action Required") && p.title_active(within)
+                !p.title().contains("Action Required")
+                    && p.progress_active().unwrap_or_else(|| p.title_active(within))
             })
     }
 
-    /// Whether this agent is *visibly* working right now — running with a live,
-    /// still-changing title, i.e. exactly when its sidebar row shows the rotating
-    /// spinner (see [`working`](Self::working) and the sidebar's `nav_row`). The
-    /// close confirmation keys on this so it fires for the same agents that spin:
+    /// Whether this agent is *visibly* working right now — running with an active
+    /// progress report or still-changing title, i.e. exactly when its sidebar row
+    /// shows the rotating spinner (see [`working`](Self::working) and the sidebar's
+    /// `nav_row`). The close confirmation keys on this so it fires for the same agents that spin:
     /// an idle agent (running but quiet, showing the green `●`) reads as done and
     /// closes without a nag.
     pub fn busy(&self) -> bool {

@@ -1,6 +1,6 @@
 //! A single PTY-backed pane: spawns a command in a pseudo-terminal, parses its
-//! output with vt100 (tracking the OSC title and the bell for the sidebar), and
-//! exposes interactive input + resize.
+//! output with vt100 (tracking OSC title/progress and the bell for the sidebar),
+//! and exposes interactive input + resize.
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -39,6 +39,10 @@ pub struct PaneEvents {
     /// title has gone quiet as "needs you". `None` until the title changes a second
     /// time, so a freshly launched agent reads as idle rather than briefly working.
     pub title_changed_at: Option<Instant>,
+    /// Explicit working state from OSC 9;4 progress reports. `None` means the
+    /// program has never emitted one, so agent activity falls back to the older
+    /// animated-title heuristic; once present, this signal is authoritative.
+    pub progress_active: Option<bool>,
     /// Latched on bell; cleared when the user views/interacts with the pane.
     pub bell: bool,
     /// Notifications captured since the last drain — one per bell ring or
@@ -57,6 +61,7 @@ impl PaneEvents {
         Self {
             title: String::new(),
             title_changed_at: None,
+            progress_active: None,
             bell: false,
             notifications: Vec::new(),
             kitty_flags: Vec::new(),
@@ -142,6 +147,18 @@ impl vt100::Callbacks for PaneEvents {
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
         let text = |b: &[u8]| String::from_utf8_lossy(b).trim().to_string();
         match params.first().copied() {
+            // OSC 9 ; 4 ; <state> [; <percent>] is the ConEmu/Windows Terminal
+            // progress protocol. Claude Code uses indeterminate (3) while a turn
+            // runs and clear (0) when it needs input. All nonzero states mean a
+            // progress indicator is still present; this is activity, never a
+            // notification or bell.
+            Some(b"9") if params.len() >= 3 && params[1] == b"4" => {
+                self.progress_active = match params[2] {
+                    b"0" => Some(false),
+                    b"1" | b"2" | b"3" | b"4" => Some(true),
+                    _ => self.progress_active,
+                };
+            }
             // OSC 9 ; <message>. Only the single-message form — `OSC 9 ; 4 ; …` is
             // ConEmu progress reporting, not a notification.
             Some(b"9") if params.len() == 2 => {
@@ -382,6 +399,11 @@ impl Pane {
             .ok()
             .and_then(|p| p.callbacks().title_changed_at)
             .is_some_and(|t| t.elapsed() < within)
+    }
+
+    /// The program's explicit OSC 9;4 progress state, if it has emitted one.
+    pub fn progress_active(&self) -> Option<bool> {
+        self.parser.lock().ok().and_then(|p| p.callbacks().progress_active)
     }
 
     pub fn clear_attention(&self) {
@@ -711,6 +733,21 @@ mod tests {
 
         assert_eq!(rx.try_recv().unwrap(), Bytes::from_static(b"\x1b[?0u"));
         assert_eq!(rx.try_recv().unwrap(), Bytes::from_static(b"\x1b[?1;2c"));
+    }
+
+    #[test]
+    fn osc_progress_reports_explicit_activity_without_notifying() {
+        let (tx, _rx) = mpsc::channel();
+        let mut parser =
+            vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
+
+        parser.process(b"\x1b]9;4;3\x07");
+        assert_eq!(parser.callbacks().progress_active, Some(true));
+        assert!(parser.callbacks().notifications.is_empty());
+
+        parser.process(b"\x1b]9;4;0\x07");
+        assert_eq!(parser.callbacks().progress_active, Some(false));
+        assert!(parser.callbacks().notifications.is_empty());
     }
 
     #[test]

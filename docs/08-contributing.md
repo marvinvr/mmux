@@ -131,8 +131,9 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
   rebuild-and-clamp dance; `nav.rs` is intentionally the single file that would change.
 - **Copy is drag-select only.** A keyboard copy-mode is still future. (Note: over a program that
   tracks the mouse, the drag goes to *it* — hold Shift to drag-select for the clipboard instead.)
-- **Attention detection is bell/OSC-based.** It keys off the terminal bell and program-emitted
-  notification OSCs (9/777/99). An idle "agent went quiet" heuristic is still future.
+- **Agent activity is protocol-first.** `OSC 9;4` progress state is authoritative when present,
+  with animated terminal titles as the compatibility fallback. Attention notifications remain
+  separate and key off the bell or notification OSCs (9/777/99).
 - **Workspace manifests are flat and structural.** They load at most 10 member folders and do not
   nest. `R` adds and removes folders live; removal kills that member's panes and compacts runtime
   project indices without touching its Git worktree. Reordering members needs a reopen. Restore

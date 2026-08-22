@@ -17,8 +17,9 @@ through; a bare bell shows `<session> — needs attention`. No notification fire
 are currently looking at (see `only_when_unfocused`).
 
 The bell also lights a **terminal** or **process** row **green** until you focus it. **Agent** rows
-use a different, more reliable cue — they go green when their terminal title goes quiet (i.e. the
-agent stopped working), independent of the bell. See
+use a different, more reliable cue — explicit `OSC 9;4` progress state when the agent provides it,
+falling back to a quiet terminal title — independent of the bell. Progress reports are state only;
+they do not emit desktop notifications. See
 [Status and Attention](03-usage.md#status-and-attention).
 
 ## How It Reaches Your Desktop — Even Over SSH

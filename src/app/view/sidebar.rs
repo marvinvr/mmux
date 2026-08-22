@@ -440,11 +440,11 @@ impl App {
                     // state (busy → gray spinner, needs-you → green `●`, stopped → dim
                     // `○`), so there's no separate trailing dot.
                     //
-                    // An *agent* "needs you" when it's running but its terminal title has
-                    // gone static: it animates the title while working, so a quiet title
-                    // means it's idle/awaiting input. This is the agent's actual state, so
-                    // it holds even while you're viewing the pane — selecting an idle agent
-                    // must not make it look like it's working again. A *terminal* has no
+                    // An *agent* "needs you" when its explicit progress state is clear,
+                    // falling back to a title that has gone static for older agents. This
+                    // is the agent's actual state, so it holds even while you're viewing
+                    // the pane — selecting an idle agent must not make it look like it's
+                    // working again. A *terminal* has no
                     // such signal, so it falls back to the bell, which (being a momentary
                     // ping) is acknowledged — suppressed — on the pane you're viewing.
                     _ => {
