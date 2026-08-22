@@ -231,9 +231,31 @@ impl Pane {
             builder.arg(a);
         }
         builder.cwd(cwd);
-        // Advertise a capable terminal so full-color TUIs (claude/codex) behave.
-        builder.env("TERM", "xterm-256color");
-        builder.env("COLORTERM", "truecolor");
+        // Recreate the real outer terminal environment rather than exposing the
+        // invisible tmux layer. Claude selects its native activity animation from
+        // these values; forcing xterm-256color made its mmux rendering diverge from
+        // a direct launch in the same terminal.
+        let outer_terminal = crate::tmux::outer_terminal_env();
+        builder.env(
+            "TERM",
+            outer_terminal.get("TERM").map(String::as_str).unwrap_or("xterm-256color"),
+        );
+        builder.env(
+            "COLORTERM",
+            outer_terminal.get("COLORTERM").map(String::as_str).unwrap_or("truecolor"),
+        );
+        for name in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
+            match outer_terminal.get(name) {
+                Some(value) => builder.env(name, value),
+                None => builder.env_remove(name),
+            }
+        }
+        // The child is attached to this vt100 PTY, not directly to mmux's tmux
+        // jail. Leaking TMUX makes Claude wait for tmux-specific synchronized-output
+        // negotiation that this boundary does not provide, suppressing its normal
+        // animation/update path.
+        builder.env_remove("TMUX");
+        builder.env_remove("TMUX_PANE");
         for (k, v) in env {
             builder.env(k, v);
         }

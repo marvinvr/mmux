@@ -47,7 +47,7 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   long-lived process what you want to know is "is it up, and did it die badly".
 - **Agent and terminal rows** hold color back for the one thing that matters there — "does it
   need *me*". A leading glyph + name color carry the whole state: a busy agent shows a small gray
-  **spinner** (a rotating half-circle) before its name (a running terminal keeps a static `·`), a
+  **spinner** (rotating braille dots) before its name (a running terminal keeps a static `·`), a
   session that **crashed** (exited non-zero on its own) or **failed to launch** shows a red hollow
   `○`, and a session waiting on you lights up **green** (`●`). So when you scan the sidebar, the
   only colored agent is the one to go look at — and the spinning ones are still grinding. Unlike

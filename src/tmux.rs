@@ -27,6 +27,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+const OUTER_TERMINAL_ENV: [(&str, &str); 4] = [
+    ("TERM", "MMUX_OUTER_TERM"),
+    ("COLORTERM", "MMUX_OUTER_COLORTERM"),
+    ("TERM_PROGRAM", "MMUX_OUTER_TERM_PROGRAM"),
+    ("TERM_PROGRAM_VERSION", "MMUX_OUTER_TERM_PROGRAM_VERSION"),
+];
+
 pub fn launch() -> Result<()> {
     launch_in(std::env::current_dir()?)
 }
@@ -62,31 +69,38 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
     let name = session_name(&canon);
     let exe = std::env::current_exe().context("locating mmux binary")?;
     let exe = exe.to_string_lossy().into_owned();
+    // The TUI lives one tmux layer below the real terminal, where tmux replaces
+    // TERM/TERM_PROGRAM with its own identity. Preserve the client's originals so
+    // programs hosted by mmux can make the same rendering choices they make when
+    // launched directly (Claude's activity animation is one such choice).
+    let outer_terminal = current_outer_terminal();
 
     configure_server();
     if !session_exists(&name) {
         let (cols, rows) = ratatui::crossterm::terminal::size().unwrap_or((120, 40));
         let dir_str = canon.to_string_lossy().into_owned();
-        let status = Command::new("tmux")
-            .args([
-                "new-session",
-                "-d",
-                "-s",
-                &name,
-                "-x",
-                &cols.to_string(),
-                "-y",
-                &rows.to_string(),
-                "-c",
-                &dir_str,
-                "-e",
-                "MMUX_INNER=1",
-                "-e",
-                &format!("MMUX_DIR={dir_str}"),
-                "--",
-                &exe,
-                "--inner",
-            ])
+        let mut command = Command::new("tmux");
+        command.args([
+            "new-session",
+            "-d",
+            "-s",
+            &name,
+            "-x",
+            &cols.to_string(),
+            "-y",
+            &rows.to_string(),
+            "-c",
+            &dir_str,
+            "-e",
+            "MMUX_INNER=1",
+            "-e",
+            &format!("MMUX_DIR={dir_str}"),
+        ]);
+        for (name, value) in &outer_terminal {
+            command.arg("-e").arg(format!("{}={value}", outer_env_name(name)));
+        }
+        let status = command
+            .args(["--", &exe, "--inner"])
             .status()
             .context("starting tmux session")?;
         // If creation failed it's almost always a lost race with another `mmux`
@@ -105,6 +119,7 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
             configure_session(&name, &title);
         }
     }
+    remember_outer_terminal(&name, &outer_terminal);
 
     // Attach. `env_remove("TMUX")` lets this work even when already inside tmux.
     let status = Command::new("tmux")
@@ -220,6 +235,64 @@ fn configure_session(name: &str, title: &str) {
     }
 }
 
+/// The real client's terminal environment captured by the outer mmux wrapper.
+/// Read the tmux session environment first so a later attach from another terminal
+/// takes effect for newly spawned panes without restarting the persistent TUI.
+pub(crate) fn outer_terminal_env() -> HashMap<String, String> {
+    let mut env = HashMap::new();
+    if std::env::var_os("TMUX").is_some() {
+        if let Ok(out) = Command::new("tmux").arg("show-environment").output() {
+            if out.status.success() {
+                for line in String::from_utf8_lossy(&out.stdout).lines() {
+                    for (name, stored) in OUTER_TERMINAL_ENV {
+                        if let Some(value) = line.strip_prefix(&format!("{stored}=")) {
+                            env.insert(name.to_string(), value.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (name, stored) in OUTER_TERMINAL_ENV {
+        if !env.contains_key(name) {
+            if let Ok(value) = std::env::var(stored) {
+                env.insert(name.to_string(), value);
+            }
+        }
+    }
+    env
+}
+
+fn current_outer_terminal() -> HashMap<String, String> {
+    OUTER_TERMINAL_ENV
+        .into_iter()
+        .filter_map(|(name, _)| std::env::var(name).ok().map(|value| (name.to_string(), value)))
+        .collect()
+}
+
+fn outer_env_name(name: &str) -> &'static str {
+    OUTER_TERMINAL_ENV
+        .into_iter()
+        .find_map(|(outer, stored)| (outer == name).then_some(stored))
+        .expect("known outer terminal variable")
+}
+
+fn remember_outer_terminal(session: &str, env: &HashMap<String, String>) {
+    for (name, stored) in OUTER_TERMINAL_ENV {
+        let mut command = Command::new("tmux");
+        command.args(["set-environment", "-t", session]);
+        match env.get(name) {
+            Some(value) => {
+                command.args([stored, value]);
+            }
+            None => {
+                command.args(["-u", stored]);
+            }
+        }
+        let _ = command.status();
+    }
+}
+
 /// Whether the attached client's terminal supports sixel graphics, per tmux's own
 /// capability detection (`client_termfeatures`). mmux draws *through* tmux, and tmux
 /// (3.4+, built with sixel) renders sixel natively for capable clients — so this is the
@@ -278,6 +351,7 @@ pub fn attach_picker() -> Result<()> {
     let entry = &entries[i];
     if entry.running {
         // Live session — just join it.
+        remember_outer_terminal(&entry.name, &current_outer_terminal());
         let status = Command::new("tmux")
             .env_remove("TMUX")
             .args(["attach-session", "-t", &entry.name])

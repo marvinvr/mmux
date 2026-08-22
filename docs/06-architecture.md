@@ -51,6 +51,12 @@ and singleton-per-directory:
   enables opt-in CSI-u reporting and marks the common `xterm*` terminal family capable. It does
   not force enhanced input on ordinary panes; a program must request it.
 - Attaching runs with `TMUX` unset, so mmux works even when launched inside another tmux.
+- The outer wrapper records the client's `TERM`, `COLORTERM`, `TERM_PROGRAM`, and terminal version
+  in the session environment. `Pane::spawn` restores them for hosted programs instead of exposing
+  the invisible tmux layer, so terminal-specific rendering (including Claude's activity animation)
+  matches a direct launch. It also removes the jail's `TMUX`/`TMUX_PANE`; the program is attached
+  to mmux's vt100 PTY and cannot negotiate directly with that tmux pane. Each attach refreshes the
+  terminal values used by panes spawned afterward.
 
 `mmux attach` is a separate path: it lists running `mmux-*` sessions plus recent directories
 (from `~/.mmux/history`) in a small picker. Workspace manifests form the first section regardless
