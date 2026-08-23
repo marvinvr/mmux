@@ -240,8 +240,8 @@ Either way:
 - **To check or apply on demand,** open the [About card](03-usage.md#the-about-card) with **`?`**: it
   shows the running version and the live update status, with `c` to check now and `u` to apply.
 - **The restart brings your work back.** Replacing the running process ends the live panes, but the
-  new one restores them the same way reopening a directory does — Claude/Codex agents resume their
-  conversation, terminals reopen where you left them — so applying an update doesn't cost you your
+  new one restores them the same way reopening a directory does — Claude/Codex/Grok agents resume
+  their conversation, terminals reopen where you left them — so applying an update doesn't cost you your
   place. See [Session restore](03-usage.md#detaching-reattaching-and-the-attach-picker).
 
 It is **inert** for unmanaged installs — source builds (`cargo install`), binaries in a location you

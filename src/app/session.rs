@@ -101,9 +101,9 @@ pub struct Session {
     /// Index of the workspace project (see [`crate::app`]) this session belongs to.
     /// Drives which sidebar group it lands in; the lifecycle is identical regardless.
     pub project: usize,
-    /// Resume bookkeeping for a Claude/Codex agent: lets a (re)start reattach to
+    /// Resume bookkeeping for a Claude/Codex/Grok agent: lets a (re)start reattach to
     /// the same conversation rather than start cold. `None` for terminals,
-    /// processes, and any agent that isn't one of the two we support. See
+    /// processes, and any agent that isn't one of the three we support. See
     /// [`crate::agent`] and [`crate::restore`].
     pub agent: Option<crate::agent::Resume>,
     /// Optional teardown command (a shell line) run in `recipe.cwd` after this session's
@@ -172,7 +172,7 @@ impl Session {
         if let Some(p) = self.pane.as_mut() {
             p.kill();
         }
-        // Append any Claude/Codex resume flags. The first launch *creates* the
+        // Append any Claude/Codex/Grok resume flags. The first launch *creates* the
         // session (`--session-id`); after that, and for a restored agent, launches
         // *resume* it (`--resume` / `codex resume`).
         if let Some(r) = self.agent.as_mut() {

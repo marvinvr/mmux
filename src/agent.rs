@@ -1,20 +1,21 @@
-//! Resume support for the two agents mmux ships presets for: **Claude Code** and
-//! **Codex**. This is deliberately *not* configurable — detection is purely the
-//! launch command's basename, and each tool's quirks live here:
+//! Resume support for three agents mmux ships presets for: **Claude Code**,
+//! **Codex**, and **Grok**. This is deliberately *not* configurable — detection is
+//! purely the launch command's basename, and each tool's quirks live here:
 //!
-//! - **Claude** lets us *own* the session id: we mint a UUID, start it with
-//!   `--session-id <uuid>`, and later reattach with `--resume <uuid>`. That means
-//!   several `Claude #N` in one directory each resume their own conversation.
+//! - **Claude** and **Grok** let us *own* the session id: we mint a UUID, start
+//!   them with `--session-id <uuid>`, and later reattach with `--resume <uuid>`.
+//!   That means several instances in one directory each resume their own conversation.
 //! - **Codex** has no "set the id" flag — it only resumes one we *discover*. So we
 //!   start it plain, find the session it wrote under `~/.codex/sessions`, and
 //!   reattach with `codex resume <uuid>`.
 //!
-//! Claude's minted id is authoritative — mmux launches by it and resumes by it, so
-//! each `Claude #N` keeps its own thread and several in one directory never get mixed
-//! up. Codex hands us no id, so a fresh Codex agent has to *discover* the session it
-//! just created via [`sessions_for`]: both tools write one transcript per conversation
-//! tagged with its `cwd`. Codex candidates are matched against the pane's launch time,
-//! so an existing conversation from the same directory can never be adopted.
+//! Claude and Grok's minted ids are authoritative — mmux launches by them and
+//! resumes by them, so each instance keeps its own thread and several in one
+//! directory never get mixed up. Codex hands us no id, so a fresh Codex agent
+//! has to *discover* the session it just created via [`sessions_for`]. Claude and
+//! Codex both write one transcript per conversation tagged with its `cwd`. Codex
+//! candidates are matched against the pane's launch time, so an existing conversation
+//! from the same directory can never be adopted.
 //! Used by [`crate::app`] to persist and restore agents across a quit/crash/self-update
 //! reopen (see [`crate::restore`]).
 
@@ -33,33 +34,35 @@ const DISCOVERY_RETRY: Duration = Duration::from_millis(500);
 pub enum Tool {
     Claude,
     Codex,
+    Grok,
 }
 
 impl Tool {
     /// Detect a resumable agent from its launch command by basename, so
-    /// `claude`, `/opt/homebrew/bin/claude`, and `codex` all match.
+    /// `claude`, `/opt/homebrew/bin/claude`, `codex`, and `grok` all match.
     pub fn detect(cmd: &str) -> Option<Tool> {
         match Path::new(cmd).file_name()?.to_str()? {
             "claude" => Some(Tool::Claude),
             "codex" => Some(Tool::Codex),
+            "grok" => Some(Tool::Grok),
             _ => None,
         }
     }
 
-    /// Whether mmux assigns the session id at launch (Claude) rather than having
+    /// Whether mmux assigns the session id at launch (Claude/Grok) rather than having
     /// to discover it afterwards (Codex).
     pub fn owns_id(self) -> bool {
-        matches!(self, Tool::Claude)
+        matches!(self, Tool::Claude | Tool::Grok)
     }
 }
 
-/// Per-session resume bookkeeping for a Claude/Codex agent: which tool, the
+/// Per-session resume bookkeeping for a Claude/Codex/Grok agent: which tool, the
 /// session id we reattach by, and whether the *next* spawn should resume an
 /// existing session rather than start a fresh one.
 #[derive(Clone)]
 pub struct Resume {
     pub tool: Tool,
-    /// The session id. Claude: minted up front. Codex: `None` until discovered.
+    /// The session id. Claude/Grok: minted up front. Codex: `None` until discovered.
     pub id: Option<String>,
     /// `false` for a brand-new agent (its first launch *creates* the session);
     /// `true` afterwards and for any restored agent (launches *resume* it).
@@ -72,7 +75,7 @@ pub struct Resume {
 }
 
 impl Resume {
-    /// A fresh resumable agent: Claude gets a minted id; Codex starts id-less.
+    /// A fresh resumable agent: Claude/Grok get a minted id; Codex starts id-less.
     pub fn new(tool: Tool) -> Resume {
         let id = tool.owns_id().then(mint_uuid);
         Resume {
@@ -122,8 +125,12 @@ impl Resume {
     /// a plain session, and the id is discovered later.
     pub fn launch_args(&self) -> Vec<String> {
         match (self.tool, self.resume, self.id.as_deref()) {
-            (Tool::Claude, false, Some(id)) => vec!["--session-id".into(), id.into()],
-            (Tool::Claude, true, Some(id)) => vec!["--resume".into(), id.into()],
+            (Tool::Claude | Tool::Grok, false, Some(id)) => {
+                vec!["--session-id".into(), id.into()]
+            }
+            (Tool::Claude | Tool::Grok, true, Some(id)) => {
+                vec!["--resume".into(), id.into()]
+            }
             // Codex `resume` is a subcommand taking the session UUID.
             (Tool::Codex, true, Some(id)) => vec!["resume".into(), id.into()],
             _ => Vec::new(),
@@ -131,10 +138,11 @@ impl Resume {
     }
 }
 
-/// A v4 UUID from `/dev/urandom`, formatted `8-4-4-4-12`. Enough for Claude's
+/// A v4 UUID from `/dev/urandom`, formatted `8-4-4-4-12`. Enough for Claude/Grok's
 /// `--session-id` without pulling in the `uuid`/`rand` crates. Falls back to a
 /// time-seeded value if `/dev/urandom` is somehow unreadable; a collision there
-/// would at worst resume the wrong conversation, never corrupt anything.
+/// could at worst fail a launch or resume the wrong conversation, never corrupt
+/// anything.
 pub fn mint_uuid() -> String {
     let mut b = [0u8; 16];
     let ok = std::fs::File::open("/dev/urandom")
@@ -180,6 +188,9 @@ fn session_root(tool: Tool) -> Option<PathBuf> {
     Some(match tool {
         Tool::Claude => home.join(".claude").join("projects"),
         Tool::Codex => home.join(".codex").join("sessions"),
+        // Grok ids are minted before launch, so its on-disk session tree never
+        // needs to be scanned to discover which conversation belongs to a pane.
+        Tool::Grok => return None,
     })
 }
 
@@ -197,6 +208,7 @@ fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime
         let meta = match tool {
             Tool::Claude => read_claude_meta(&path),
             Tool::Codex => read_codex_meta(&path),
+            Tool::Grok => None,
         };
         if let Some((id, file_cwd)) = meta {
             if file_cwd == want {
@@ -204,7 +216,7 @@ fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime
                 // activity and made old but recently-used sessions look new.
                 let started_at = match tool {
                     Tool::Codex => codex_id_time(&id).unwrap_or(mtime),
-                    Tool::Claude => mtime,
+                    Tool::Claude | Tool::Grok => mtime,
                 };
                 out.push((id, started_at));
             }
@@ -301,6 +313,8 @@ mod tests {
         assert_eq!(Tool::detect("/opt/homebrew/bin/claude"), Some(Tool::Claude));
         assert_eq!(Tool::detect("codex"), Some(Tool::Codex));
         assert_eq!(Tool::detect("/usr/local/bin/codex"), Some(Tool::Codex));
+        assert_eq!(Tool::detect("grok"), Some(Tool::Grok));
+        assert_eq!(Tool::detect("/Users/me/.grok/bin/grok"), Some(Tool::Grok));
         assert_eq!(Tool::detect("vim"), None);
         assert_eq!(Tool::detect("zsh"), None);
     }
@@ -317,9 +331,10 @@ mod tests {
     }
 
     #[test]
-    fn claude_owns_id_codex_does_not() {
+    fn claude_and_grok_own_ids_codex_does_not() {
         assert!(Tool::Claude.owns_id());
         assert!(!Tool::Codex.owns_id());
+        assert!(Tool::Grok.owns_id());
 
         // Claude: create then resume.
         let mut r = Resume::new(Tool::Claude);
@@ -336,6 +351,13 @@ mod tests {
         assert!(c.launch_args().is_empty());
         c.id = Some("abc".into());
         assert_eq!(c.launch_args(), vec!["resume".to_string(), "abc".to_string()]);
+
+        // Grok uses long flags for both creating and resuming a conversation.
+        let mut g = Resume::new(Tool::Grok);
+        let id = g.id.clone().unwrap();
+        assert_eq!(g.launch_args(), vec!["--session-id".to_string(), id.clone()]);
+        g.resume = true;
+        assert_eq!(g.launch_args(), vec!["--resume".to_string(), id]);
     }
 
     #[test]

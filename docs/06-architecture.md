@@ -331,8 +331,8 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   `~/.mmux/state/<session-hash>.yaml` (keyed by the same canonical-dir hash tmux uses, via
   `tmux::session_name`). It writes on every structural change (a cheap fingerprint in `tick()`
   gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
-  Each save also resolves every agent's resume id (`refresh_agent_ids`): Claude ids are minted by
-  mmux and left untouched, while a fresh Codex agent records its pane launch time and adopts the
+  Each save also resolves every agent's resume id (`refresh_agent_ids`): Claude/Grok ids are minted
+  by mmux and left untouched, while a fresh Codex agent records its pane launch time and adopts the
   first top-level rollout created for that cwd afterward (`agent::sessions_for`). Discovery retries
   until Codex writes the rollout, so it cannot capture an older or recently-active sibling. Each
   row carries its canonical project directory as well as the legacy
@@ -344,11 +344,12 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
   process only ever starts when there's no live session to attach to (a detach leaves the inner
   process — and its panes — running, so reattaching never reaches this path). So there are never
   live panes to clobber.
-  - **Claude / Codex agents resume their conversation.** `agent.rs` is a hardcoded, no-config
-    adapter detected purely by command basename. Claude lets mmux *own* the id (launch with
-    `--session-id <uuid>`, reattach with `--resume <uuid>`), so several `Claude #N` in one
-    directory each resume their **own** thread — the id is authoritative and is never reassigned
-    between agents, so idle agents can't be shuffled onto a recently-active sibling's session.
+  - **Claude / Codex / Grok agents resume their conversation.** `agent.rs` is a hardcoded,
+    no-config adapter detected purely by command basename. Claude and Grok let mmux *own* the id
+    (launch with `--session-id <uuid>`, reattach with `--resume <uuid>`), so several instances in
+    one directory each resume their **own** thread — the id is authoritative and is never
+    reassigned between agents, so idle agents can't be shuffled onto a recently-active sibling's
+    session.
     Codex has no such flag, so mmux launches it plain, **discovers** the session it created
     (`agent::sessions_for` — the first unclaimed top-level rollout created after that pane's
     launch time), and reattaches with `codex resume <uuid>`.
@@ -431,7 +432,7 @@ removes it from the snapshot, so it's easy to get a clean slate.
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |
 | Self-update: auto install, user-gated restart | The on-disk swap is safe mid-run, but applying it ends the panes — so the disruptive step waits for you, behind a quiet badge, while a long task runs undisturbed. |
-| Restore agents/terminals on every reopen | Snapshot the live sessions and rebuild on start — resuming Claude/Codex by session id and shells at their live cwd — so quitting, a crash, or a "restart to update" all bring your work back. Unconditional because the tmux singleton guarantees a fresh inner process means no live panes to clobber. A throwaway state file, never load-bearing. |
+| Restore agents/terminals on every reopen | Snapshot the live sessions and rebuild on start — resuming Claude/Codex/Grok by session id and shells at their live cwd — so quitting, a crash, or a "restart to update" all bring your work back. Unconditional because the tmux singleton guarantees a fresh inner process means no live panes to clobber. A throwaway state file, never load-bearing. |
 
 ## Planned
 

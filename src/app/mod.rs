@@ -307,7 +307,7 @@ impl App {
             app.sessions[i].spawn(rows, cols);
         }
 
-        // Bring the previous agents/terminals back (Claude/Codex resumed). This runs
+        // Bring the previous agents/terminals back (Claude/Codex/Grok resumed). This runs
         // on every fresh start — after a quit, a crash, or a self-update restart — and
         // is a no-op when there's no saved state. It's safe to do unconditionally: the
         // tmux singleton means a *new* inner process only starts when there's no live

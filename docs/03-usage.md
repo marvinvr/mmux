@@ -397,8 +397,8 @@ rather than consuming drawer height.
   so a `docker compose up` gets its `docker compose down` on the way out.
 - Run `mmux` again in the same directory to reattach.
 - **Your session comes back.** Even after a `q` (or a crash, or a restart-to-update), reopening a
-  directory **restores the agents and terminals** you had open: **Claude and Codex agents resume
-  their conversation**, and **terminals reopen in the directory you left them in** (as a fresh
+  directory **restores the agents and terminals** you had open: **Claude, Codex, and Grok agents
+  resume their conversation**, and **terminals reopen in the directory you left them in** (as a fresh
   shell — history, env, and background jobs don't carry over). Anything that can't resume starts
   fresh; processes come back via autostart or a click. To start clean instead, **close the sessions
   (`x`) before quitting** — only what's still open is remembered.
