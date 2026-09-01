@@ -331,11 +331,12 @@ WORKTREES — a branch as its own project box
 
     FINISHING. `M` merges into the branch it came from (mmux remembered which)
     and offers to clear the checkout away too: y merges and removes, m merges
-    only. `P` pushes as usual. `X` removes on demand, telling you exactly what it
-    would cost. And a worktree that is FINISHED — nothing running, clean tree,
-    every commit merged or pushed — is cleared away after 30 minutes idle. Only
-    the checkout goes, and only when its contents already live somewhere else; a
-    branch with unpushed, unmerged work is never touched.
+    only. `P` pushes as usual. `X` (in the sidebar or the git panel) removes on
+    demand, telling you exactly what it would cost. And a worktree that is
+    FINISHED — nothing running, clean tree, every commit merged or pushed — is
+    cleared away after 30 minutes idle. Only the checkout goes, and only when its
+    contents already live somewhere else; a branch with unpushed, unmerged work
+    is never touched.
 
 FIELD REFERENCE
     top level   name (str, optional) · agents[] · processes[] · git-panel (optional)

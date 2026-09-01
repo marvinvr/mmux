@@ -101,7 +101,8 @@ pub(crate) enum FooterAction {
     GitNewWorktree,
     /// Merge the active worktree into its base branch (`M`); worktrees only.
     GitMergeWorktree,
-    /// Remove the active worktree (`X`); worktrees only.
+    /// Remove the active worktree (the `X` key, in the sidebar or the panel);
+    /// worktrees only.
     GitRemoveWorktree,
     GitPull,
     GitPush,
@@ -488,6 +489,9 @@ impl App {
                 v.push(Seg::btn("a", "agents", ManageAgents));
                 if self.active_git().is_some() {
                     v.push(Seg::btn("w", "worktree", GitNewWorktree));
+                }
+                if self.active_is_worktree() {
+                    v.push(Seg::btn("X", "remove", GitRemoveWorktree));
                 }
                 if self.manifest {
                     v.push(Seg::btn("W", "workspace", ManageWorkspace));

@@ -139,6 +139,9 @@ impl App {
             // Cut a worktree from the active project without a detour through the git
             // panel — same key as there, since it's the same action on the same repo.
             KeyCode::Char('w') if self.active_git().is_some() => self.git_worktree_prompt(),
+            // ...and take one away again from the same place. Worktree rows only, so a
+            // main clone can't be removed by a stray capital.
+            KeyCode::Char('X') if self.active_is_worktree() => self.remove_worktree_prompt(),
             // Manifest-only: manage the workspace name, folders, and manifest order.
             KeyCode::Char('W') if self.manifest => self.open_workspace_manager(),
             // Compact-only project switcher; desktop keeps its direct project boxes.

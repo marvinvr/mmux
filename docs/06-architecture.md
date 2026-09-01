@@ -222,10 +222,10 @@ panel at the project you're navigating, so staging and committing land in the ri
 - **Families order together.** `project_display_order` builds a sort key that leads with the family
   root, so a repository's checkouts are always one contiguous block with the parent on top, and it
   pools activity onto that root — a busy worktree lifts its parent's whole block rather than being
-  torn out of it and stranded at the top of the sidebar. `arrange_families` then puts the *active*
-  family first outright: sibling checkouts are one unit of work you move between constantly, so the
-  block stays at the top while you do. A lone project is still never promoted just for being
-  selected — browsing must not reshuffle the list under the cursor.
+  torn out of it and stranded at the top of the sidebar. `arrange_families` then partitions those
+  blocks by activity and nothing else — **selection never reorders**, so browsing can't reshuffle
+  the list under the cursor, and a repository that happens to have a checkout hanging off it ranks
+  exactly like a plain project would.
 
 ### One Dev Stack Per Repository
 

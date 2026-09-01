@@ -59,7 +59,7 @@ impl App {
     /// Worktrees never leave their parent's side: a repository's checkouts are
     /// partitioned and sorted as one **family**, so a busy worktree lifts the whole
     /// group rather than being torn out of it and stranded at the top of the sidebar.
-    /// The family you are working in leads the list outright — see
+    /// A family is ranked by activity like any other project — see
     /// [`arrange_families`].
     pub(crate) fn project_display_order(&self) -> Vec<usize> {
         let roots: Vec<usize> = (0..self.projects.len())
@@ -77,7 +77,7 @@ impl App {
         let keys: Vec<SortKey> = (0..self.projects.len())
             .map(|pi| self.project_sort_key(pi, &roots))
             .collect();
-        arrange_families(&roots, &hot, Some(self.active), &keys)
+        arrange_families(&roots, &hot, &keys)
     }
 
     /// Sort key that keeps a family contiguous and in a fixed shape: the family's
@@ -248,36 +248,21 @@ impl App {
 type SortKey = (String, usize, u8, String);
 
 /// Order the projects for display, given each one's family root, whether its family
-/// carries background activity, the active project, and its sort key.
+/// carries background activity, and its sort key.
 ///
-/// Three groups, each sorted by key: **the active family**, then families with
-/// activity, then everything else. Sorting by a key that leads with the family root
-/// is what makes a family a block — worktrees always sit directly under the checkout
-/// they were cut from, and the block moves as one.
+/// Two groups, each sorted by key: families with activity, then everything else.
+/// Sorting by a key that leads with the family root is what makes a family a block —
+/// worktrees always sit directly under the checkout they were cut from, and the block
+/// moves as one.
 ///
-/// The active family leads only when it *is* a family. A lone project is still not
-/// promoted merely for being selected — browsing with `[`/`]` must not reshuffle the
-/// list under the cursor — but sibling checkouts of one repository are a single unit
-/// of work you move between constantly, so they stay together at the top while you do.
-fn arrange_families(
-    roots: &[usize],
-    hot: &[bool],
-    active: Option<usize>,
-    keys: &[SortKey],
-) -> Vec<usize> {
-    let lead = active
-        .and_then(|pi| roots.get(pi).copied())
-        .filter(|&root| roots.iter().filter(|&&r| r == root).count() > 1);
-    let mut groups: [Vec<usize>; 3] = Default::default();
+/// **Selection never reorders.** Activity alone ranks a family, whether it has
+/// worktrees or not, so moving between projects with `[`/`]` can't reshuffle the list
+/// under the cursor — and a repository doesn't behave differently from a plain project
+/// just because it happens to have a checkout hanging off it.
+fn arrange_families(roots: &[usize], hot: &[bool], keys: &[SortKey]) -> Vec<usize> {
+    let mut groups: [Vec<usize>; 2] = Default::default();
     for (pi, &root) in roots.iter().enumerate() {
-        let g = if lead == Some(root) {
-            0
-        } else if hot[root] {
-            1
-        } else {
-            2
-        };
-        groups[g].push(pi);
+        groups[usize::from(!hot[root])].push(pi);
     }
     let mut out = Vec::with_capacity(roots.len());
     for mut group in groups {
@@ -318,28 +303,17 @@ mod tests {
         ]);
         // Activity on the family lifts parent + both worktrees above the quiet project,
         // parent first, worktrees in name order.
-        assert_eq!(arrange_families(&roots, &hot, None, &k), vec![1, 2, 3, 0]);
+        assert_eq!(arrange_families(&roots, &hot, &k), vec![1, 2, 3, 0]);
     }
 
     #[test]
-    fn the_active_family_leads_from_either_end() {
+    fn a_quiet_family_is_not_promoted_over_a_busy_project() {
         let roots = [0, 1, 1];
         let k = keys(&[(0, "zed", false), (1, "app", false), (1, "brave-otter", true)]);
-        // "zed" is the busy one, but working in the worktree (2) — or in its parent
-        // (1) — puts the whole family first anyway.
+        // "zed" is the busy one, so it leads whether or not you're working in the
+        // "app" family: having worktrees is not itself a reason to rank higher.
         let hot = [true, false, false];
-        assert_eq!(arrange_families(&roots, &hot, Some(2), &k), vec![1, 2, 0]);
-        assert_eq!(arrange_families(&roots, &hot, Some(1), &k), vec![1, 2, 0]);
-        assert_eq!(arrange_families(&roots, &hot, Some(0), &k), vec![0, 1, 2]);
-    }
-
-    #[test]
-    fn a_lone_project_is_not_promoted_by_being_selected() {
-        let roots = [0, 1];
-        let hot = [true, false];
-        let k = keys(&[(0, "zed", false), (1, "app", false)]);
-        // Selecting the quiet "app" leaves it below the busy "zed".
-        assert_eq!(arrange_families(&roots, &hot, Some(1), &k), vec![0, 1]);
+        assert_eq!(arrange_families(&roots, &hot, &k), vec![0, 1, 2]);
     }
 
     #[test]
@@ -352,6 +326,6 @@ mod tests {
             (2, "app", false),
             (2, "calm-yak", true),
         ]);
-        assert_eq!(arrange_families(&roots, &hot, None, &k), vec![0, 1, 2, 3]);
+        assert_eq!(arrange_families(&roots, &hot, &k), vec![0, 1, 2, 3]);
     }
 }

@@ -94,6 +94,7 @@ terminal input.
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
 | `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and cycle each one's launch mode (`m`: normal → auto → danger); saves to the global config and reloads |
 | `w` | New [worktree](#worktrees) of the active project — the same pre-filled prompt as `w` in the git panel (git repositories only) |
+| `X` | Remove the selected [worktree](#worktrees) — the same confirmation as `X` in the git panel, spelling out what would be lost (worktree rows only) |
 | `W` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and manifest order (manifest workspaces only) |
 | `p` | Open the project switcher in [phone mode](#narrow-terminals-and-phones) (multi-project workspaces only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
@@ -171,7 +172,7 @@ Focus the panel with `Tab` (or click it), then:
 | `n` | New branch (opens a name prompt; creates and switches) |
 | `w` | New [worktree](#worktrees) (opens a pre-filled name prompt; `Ctrl+R` there suggests another) |
 | `M` | Merge this worktree into the branch it came from (worktrees only; asks to confirm) |
-| `X` | Remove this worktree (worktrees only; asks to confirm) |
+| `X` | Remove this worktree — also on `X` in the sidebar (worktrees only; asks to confirm) |
 | `d` | Discard the selected path (destructive — asks for confirmation) |
 | `s` | Stash (`git stash push -u`, includes untracked; recover with `git stash pop`) |
 | `p` · `P` | Pull · Push (run in the background; the result is flashed in the footer) |
@@ -228,9 +229,9 @@ underneath the name, which is what tells you what it's actually for.
 
 **They stay with their parent.** A repository and its worktrees are one block in the sidebar: the
 main checkout on top, its worktrees directly under it, always in that order. The block also sorts
-as a unit — activity anywhere in it lifts the whole family, and while you're working in any of its
-checkouts the family sits at the top of the sidebar. Moving between checkouts never rearranges
-them under you.
+as a unit — activity anywhere in it lifts the whole family, exactly as it would lift a project
+with no worktrees. Selecting a project never moves it, so moving between checkouts never
+rearranges them under you.
 
 New checkouts are created under `~/.mmux/worktrees/`, never inside the repository — nothing to add
 to `.gitignore`, and no second copy of the tree for editors and watchers to crawl. mmux copies
@@ -258,9 +259,9 @@ already live somewhere else; a branch with unpushed, unmerged commits is never t
 unmerged branch is kept even when its checkout is removed by hand. The footer says what went and
 why. See [`worktrees.reap`](04-configuration.md#worktrees).
 
-`X` removes one on demand. The confirmation is specific about what it would cost — merged into
-`main` (nothing lost), pushed (commits stay on the remote), *n* commits that are neither (the
-branch is kept), or uncommitted changes (gone for good).
+`X` removes one on demand — in the sidebar, or in the git panel. The confirmation is specific
+about what it would cost — merged into `main` (nothing lost), pushed (commits stay on the remote),
+*n* commits that are neither (the branch is kept), or uncommitted changes (gone for good).
 
 ### The Diff Preview
 
