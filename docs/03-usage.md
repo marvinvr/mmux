@@ -168,7 +168,8 @@ Focus the panel with `Tab` (or click it), then:
 | `Enter` · `Space` | Stage/unstage the file or directory — or switch to the branch, or show the commit's diff |
 | `v` | Preview the selected file's / commit's diff in the main pane (press again to close) |
 | `a` | Stage all changes (press again to unstage all) |
-| `c` | Commit (opens a message prompt; `Ctrl+P` there commits **and** pushes — as does `Ctrl+⏎` where the terminal reports it) |
+| `c` | Commit (opens a message prompt and [suggests a message](#generated-commit-messages); `Ctrl+P` there commits **and** pushes — as does `Ctrl+⏎` where the terminal reports it) |
+| `S` | [Schedule](#scheduled-commits) a commit, commit & push, or (in a worktree) commit & merge |
 | `n` | New branch (opens a name prompt; creates and switches) |
 | `w` | New [worktree](#worktrees) (opens a pre-filled name prompt; `Ctrl+R` there suggests another) |
 | `M` | Merge this worktree into the branch it came from (worktrees only; asks to confirm) |
@@ -201,6 +202,41 @@ throttle, so commits an agent makes in the main pane show up on their own. For r
 remote, mmux also runs a quiet background `git fetch` every five minutes so branch tracking and
 remote commits stay current. The first fetch is spread across the first 30 seconds per repository,
 fetches never overlap pull/push, and local-only directories make no network calls.
+
+### Generated Commit Messages
+
+When `codex` or `claude` is on `PATH`, opening the commit prompt with `c` starts a message
+suggestion in the background. mmux prefers Codex with the cost-sensitive `gpt-5.6-luna` model and
+falls back to Claude with its rolling `haiku` alias if Codex cannot run. With neither CLI installed,
+the prompt behaves as an ordinary empty commit field.
+
+The generator receives the recent commit subjects plus the changes that would actually be
+committed: the index when anything is staged, otherwise the entire working tree. Context is capped
+at 40 files, 12 KiB per file, and 64 KiB total; untracked binary files are named but not sent. The
+CLI runs read-only and returns a single subject line. This still sends that bounded code context to
+the provider configured in the installed CLI.
+
+Typing, backspacing, or pasting into the field immediately kills the generator and leaves the field
+entirely manual. If the suggestion arrives first it remains editable. Pressing Enter on the still
+empty field closes the prompt and commits as soon as the background suggestion arrives; `Ctrl+P`
+does the same and then pushes.
+
+### Scheduled Commits
+
+Press `S` in the git panel, choose `15m`, `30m`, `1h`, `2h`, `3h`, `6h`, or `12h` with the arrow
+keys, then submit with:
+
+- `Enter` — stage everything, generate a message, commit, and push (the default)
+- `c` — stage everything, generate a message, and commit only
+- `m` — stage everything, generate a message, commit, and merge into the branch the worktree came
+  from (worktrees only; the checkout is kept)
+
+The footer shows the countdown. Press `S` again and `x` to cancel either the timer or message
+generation already in progress. Timers continue while mmux is detached because its tmux-hosted
+process is still alive; quitting or restarting mmux clears them. At execution time a scheduled
+merge re-checks that the main checkout is clean and still on the recorded base branch, and refuses
+rather than merging somewhere surprising. Commit-and-push waits behind an in-flight fetch/pull/push
+instead of dropping the push.
 
 ## Worktrees
 

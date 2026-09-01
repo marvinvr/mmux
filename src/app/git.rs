@@ -113,6 +113,8 @@ pub(crate) struct GitPanel {
     pub commit_cursor: usize,
     /// A network op in flight: the present-tense label to show ("pushing…").
     pub busy: Option<&'static str>,
+    /// Generated commits queue their push behind an in-flight remote operation.
+    queued_push: bool,
     last_refresh: Option<Instant>,
     last_status_refresh: Option<Instant>,
     next_fetch: Instant,
@@ -138,6 +140,7 @@ impl GitPanel {
             branch_cursor: 0,
             commit_cursor: 0,
             busy: None,
+            queued_push: false,
             last_refresh: None,
             last_status_refresh: None,
             next_fetch,
@@ -369,6 +372,14 @@ impl GitPanel {
         });
     }
 
+    pub(crate) fn start_or_queue_push(&mut self) {
+        if self.busy.is_some() {
+            self.queued_push = true;
+        } else {
+            self.start_job(RemoteOp::Push);
+        }
+    }
+
     /// Drain finished network jobs; on completion clear `busy` and refresh. Returns
     /// the finished jobs so the app can flash their outcome. Called from `tick`.
     pub(crate) fn poll_jobs(&mut self) -> Vec<JobDone> {
@@ -383,6 +394,9 @@ impl GitPanel {
         if completed {
             self.busy = None;
             self.refresh();
+            if std::mem::take(&mut self.queued_push) {
+                self.start_job(RemoteOp::Push);
+            }
         }
         done
     }
@@ -501,10 +515,6 @@ impl App {
     pub(crate) fn git_stash(&mut self) {
         let r = self.active_git_mut().map(|g| g.stash());
         self.flash_result(r);
-    }
-
-    pub(crate) fn git_commit_prompt(&mut self) {
-        self.overlay = Some(Overlay::commit());
     }
 
     pub(crate) fn git_newbranch_prompt(&mut self) {

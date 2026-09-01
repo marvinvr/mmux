@@ -230,6 +230,7 @@ impl App {
             KeyCode::Char('d') => self.git_discard_prompt(),
             KeyCode::Char('s') => self.git_stash(),
             KeyCode::Char('c') => self.git_commit_prompt(),
+            KeyCode::Char('S') => self.git_schedule_prompt(),
             KeyCode::Char('n') => self.git_newbranch_prompt(),
             KeyCode::Char('p') => self.git_start("pull"),
             KeyCode::Char('P') => self.git_start("push"),
@@ -485,6 +486,7 @@ impl App {
             FooterAction::GitDiscard => self.git_discard_prompt(),
             FooterAction::GitStash => self.git_stash(),
             FooterAction::GitCommit => self.git_commit_prompt(),
+            FooterAction::GitSchedule => self.git_schedule_prompt(),
             FooterAction::GitNewBranch => self.git_newbranch_prompt(),
             FooterAction::GitNewWorktree => self.git_worktree_prompt(),
             FooterAction::GitMergeWorktree => self.merge_worktree_prompt(),
@@ -941,8 +943,14 @@ impl App {
     pub(crate) fn on_paste(&mut self, s: String) {
         // Paste into an open text prompt (commit message / a form's text step);
         // otherwise to the pane.
+        let mut cancel_generation = None;
         match &mut self.overlay {
-            Some(Overlay::Prompt { buf, .. }) => buf.push_str(&s),
+            Some(Overlay::Prompt {
+                buf, generation, ..
+            }) => {
+                cancel_generation = generation.take();
+                buf.push_str(&s);
+            }
             Some(Overlay::NewProcess(form)) if form.step != Step::Review => {
                 form.buf.push_str(&s);
             }
@@ -952,6 +960,9 @@ impl App {
             }
             _ if self.focus == Focus::Terminal => self.send_focused(s.into_bytes()),
             _ => {}
+        }
+        if let Some(id) = cancel_generation {
+            self.cancel_message_generation(id);
         }
     }
 }

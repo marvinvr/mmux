@@ -6,6 +6,8 @@
 //! `flash`. Everything here shells out to `git`; nothing is cached.
 
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -373,6 +375,105 @@ pub fn discard(dir: &Path, path: &str) -> Result<(), String> {
 pub fn commit(dir: &Path, msg: &str) -> Result<String, String> {
     let out = run(dir, &["commit", "-m", msg])?;
     Ok(out.lines().next().unwrap_or("committed").trim().to_string())
+}
+
+/// Bounded context for a commit-message generator. A non-empty index wins,
+/// matching `git commit`; otherwise this describes what mmux will stage-all.
+pub fn commit_context(dir: &Path) -> Result<String, String> {
+    const MAX_FILES: usize = 40;
+    const PER_FILE: usize = 12 * 1024;
+    const TOTAL: usize = 64 * 1024;
+    let st = status(dir);
+    let staged = st.files.iter().any(|f| f.staged);
+    let files: Vec<&FileEntry> = st
+        .files
+        .iter()
+        .filter(|f| !staged || f.staged)
+        .take(MAX_FILES)
+        .collect();
+    if files.is_empty() {
+        return Err("nothing to commit".to_string());
+    }
+    let mut out = String::from("Recent commit subjects (match this repository's style):\n");
+    for commit in log(dir, 8) {
+        push_capped(&mut out, &format!("- {}\n", commit.summary), TOTAL);
+    }
+    push_capped(
+        &mut out,
+        if staged {
+            "\nChanges staged for this commit:\n"
+        } else {
+            "\nNo changes are staged; mmux will stage and commit all of these changes:\n"
+        },
+        TOTAL,
+    );
+    for file in files {
+        if out.len() >= TOTAL {
+            break;
+        }
+        let state = if file.untracked { "untracked" } else { "changed" };
+        push_capped(&mut out, &format!("\n--- {} ({state}) ---\n", file.path), TOTAL);
+        let detail = if file.untracked && !staged {
+            read_text_prefix(&dir.join(&file.path), PER_FILE)
+        } else if staged {
+            capped(
+                &run_lossy(dir, &["diff", "--cached", "--no-color", "--no-ext-diff", "--unified=3", "--", file.path.as_str()]),
+                PER_FILE,
+            )
+        } else {
+            capped(
+                &run_lossy(dir, &["diff", "HEAD", "--no-color", "--no-ext-diff", "--unified=3", "--", file.path.as_str()]),
+                PER_FILE,
+            )
+        };
+        push_capped(
+            &mut out,
+            if detail.is_empty() { "[binary or unavailable]\n" } else { &detail },
+            TOTAL,
+        );
+    }
+    if st.files.iter().filter(|f| !staged || f.staged).count() > MAX_FILES {
+        push_capped(&mut out, "\n[additional changed files omitted]\n", TOTAL);
+    }
+    Ok(out)
+}
+
+fn read_text_prefix(path: &Path, limit: usize) -> String {
+    let Ok(file) = File::open(path) else { return String::new() };
+    let mut bytes = Vec::new();
+    let _ = file.take(limit as u64 + 1).read_to_end(&mut bytes);
+    if bytes.iter().take(8192).any(|b| *b == 0) {
+        return String::new();
+    }
+    let truncated = bytes.len() > limit;
+    bytes.truncate(limit);
+    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    if truncated {
+        text.push_str("\n[truncated]\n");
+    }
+    text
+}
+
+fn capped(text: &str, limit: usize) -> String {
+    if text.len() <= limit {
+        return text.to_string();
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n[truncated]\n", &text[..end])
+}
+
+fn push_capped(out: &mut String, text: &str, limit: usize) {
+    let room = limit.saturating_sub(out.len());
+    if room == 0 {
+        return;
+    }
+    out.push_str(&capped(text, room));
+    if out.len() > limit {
+        out.truncate(limit);
+    }
 }
 
 /// A unified diff of one path for the preview pane. For a tracked file we diff

@@ -3,7 +3,8 @@
 //! An [`Overlay`] is a single modal — a text [`Prompt`](Overlay::Prompt), a yes/no
 //! [`Confirm`](Overlay::Confirm), the Ctrl+P file [`Picker`](Overlay::Picker), the
 //! guided [`NewProcess`](Overlay::NewProcess) form, the [`Agents`](Overlay::Agents)
-//! manager, the [`Workspace`](Overlay::Workspace) manager, the compact project
+//! manager, the [`Workspace`](Overlay::Workspace) manager, the scheduled-commit
+//! picker, the compact project
 //! switcher, or the stateless
 //! [`About`](Overlay::About) card. While one is open it eats
 //! every key (see [`App::overlay_key`]); the rendering lives in [`super::view::overlay`].
@@ -21,6 +22,8 @@ pub(crate) enum Overlay {
         title: &'static str,
         buf: String,
         kind: PromptKind,
+        /// Cancellable commit-message worker currently filling this prompt.
+        generation: Option<u64>,
     },
     Confirm {
         title: &'static str,
@@ -45,6 +48,8 @@ pub(crate) enum Overlay {
     /// workspace name, toggle folders, and reorder them (state in
     /// [`crate::workspacemgr`]).
     Workspace(crate::workspacemgr::WorkspaceManager),
+    /// Duration/action picker for a delayed commit (`S`).
+    Schedule(super::commit::ScheduleForm),
     /// Compact project switcher. This is a stable project index rather than a row
     /// position because agent activity can change the display order while it is open.
     Projects { selected: usize },
@@ -104,11 +109,12 @@ pub(crate) enum Confirmed {
 }
 
 impl Overlay {
-    pub(crate) fn commit() -> Overlay {
+    pub(crate) fn commit(generation: Option<u64>) -> Overlay {
         Overlay::Prompt {
             title: "Commit message",
             buf: String::new(),
             kind: PromptKind::Commit { push: false },
+            generation,
         }
     }
 
@@ -117,6 +123,7 @@ impl Overlay {
             title: "New branch",
             buf: prefill,
             kind: PromptKind::NewBranch,
+            generation: None,
         }
     }
 
@@ -125,6 +132,7 @@ impl Overlay {
             title: "New worktree",
             buf: prefill,
             kind: PromptKind::NewWorktree,
+            generation: None,
         }
     }
 
@@ -213,11 +221,15 @@ impl App {
             self.projects_key(k);
             return;
         }
+        if matches!(self.overlay, Some(Overlay::Schedule(_))) {
+            self.schedule_key(k);
+            return;
+        }
         enum Act {
             None,
             Close,
             Detach,
-            Submit(PromptKind, String),
+            Submit(PromptKind, String, Option<u64>),
             Confirm(Confirmed),
             OpenFile(usize, String),
             /// Replace a new-worktree prompt's buffer with another generated name.
@@ -226,6 +238,7 @@ impl App {
             RerollName,
         }
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        let mut cancel_generation = None;
         let act = match &mut self.overlay {
             // The fuzzy file picker: type to filter, ↑/↓ (or Ctrl-p/n, Ctrl-k/j) to
             // move, ⏎ opens the highlighted file, Esc cancels.
@@ -263,8 +276,16 @@ impl App {
                 }
                 _ => Act::None,
             },
-            Some(Overlay::Prompt { buf, kind, .. }) => match k.code {
-                KeyCode::Esc => Act::Close,
+            Some(Overlay::Prompt {
+                buf,
+                kind,
+                generation,
+                ..
+            }) => match k.code {
+                KeyCode::Esc => {
+                    cancel_generation = generation.take();
+                    Act::Close
+                }
                 // ⏎ submits as-is; Ctrl+⏎ on a commit prompt upgrades it to commit-&-push —
                 // but that needs a terminal that reports the modifier (see `run`'s keyboard
                 // enhancement flags), and tmux drops it unless server-wide extended-keys is
@@ -277,12 +298,12 @@ impl App {
                         },
                         other => *other,
                     };
-                    Act::Submit(kind, buf.clone())
+                    Act::Submit(kind, buf.clone(), *generation)
                 }
                 // Ctrl+P: reliable commit-&-push (no-op on a non-commit prompt).
                 KeyCode::Char('p') if ctrl => match kind {
                     PromptKind::Commit { .. } => {
-                        Act::Submit(PromptKind::Commit { push: true }, buf.clone())
+                        Act::Submit(PromptKind::Commit { push: true }, buf.clone(), *generation)
                     }
                     _ => Act::None,
                 },
@@ -292,12 +313,14 @@ impl App {
                     _ => Act::None,
                 },
                 KeyCode::Backspace => {
+                    cancel_generation = generation.take();
                     buf.pop();
                     Act::None
                 }
                 // Type printable keys; swallow other control chords so they don't land in
                 // the buffer (Ctrl+P is handled above).
                 KeyCode::Char(c) if !ctrl => {
+                    cancel_generation = generation.take();
                     buf.push(c);
                     Act::None
                 }
@@ -333,9 +356,13 @@ impl App {
             | Some(Overlay::About)
             | Some(Overlay::Agents(_))
             | Some(Overlay::Workspace(_))
+            | Some(Overlay::Schedule(_))
             | Some(Overlay::Projects { .. }) => Act::None,
             None => Act::None,
         };
+        if let Some(id) = cancel_generation {
+            self.cancel_message_generation(id);
+        }
         match act {
             Act::None => {}
             Act::Close => self.overlay = None,
@@ -343,9 +370,9 @@ impl App {
                 self.overlay = None;
                 crate::tmux::detach();
             }
-            Act::Submit(kind, buf) => {
+            Act::Submit(kind, buf, generation) => {
                 self.overlay = None;
-                self.overlay_submit(kind, buf);
+                self.overlay_submit(kind, buf, generation);
             }
             Act::Confirm(action) => {
                 self.overlay = None;
@@ -365,9 +392,17 @@ impl App {
     }
 
     /// Apply a submitted text prompt: commit the index, or create+switch a branch.
-    pub(crate) fn overlay_submit(&mut self, kind: PromptKind, buf: String) {
+    pub(crate) fn overlay_submit(
+        &mut self,
+        kind: PromptKind,
+        buf: String,
+        generation: Option<u64>,
+    ) {
         let buf = buf.trim().to_string();
         if buf.is_empty() {
+            if let (PromptKind::Commit { push }, Some(id)) = (kind, generation) {
+                self.submit_pending_generation(id, push);
+            }
             return;
         }
         match kind {
@@ -417,9 +452,7 @@ impl App {
                 base,
                 remove,
             } => self.merge_worktree(project, &branch, &base, remove),
-            Confirmed::RemoveWorktree { project, branch } => {
-                self.remove_worktree(project, &branch)
-            }
+            Confirmed::RemoveWorktree { project, branch } => self.remove_worktree(project, &branch),
         }
     }
 

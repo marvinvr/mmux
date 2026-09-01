@@ -275,7 +275,7 @@ impl App {
     /// Where worktree `pi` merges back to: what mmux recorded when it cut the branch,
     /// falling back to whatever the main checkout has out now (for a branch made
     /// outside mmux, or a repo config that was cleaned).
-    fn worktree_base(&self, pi: usize) -> Option<String> {
+    pub(super) fn worktree_base(&self, pi: usize) -> Option<String> {
         let wt = self.projects[pi].worktree.as_ref()?;
         crate::git::config_get(&wt.parent, &base_key(&wt.branch))
             .or_else(|| Some(crate::git::status(&wt.parent).branch).filter(|b| !b.is_empty()))
@@ -325,6 +325,30 @@ impl App {
                 remove: true,
             },
         ));
+    }
+
+    /// Scheduled counterpart to `M`: merge without removing the worktree, after
+    /// re-checking the remembered base and main checkout at execution time.
+    pub(crate) fn merge_worktree_scheduled(&mut self, pi: usize) {
+        let Some(wt) = self.projects.get(pi).and_then(|p| p.worktree.as_ref()) else {
+            self.flash("scheduled merge failed — project is no longer a worktree");
+            return;
+        };
+        let (branch, repo) = (wt.branch.clone(), wt.parent.clone());
+        let Some(base) = self.worktree_base(pi) else {
+            self.flash("scheduled merge failed — can't tell what this branched from");
+            return;
+        };
+        let on = crate::git::status(&repo).branch;
+        if on != base {
+            self.flash(format!("scheduled merge failed — main checkout is on {on}, not {base}"));
+            return;
+        }
+        if !crate::git::is_clean(&repo) {
+            self.flash(format!("scheduled merge failed — {base} has uncommitted changes"));
+            return;
+        }
+        self.merge_worktree(pi, &branch, &base, false);
     }
 
     /// Run the confirmed merge. `remove` folds the usual follow-up — the branch is

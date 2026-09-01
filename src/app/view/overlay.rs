@@ -1,12 +1,13 @@
 //! Rendering for the modal overlays that float above the whole UI.
 //!
-//! One dispatcher ([`render_overlay`]) fans out to the prompt, confirmation, picker,
-//! guided-form, and manager renderers; live-App cards are routed beside it in `draw`.
+//! One dispatcher ([`render_overlay`]) fans out to the prompt, confirmation, schedule,
+//! picker, guided-form, and manager renderers; live-App cards are routed beside it in `draw`.
 //! They share the modal chrome ([`modal_frame`] over a [`centered`] rect) and a
 //! handful of modal-only helpers. The overlay STATE and its key handling live in
 //! [`crate::app::overlay`].
 
 use crate::agentmgr::{AgentManager, Mode};
+use crate::app::commit::ScheduleForm;
 use crate::app::overlay::{Overlay, PromptKind};
 use crate::app::picker::Picker;
 use crate::app::procform::{ProcForm, Step, STEPS};
@@ -36,7 +37,12 @@ fn list_scroll(sel: usize, height: usize) -> usize {
 
 pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
     match ov {
-        Overlay::Prompt { title, buf, kind } => render_prompt(f, area, title, buf, *kind),
+        Overlay::Prompt {
+            title,
+            buf,
+            kind,
+            generation,
+        } => render_prompt(f, area, title, buf, *kind, generation.is_some()),
         Overlay::Confirm {
             title, body, hint, ..
         } => render_confirm(f, area, title, body, hint),
@@ -44,6 +50,7 @@ pub(crate) fn render_overlay(f: &mut Frame, area: Rect, ov: &Overlay) {
         Overlay::NewProcess(form) => render_procform(f, area, form),
         Overlay::Agents(m) => render_agentmgr(f, area, m),
         Overlay::Workspace(m) => render_workspacemgr(f, area, m),
+        Overlay::Schedule(form) => render_schedule(f, area, form),
         // Drawn by renderers that need live App state, routed separately in `draw`.
         Overlay::About | Overlay::Projects { .. } => {}
     }
@@ -160,9 +167,15 @@ fn project_status_line(app: &App, pi: usize) -> Line<'static> {
 
     let mut spans = vec![Span::raw("    ")];
     if working + ready + failed == 0 {
-        spans.push(Span::styled("agents —", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            "agents —",
+            Style::default().fg(Color::DarkGray),
+        ));
     } else {
-        spans.push(Span::styled("agents ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            "agents ",
+            Style::default().fg(Color::DarkGray),
+        ));
         if working > 0 {
             spans.push(Span::styled(
                 format!("{}{}", app.spinner(), working),
@@ -187,7 +200,11 @@ fn project_status_line(app: &App, pi: usize) -> Line<'static> {
 
     spans.push(Span::styled("  ·  ", Style::default().fg(Color::DarkGray)));
     if let Some(g) = app.projects[pi].git.as_ref() {
-        let branch = if g.branch.is_empty() { "HEAD" } else { &g.branch };
+        let branch = if g.branch.is_empty() {
+            "HEAD"
+        } else {
+            &g.branch
+        };
         spans.push(Span::styled(
             truncate_middle(branch, 16),
             Style::default().fg(Color::Magenta),
@@ -910,7 +927,65 @@ fn render_confirm(f: &mut Frame, area: Rect, title: &str, body: &str, hint: &str
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-fn render_prompt(f: &mut Frame, area: Rect, title: &str, buf: &str, kind: PromptKind) {
+fn render_schedule(f: &mut Frame, area: Rect, form: &ScheduleForm) {
+    let inner = modal_frame(f, area, 58, 7, " Schedule commit ", Color::Magenta);
+    if inner.width == 0 || inner.height < 5 {
+        return;
+    }
+    let mut durations = vec![Span::styled(
+        "Run in  ",
+        Style::default().fg(Color::DarkGray),
+    )];
+    for (i, label) in ScheduleForm::labels().enumerate() {
+        let style = if i == form.selected {
+            Style::default().fg(Color::Black).bg(Color::Magenta)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        durations.push(Span::styled(format!(" {label} "), style));
+        durations.push(Span::raw(" "));
+    }
+    let mut lines = vec![
+        Line::from(durations),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("⏎ ", Style::default().fg(Color::Magenta)),
+            Span::styled("commit & push", Style::default().fg(Color::White)),
+            Span::styled(" (default)   c ", Style::default().fg(Color::DarkGray)),
+            Span::styled("commit only", Style::default().fg(Color::White)),
+        ]),
+    ];
+    if form.worktree {
+        lines.push(Line::from(vec![
+            Span::styled("m ", Style::default().fg(Color::Magenta)),
+            Span::styled(
+                "commit & merge into base",
+                Style::default().fg(Color::White),
+            ),
+        ]));
+    } else {
+        lines.push(Line::from(""));
+    }
+    let hint = if form.existing {
+        "←→ select · x cancel existing · esc close"
+    } else {
+        "←→ select · esc cancel"
+    };
+    lines.push(Line::from(Span::styled(
+        hint,
+        Style::default().fg(Color::DarkGray),
+    )));
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_prompt(
+    f: &mut Frame,
+    area: Rect,
+    title: &str,
+    buf: &str,
+    kind: PromptKind,
+    generating: bool,
+) {
     let w = area.width.saturating_sub(8).min(60).max(20);
     let inner = modal_frame(f, area, w, 4, format!(" {title} "), Color::Magenta);
     if inner.width == 0 || inner.height == 0 {
@@ -922,10 +997,19 @@ fn render_prompt(f: &mut Frame, area: Rect, title: &str, buf: &str, kind: Prompt
         PromptKind::NewBranch => "⏎ create & switch · esc cancel",
         PromptKind::NewWorktree => "⏎ create worktree · ^R another name · esc cancel",
     };
+    let value = if generating && buf.is_empty() {
+        "generating… (type to cancel)"
+    } else {
+        buf
+    };
     let lines = vec![
         Line::from(Span::styled(
-            buf.to_string(),
-            Style::default().fg(Color::White),
+            value.to_string(),
+            Style::default().fg(if generating {
+                Color::DarkGray
+            } else {
+                Color::White
+            }),
         )),
         Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
     ];

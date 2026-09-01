@@ -6,10 +6,12 @@
 //! - [`lifecycle`] — spawn/start/stop/restart actions and the live config reload.
 //! - [`input`] — keyboard, mouse and paste handling.
 //! - [`keymap`] — pure key-event → PTY-byte translation.
+//! - [`commit`] — cancellable generated messages and scheduled commit actions.
 //! - [`worktrees`] — worktrees-as-projects: adoption, create/merge/remove, the
 //!   one-dev-stack-per-repository swap, and the idle reaper.
 //! - [`view`] — all rendering (layout, sidebar, panes, footer).
 
+mod commit;
 mod diff;
 mod git;
 mod highlight;
@@ -25,6 +27,7 @@ mod session;
 mod view;
 mod worktrees;
 
+use commit::{MessageDone, MessageJob, ScheduledCommit};
 use diff::DiffView;
 use git::{first_line, GitPanel, JobDone};
 use input::{InputDecoder, Selection};
@@ -193,6 +196,13 @@ pub(crate) struct App {
     /// picker), drawn over the whole UI and eating all keys while open.
     overlay: Option<Overlay>,
 
+    /// Cancellable AI message workers and timers; these keep running while detached.
+    scheduled_commits: Vec<ScheduledCommit>,
+    message_jobs: Vec<MessageJob>,
+    next_message_job: u64,
+    message_tx: Sender<MessageDone>,
+    message_rx: Receiver<MessageDone>,
+
     /// The git panel's diff preview: when set, it takes over the main pane (a
     /// read-only pager of the changed file under the Changes cursor) instead of the
     /// selected session. Set by clicking a file / `v`; follows the cursor; cleared
@@ -332,6 +342,7 @@ impl App {
 
         let nproj = projects.len();
         let (update_tx, update_rx) = mpsc::channel();
+        let (message_tx, message_rx) = mpsc::channel();
         let mut app = App {
             root,
             cfg: config,
@@ -363,6 +374,11 @@ impl App {
             pending_url: None,
             drag_scroll: 0,
             overlay: None,
+            scheduled_commits: Vec::new(),
+            message_jobs: Vec::new(),
+            next_message_job: 1,
+            message_tx,
+            message_rx,
             diff: None,
             sixel: detect_sixel(),
             cell_px: detect_cell_px(),
@@ -495,6 +511,7 @@ impl App {
                 }
             }
         }
+        self.step_commit_automation();
         // Drain finished network jobs from every project's panel (even ones not
         // shown) so their channels can't back up; flash each outcome.
         let mut done: Vec<JobDone> = Vec::new();

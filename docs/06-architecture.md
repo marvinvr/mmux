@@ -282,6 +282,13 @@ cursor through all three.
   its own module, **`app/diff.rs`** — which serves both a live working-file preview (follows the
   Changes cursor, self-refreshes) and a static commit diff (`git show`, rendered with per-file
   dividers, chosen in the Commits box).
+- **`app/commit.rs`** owns commit-message workers and scheduled commits. It detects the optional
+  Codex/Claude CLIs, sends the model a context assembled by top-level `git.rs` with aggregate,
+  per-file, and file-count caps, and polls/kills the child from a worker thread. A job id connects a
+  worker to the commit prompt, so the first edit cancels the exact process and a late response can
+  never overwrite user text. The same channel drives empty-field deferred commits and timer-fired
+  stage-all → generate → commit → push/merge chains. Timers are keyed by canonical project path,
+  live in the persistent mmux process, and queued pushes wait behind the panel's current remote op.
 
 Floating above the whole UI — independent of the git panel — is the **`Overlay`** enum, its own
 module ([`app/overlay.rs`](07-module-map.md) for the state + key handling, [`view/overlay.rs`](07-module-map.md)
@@ -289,7 +296,8 @@ for the rendering): full-screen modals that eat every key while open:
 
 | Overlay | Raised by | Effect |
 | --- | --- | --- |
-| `Prompt` | `c` / `n` in the panel | Commit message / new-branch name |
+| `Prompt` | `c` / `n` in the panel | Cancellable generated commit message / new-branch name |
+| `Schedule` | `S` in the panel | Pick a delay and submit as commit+push, commit-only, or worktree commit+merge; cancel an existing timer |
 | `Confirm` | `d` in the panel · `t` / `u` on a commit · `D` on a process · `q` | Yes/no guard: destructive discard · revert / uncommit a commit · delete a process · quit |
 | `Picker` | `Ctrl+P` anywhere | [Fuzzy file picker](03-usage.md#the-file-picker) → opens a file in an editor pane |
 | `NewProcess` | `+ New Process` / `e` on a process | [Guided form](03-usage.md#adding-editing-and-deleting-a-process) → appends to (or edits in place) `mmux.yaml` |

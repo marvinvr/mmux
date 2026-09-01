@@ -96,6 +96,8 @@ pub(crate) enum FooterAction {
     GitDiscard,
     GitStash,
     GitCommit,
+    /// Open the delayed commit/action picker (`S`).
+    GitSchedule,
     GitNewBranch,
     /// Cut a worktree from this repository (the `w` key, in the sidebar or the panel).
     GitNewWorktree,
@@ -529,15 +531,24 @@ impl App {
                     // The Commits box acts on the selected commit: show its diff, copy the
                     // hash / message, revert it, or uncommit (soft-reset) to it. Pull/push
                     // stay handy for pushing a revert.
-                    Some(Section::Commits) => v.extend([
-                        Seg::btn("v", diff_label, GitDiff),
-                        Seg::btn("y", "hash", GitCopyHash),
-                        Seg::btn("m", "msg", GitCopyMessage),
-                        Seg::btn("t", "revert", GitRevert),
-                        Seg::btn("u", "uncommit", GitSoftReset),
-                        Seg::btn("p", "pull", GitPull),
-                        Seg::btn("P", "push", GitPush),
-                    ]),
+                    Some(Section::Commits) => {
+                        v.extend([
+                            Seg::btn("v", diff_label, GitDiff),
+                            Seg::btn("y", "hash", GitCopyHash),
+                            Seg::btn("m", "msg", GitCopyMessage),
+                            Seg::btn("t", "revert", GitRevert),
+                            Seg::btn("u", "uncommit", GitSoftReset),
+                            Seg::btn("p", "pull", GitPull),
+                            Seg::btn("P", "push", GitPush),
+                        ]);
+                        v.push(Seg::btn(
+                            "S",
+                            &self
+                                .active_schedule_label()
+                                .unwrap_or_else(|| "schedule".to_string()),
+                            GitSchedule,
+                        ));
+                    }
                     _ => {
                         // Stage-all, diff preview and discard all target the changes tree,
                         // so only offer them there; stash is whole-tree and always there.
@@ -549,6 +560,13 @@ impl App {
                         v.extend([
                             Seg::btn("s", "stash", GitStash),
                             Seg::btn("c", "commit", GitCommit),
+                            Seg::btn(
+                                "S",
+                                &self
+                                    .active_schedule_label()
+                                    .unwrap_or_else(|| "schedule".to_string()),
+                                GitSchedule,
+                            ),
                             Seg::btn("n", "branch", GitNewBranch),
                             Seg::btn("w", "worktree", GitNewWorktree),
                         ]);

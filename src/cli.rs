@@ -301,6 +301,18 @@ WORKSPACES — several projects in ONE session
     `n` edits its name. Saving adds and removes members live; removed members' panes
     are killed. Ordering applies when the workspace is reopened.
 
+GIT COMMITS — generated now or scheduled
+    In the git panel, `c` opens the commit field and asks an installed Codex
+    (`gpt-5.6-luna`) or Claude (`haiku`) CLI for a one-line message. Typing or
+    pasting cancels generation. Submit the empty field to commit when the message
+    arrives; ^P also pushes. The CLI gets capped diff context (40 files, 12 KiB
+    each, 64 KiB total), runs read-only, and is optional.
+
+    `S` schedules 15m / 30m / 1h / 2h / 3h / 6h / 12h ahead. Arrows select;
+    Enter stages all, commits and pushes; c commits only; m in a worktree commits
+    and merges into its remembered base. Reopen `S` and press x to cancel. Timers
+    keep running while detached and clear when mmux quits or restarts.
+
 WORKTREES — a branch as its own project box
     Press `w` (in the sidebar or the git panel) to cut a git worktree. It opens
     as another project box in the same session — indented under the project it

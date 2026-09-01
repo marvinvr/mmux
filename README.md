@@ -59,7 +59,8 @@ mmux a         # `mmux attach`: pick a workspace, active project, or past projec
 ```
 
 In the TUI: `↑`/`↓` move · `Enter` opens a `+ New …` row or jumps into a session · `s`/`x`/`r`
-start/close/restart · `Tab` focuses the git panel · `Ctrl+P` opens the file picker · `d` detaches
+start/close/restart · `Tab` focuses the git panel (`c` commits with an AI-suggested message; `S`
+schedules a commit) · `Ctrl+P` opens the file picker · `d` detaches
 · `q` quits. In a focused pane, `Ctrl-b h` returns to the sidebar. The full key reference is in
 [Usage](docs/03-usage.md).
 
