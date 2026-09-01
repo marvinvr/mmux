@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 mod yaml;
 pub use yaml::{
@@ -13,12 +14,9 @@ pub(crate) use yaml::{render_agent_item, yaml_args, yaml_scalar};
 pub(crate) use yaml::{
     GLOBAL_GIT_PANEL_HINT, GLOBAL_HEADER, PROJECT_AGENTS_COMMENT, PROJECT_AGENTS_EXAMPLE,
     PROJECT_HEADER, PROJECT_PROCESSES_COMMENT, PROJECT_PROCESSES_EXAMPLE,
-    PROJECT_WORKSPACE_COMMENT, PROJECT_WORKSPACE_EXAMPLE,
+    PROJECT_WORKSPACE_COMMENT, PROJECT_WORKSPACE_EXAMPLE, PROJECT_WORKTREES_COMMENT,
+    PROJECT_WORKTREES_EXAMPLE,
 };
-
-/// Upper bound on the projects one workspace manifest loads. A backstop so a
-/// runaway `folders:` list can't explode the sidebar.
-pub(crate) const MAX_PROJECTS: usize = 10;
 
 /// A workspace config, loaded from `mmux.yaml` (or `mmux.yml`) in a directory.
 #[derive(Debug, Clone, Deserialize)]
@@ -55,6 +53,10 @@ pub struct Config {
     /// see [`AutoUpdateConfig`] and [`crate::update`].
     #[serde(default, rename = "auto-update")]
     pub auto_update: Option<AutoUpdateConfig>,
+    /// Git worktrees cut from this project's repository — what a fresh checkout needs
+    /// before it can run. `None`/unset ⇒ the defaults; see [`WorktreeConfig`].
+    #[serde(default)]
+    pub worktrees: Option<WorktreeConfig>,
     /// The directory the config was loaded from. Relative `cwd`s resolve against this.
     #[serde(skip)]
     pub dir: PathBuf,
@@ -114,6 +116,89 @@ pub struct AutoUpdateConfig {
     /// single run with `MMUX_NO_UPDATE`.
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+/// Settings for git worktrees created from the git panel (`W`). A worktree opens as
+/// its own project box in the same session, so the only thing left to configure is
+/// what a *fresh checkout* is missing: the gitignored files git never carries across,
+/// and whatever one-time command makes the tree runnable.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorktreeConfig {
+    /// Paths to bring over from the project when a worktree is created — files are
+    /// copied, directories symlinked, missing entries skipped. Unset ⇒
+    /// [`DEFAULT_WORKTREE_COPY`]; an explicit empty list copies nothing.
+    #[serde(default)]
+    pub copy: Option<Vec<String>>,
+    /// A shell line run once in a new worktree (`pnpm install`, `mix deps.get`, …).
+    /// It runs as an ordinary terminal session in the new project, so you watch it
+    /// work and the row disappears when it finishes.
+    #[serde(default)]
+    pub setup: Option<String>,
+    /// How long a **finished** worktree may sit idle before mmux clears it away:
+    /// `30m`, `2h`, `90s`, a bare number of minutes, or `off` to never do it. Unset ⇒
+    /// [`DEFAULT_REAP`].
+    ///
+    /// "Finished" is a high bar, and all of it must hold: nothing running in the
+    /// worktree (no agent, terminal or process), a clean working tree, and every
+    /// commit already merged into its base **or** pushed to its upstream. So this only
+    /// ever removes a checkout whose contents live somewhere else — see
+    /// [`crate::git::Integration`].
+    #[serde(default)]
+    pub reap: Option<String>,
+}
+
+/// How long a finished worktree idles before it's cleared away, when `worktrees.reap`
+/// is unset. Long enough that stepping away doesn't cost you your place; short enough
+/// that merged branches don't pile up for days.
+pub const DEFAULT_REAP: Duration = Duration::from_secs(30 * 60);
+
+/// The effective reap delay: the configured one, [`DEFAULT_REAP`] when unset, or
+/// `None` when switched off (or set to something unparseable — a typo must not turn
+/// into surprise deletions).
+pub fn worktree_reap_after(cfg: Option<&WorktreeConfig>) -> Option<Duration> {
+    match cfg.and_then(|w| w.reap.as_deref()) {
+        None => Some(DEFAULT_REAP),
+        Some(raw) => parse_duration(raw),
+    }
+}
+
+/// Parse a short duration: `45s`, `30m`, `2h`, `1d`, or a bare number meaning minutes.
+/// `off`/`never`/`no`/`false`/`0` (and anything unrecognised) mean "don't".
+fn parse_duration(raw: &str) -> Option<Duration> {
+    let raw = raw.trim().to_lowercase();
+    if matches!(raw.as_str(), "off" | "never" | "no" | "false" | "" | "0") {
+        return None;
+    }
+    let (digits, unit) = raw.split_at(raw.find(|c: char| !c.is_ascii_digit()).unwrap_or(raw.len()));
+    let n: u64 = digits.parse().ok()?;
+    let secs = match unit.trim() {
+        "" | "m" | "min" | "mins" => n * 60,
+        "s" | "sec" | "secs" => n,
+        "h" | "hr" | "hrs" => n * 3600,
+        "d" => n * 86_400,
+        _ => return None,
+    };
+    (secs > 0).then(|| Duration::from_secs(secs))
+}
+
+/// What a new worktree copies when `worktrees.copy` is unset: the handful of files
+/// that most reliably decide whether a fresh checkout runs at all, and that git
+/// deliberately never carries across. Kept short on purpose — anything heavier is a
+/// per-project choice, not a default.
+pub const DEFAULT_WORKTREE_COPY: &[&str] = &[
+    ".env",
+    ".env.local",
+    "mmux.local.yml",
+    "mmux.local.yaml",
+];
+
+/// The effective copy list for a project: its own `worktrees.copy` when set (empty
+/// included — that's a deliberate "copy nothing"), else [`DEFAULT_WORKTREE_COPY`].
+pub fn worktree_copy_list(cfg: Option<&WorktreeConfig>) -> Vec<String> {
+    match cfg.and_then(|w| w.copy.as_ref()) {
+        Some(list) => list.clone(),
+        None => DEFAULT_WORKTREE_COPY.iter().map(|s| s.to_string()).collect(),
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -331,7 +416,7 @@ impl Config {
     /// - **De-dup by canonical path.** A folder resolving to an already-loaded one is
     ///   skipped, so duplicates (and a `.` next to an absolute spelling of the same
     ///   dir) collapse.
-    /// - A hard cap ([`MAX_PROJECTS`]) is the final backstop. Missing/unreadable
+    /// - **No cap.** However many folders you list, you get. Missing/unreadable
     ///   folders become warnings, never errors — only the manifest itself failing
     ///   aborts, and a manifest whose folders *all* fail falls back to opening its
     ///   own directory as a plain project.
@@ -362,12 +447,6 @@ impl Config {
         let mut visited: HashSet<PathBuf> = HashSet::new();
         let mut projects: Vec<Config> = Vec::new();
         for raw in &ws.folders {
-            if projects.len() >= MAX_PROJECTS {
-                warnings.push(format!(
-                    "workspace: capped at {MAX_PROJECTS} folders, ignoring the rest"
-                ));
-                break;
-            }
             let canon = canonical(&root_dir.join(raw));
             if !visited.insert(canon.clone()) {
                 continue;
@@ -574,6 +653,7 @@ fn merge(base: Option<Config>, project: Config) -> Config {
         git_panel: project.git_panel.or(base.git_panel),
         notifications: project.notifications.or(base.notifications),
         auto_update: project.auto_update.or(base.auto_update),
+        worktrees: project.worktrees.or(base.worktrees),
         // A manifest is a per-directory fact: only the project file can declare one
         // (a global `workspace:` must not turn every directory into that workspace).
         workspace: project.workspace,
@@ -736,6 +816,62 @@ mod tests {
                 vec!["commit".into(), "-m".into(), "a b".into()]
             )
         );
+    }
+
+    // ── worktrees: copy list + reap delay ────────────────────────────────────
+    fn wt(reap: Option<&str>) -> WorktreeConfig {
+        WorktreeConfig {
+            copy: None,
+            setup: None,
+            reap: reap.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn worktree_copy_defaults_but_an_empty_list_means_nothing() {
+        // Unset falls back to the built-in list…
+        assert_eq!(
+            worktree_copy_list(None).len(),
+            DEFAULT_WORKTREE_COPY.len()
+        );
+        // …while an explicit empty list is a deliberate "copy nothing", not a no-op.
+        let none = WorktreeConfig {
+            copy: Some(vec![]),
+            setup: None,
+            reap: None,
+        };
+        assert!(worktree_copy_list(Some(&none)).is_empty());
+    }
+
+    #[test]
+    fn reap_delay_parses_units_and_switches_off() {
+        assert_eq!(worktree_reap_after(None), Some(DEFAULT_REAP));
+        assert_eq!(
+            worktree_reap_after(Some(&wt(Some("45s")))),
+            Some(Duration::from_secs(45))
+        );
+        // A bare number means minutes — the unit people actually mean here.
+        assert_eq!(
+            worktree_reap_after(Some(&wt(Some("90")))),
+            Some(Duration::from_secs(90 * 60))
+        );
+        assert_eq!(
+            worktree_reap_after(Some(&wt(Some("2h")))),
+            Some(Duration::from_secs(7200))
+        );
+        assert_eq!(
+            worktree_reap_after(Some(&wt(Some("1d")))),
+            Some(Duration::from_secs(86_400))
+        );
+        // Every spelling of "don't", including a `0`, disables it…
+        for off in ["off", "never", "no", "false", "0", " OFF "] {
+            assert_eq!(worktree_reap_after(Some(&wt(Some(off)))), None, "{off}");
+        }
+        // …and so does a typo: an unparseable value must never become a surprise
+        // deletion schedule.
+        for bad in ["soon", "10 fortnights", "-5m", ""] {
+            assert_eq!(worktree_reap_after(Some(&wt(Some(bad)))), None, "{bad}");
+        }
     }
 
     #[test]
@@ -960,17 +1096,19 @@ mod tests {
         assert_eq!(ws.projects[0].display_name(), "Solo");
     }
 
+    /// There is no cap: however many folders a manifest lists, it loads — nothing is
+    /// silently dropped, and no warning is invented for a long list.
     #[test]
-    fn load_workspace_caps_folders_and_warns() {
-        let t = TempTree::new("cap");
-        let list: String = (0..12).map(|i| format!("    - ../p{i}\n")).collect();
+    fn load_workspace_loads_every_listed_folder() {
+        let t = TempTree::new("many");
+        let list: String = (0..24).map(|i| format!("    - ../p{i}\n")).collect();
         t.write("hub/mmux.yaml", &format!("workspace:\n  folders:\n{list}"));
-        for i in 0..12 {
+        for i in 0..24 {
             t.write(&format!("p{i}/mmux.yaml"), "processes: []\n");
         }
         let ws = Config::load_workspace(&t.0.join("hub")).unwrap();
-        assert_eq!(ws.projects.len(), MAX_PROJECTS);
-        assert!(ws.warnings.iter().any(|w| w.contains("capped")));
+        assert_eq!(ws.projects.len(), 24);
+        assert!(ws.warnings.is_empty(), "{:?}", ws.warnings);
     }
 
     #[test]

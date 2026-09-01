@@ -275,7 +275,7 @@ GLOBAL FILE — ~/.mmux/config.yaml
 WORKSPACES — several projects in ONE session
     In a parent folder that holds several projects, run `mmux init workspace`. Its
     checkbox picker discovers immediate subdirectories: space includes/excludes,
-    J/K sets manifest order, `a` selects all/none, and Enter saves (up to 10). You
+    J/K sets manifest order, `a` selects all/none, and Enter saves. You
     can also write the resulting `workspace:` block by hand. Running `mmux` there
     opens ONE sidebar with every listed folder as its own group; switch between
     them with [ and ]; the git panel follows whichever project you're on. In phone
@@ -290,25 +290,65 @@ WORKSPACES — several projects in ONE session
           - otherproject
 
     Folders load ONE level deep (a member that is itself a workspace loads as a
-    plain project), de-duplicated by path, at most 10. Each member keeps its normal
+    plain project) and de-duplicated by path, with no limit. Each member keeps its normal
     process behavior, including `autostart`; avoid opening the same autostarting
     project both solo and in a workspace. `R` reload adds and removes listed folders
     live (removal kills their mmux panes but never touches Git files); reordering
     takes effect on the next open. `workspace:` is
     project-layer only; putting it in ~/.mmux/config.yaml has no effect. `mmux check`
     validates every listed member.
-    Inside a manifest workspace, press `w` in the sidebar to reopen the manager;
+    Inside a manifest workspace, press `W` in the sidebar to reopen the manager;
     `n` edits its name. Saving adds and removes members live; removed members' panes
     are killed. Ordering applies when the workspace is reopened.
 
+WORKTREES — a branch as its own project box
+    Press `w` (in the sidebar or the git panel) to cut a git worktree. It opens
+    as another project box in the same session — indented under the project it
+    came from, titled `branch`, with its own agents, terminals, processes and git
+    panel. So anything you start from that box runs in THAT checkout; there is
+    nothing to remember.
+
+    The name prompt opens pre-filled with a generated two-word name
+    (smug-toaster, noble-parsnip) — worktree branches are throwaway, so ^R just
+    suggests another and Enter accepts. The box shows its latest commit subject
+    underneath, which is what tells you what it's for. On an existing branch in the
+    Branches box, `w` offers that branch instead (checking it out).
+
+    Checkouts live in ~/.mmux/worktrees/, never inside the repo — nothing to
+    gitignore. mmux copies over the gitignored files a checkout needs (.env and
+    friends) and can run a one-time setup command as a terminal you can watch:
+
+      worktrees:
+        copy: [.env, node_modules]   # files copied, directories symlinked
+        setup: pnpm install
+        reap: 30m                    # or `off`
+
+    ONE DEV STACK. Only one checkout of a repo runs its processes at a time.
+    Settle in a worktree for a few seconds and the running ones move there —
+    stopped in the old checkout (teardown commands included, and mmux waits for
+    them), started in the new one. Same ports everywhere, so localhost:3000 is
+    always whatever you're working in. Arrowing past a project moves nothing.
+
+    FINISHING. `M` merges into the branch it came from (mmux remembered which)
+    and offers to clear the checkout away too: y merges and removes, m merges
+    only. `P` pushes as usual. `X` removes on demand, telling you exactly what it
+    would cost. And a worktree that is FINISHED — nothing running, clean tree,
+    every commit merged or pushed — is cleared away after 30 minutes idle. Only
+    the checkout goes, and only when its contents already live somewhere else; a
+    branch with unpushed, unmerged work is never touched.
+
 FIELD REFERENCE
     top level   name (str, optional) · agents[] · processes[] · git-panel (optional)
-                · notifications (optional) · auto-update (optional)
+                · notifications (optional) · auto-update (optional) · worktrees (optional)
                 · workspace (optional manifest with folders[] — see WORKSPACES)
     agent       name* · cmd* · args[] · cwd · env{{}}
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
                 · stop (shell line run in the dir when stopped/quit, not on restart)
     git-panel   enabled (bool, default true; the panel is automatic for git repos)
+    worktrees   copy[] (paths a new checkout needs; files copied, dirs symlinked —
+                default .env, .env.local, mmux.local.yml/.yaml) · setup (shell line run
+                once in a new checkout) · reap (how long a finished worktree idles
+                before it's cleared away: 30m default, 2h, 90s, or `off`)
     auto-update enabled (bool, default true; Homebrew + script-installed binaries —
                 checks on start and every 6 hours. A script install downloads it in the
                 background and shows "restart to update"; a brew install shows "update

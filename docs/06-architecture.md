@@ -180,15 +180,85 @@ to contain and render every project directly.
 
 `load_workspace` (in `config/mod.rs`) loads the launch config, then either returns it as a plain
 single project or expands `workspace.folders` one level deep. Members are de-duplicated by
-canonical path and capped at 10; a nested member manifest is flattened to a plain project with a
+canonical path, with no cap; a nested member manifest is flattened to a plain project with a
 warning. Missing/unreadable folders warn and skip, while an all-invalid manifest falls back to its
 own directory as a plain project. The shared `WorkspaceManager` discovers and orders immediate
-children for both `mmux init workspace` and the manifest-only `w` overlay. Its raw-text writer
+children for both `mmux init workspace` and the manifest-only `W` overlay. Its raw-text writer
 owns only `name` and `workspace:`. `R` reload expands the manifest again and appends canonical member dirs
 that are not already live; each new `Project` gets its process rows, git panel, launchers, and
 autostarts. Removing a member kills its panes, drops its per-project runtime state, compacts project
 indices throughout the unified session list, and immediately replaces the restore snapshot; Git
 working-tree state is neither checked nor changed. Manifest reordering still needs a reopen.
+
+## Worktrees Are Projects
+
+A git worktree is a second checkout of a repository on its own branch. mmux loads one as an
+ordinary [`Project`](#workspaces-and-projects) — same `Vec<Project>`, same sidebar box, same git
+panel, same `spawn`/`stop` lifecycle for the agents, terminals and processes inside it. The only
+additions are `Project.worktree: Option<Worktree>` (the parent's canonical dir + the branch) and
+how the box is drawn.
+
+That is the entire design, and it is what makes the feature small. Because launchers already carry
+a project index and every session spawns in `projects[pi].cfg.dir`, a pane started from a worktree
+box is *in* that worktree with no code aimed at the problem. Follow-active already points the git
+panel at the project you're navigating, so staging and committing land in the right checkout too.
+
+- **Discovered, never bookkept.** `git worktree list` is the only source of truth
+  (`sync_worktree_projects` in [`lifecycle.rs`](07-module-map.md)). There is no state file to go
+  stale, one deleted from a shell simply stops appearing, and adoption is idempotent. Only
+  worktrees under `~/.mmux/worktrees/<repo-hash>/` are adopted — one you keep elsewhere is yours.
+  It runs at startup **before** `restore_sessions`, because restored rows bind to a canonical
+  project directory: an agent that was working in a worktree only finds its way home if that
+  worktree is already a project.
+- **Outside the repo on purpose.** A checkout inside the tree would need a `.gitignore` entry and
+  would double the work of every watcher and indexer pointed at the project.
+- **The base branch lives in git.** `git config branch.<name>.mmuxbase` — the repository config is
+  shared by every checkout, so what a branch was cut from survives restarts and is readable from
+  either side. `M` falls back to the main checkout's current branch when it's missing, so a branch
+  made outside mmux still merges.
+- **Only the main checkout adopts.** `worktrees()` lists the main worktree first; a project that
+  isn't it (you opened a linked worktree directly) is left alone as a plain project. One level, no
+  recursion.
+- **Families order together.** `project_display_order` builds a sort key that leads with the family
+  root, so a repository's checkouts are always one contiguous block with the parent on top, and it
+  pools activity onto that root — a busy worktree lifts its parent's whole block rather than being
+  torn out of it and stranded at the top of the sidebar. `arrange_families` then puts the *active*
+  family first outright: sibling checkouts are one unit of work you move between constantly, so the
+  block stays at the top while you do. A lone project is still never promoted just for being
+  selected — browsing must not reshuffle the list under the cursor.
+
+### One Dev Stack Per Repository
+
+Sibling checkouts would otherwise fight over ports. Rather than assigning each one its own, mmux
+keeps **one checkout running at a time**: settle in a project for `SWAP_DWELL` and the set of
+*running process names* moves there — stopped in the old checkout, started in the new one. Same
+ports everywhere, nothing to configure, and with nothing running it's a no-op.
+
+The state machine is `Swap` (in [`app/mod.rs`](07-module-map.md)), driven from `tick()`:
+
+- **`Waiting`** — the dwell. `active` follows the *selection cursor*, so without it, arrowing down
+  the sidebar past a worktree would tear a dev server down and stand it back up. This delay is the
+  only reason the feature is usable.
+- **`Draining`** — teardown (`stop:`) commands run in the background, and the new checkout's
+  processes start only once they've exited (or a deadline passes). Starting sooner would hand the
+  new dev server a port the old stack is still holding.
+
+Only processes both checkouts define are moved, so mmux never stops something it can't restart.
+Removing a worktree that holds the stack hands it back to the parent through the same `Draining`
+phase — merging a branch shouldn't cost you your dev server.
+
+### Reaping Finished Worktrees
+
+`step_worktree_reaper` clears away checkouts that are done: nothing running in them, a clean tree,
+and every commit already merged into its base **or** pushed to its upstream
+(`git::Integration`). The per-worktree idle clock is refreshed every tick from memory (free); only
+a candidate whose clock has run out costs the handful of `git` forks that decide whether it's
+really finished, and that scan is paced at `REAP_SCAN_EVERY`.
+
+The invariant that makes automatic deletion defensible: **it only ever removes a checkout whose
+contents already exist somewhere else.** Branch deletion uses `-d`, never `-D`, so an unmerged
+branch is kept and the checkout alone goes. The same `Integration` reading drives the manual `X`
+confirmation, which is why that warning can be specific about what would actually be lost.
 
 ## The Git Panel and Overlays
 
@@ -377,6 +447,13 @@ removes it from the snapshot, so it's easy to get a clean slate.
 - **Regions** (`view/mod.rs`) is per-frame mouse geometry: rendering writes the rects, input reads
   them, and it's reset at the top of every `draw()`. If you add a clickable area, set its rect
   during render and test it in `on_mouse`.
+- **The sidebar is a scrolled column.** When the project boxes fit, the active one absorbs the
+  slack exactly as before. When they don't, `render_sidebar_projects` lays the whole column out at
+  its natural height in an off-screen `Buffer` and blits the visible window — the one place that
+  can express "this box starts above the top edge" without clipping every widget by hand. Hit rects
+  are gathered in column coordinates and translated once, so clicks stay correct while scrolled.
+  `settle_sidebar_scroll` follows the cursor only when the *selection* changes, which is what lets
+  the wheel browse away without the next frame yanking the view back.
 
 ## Data Flow Summary
 
@@ -428,6 +505,10 @@ removes it from the snapshot, so it's easy to get a clean slate.
 | Inner/outer split via tmux | One binary; tmux gives free persistence across detach/disconnect/SSH and a true per-directory singleton. |
 | Session name = hash of canonical path | Deterministic, tmux-safe, and collapses `dir`/`dir/`/symlinks to one session. |
 | One unified `Session` model | Agents, terminals, and processes differ only in presentation; unifying them removed three-way triplication of spawn/stop/collections. |
+| A worktree is a `Project` | A worktree *is* a directory with its own branch, config and git state — the shape `Project` already has. Reusing it means panes land in the right checkout with no code aimed at the problem, and adds one adjective instead of a concept. |
+| Worktrees discovered from `git worktree list` | Git already tracks them, so a state file could only ever disagree with reality. Nothing to repair, and one made or deleted from a shell is picked up. |
+| One dev stack per repository, not a port per worktree | Same ports everywhere means nothing to configure and one bookmark that's always what you're working in. The dwell timer is what keeps it from thrashing; the drain phase is what keeps it correct. |
+| Reap only merged-or-pushed checkouts | Deleting a directory automatically is only defensible when its contents provably live somewhere else. `-d` (never `-D`) keeps the branch when git disagrees. |
 | Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |
@@ -439,6 +520,6 @@ removes it from the snapshot, so it's easy to get a clean slate.
 The v1 architecture has known limits. Persistence now covers detach/disconnect *and* a
 quit/crash/update reopen via [Session Restore](#session-restore) — but restore is a cold respawn
 (the conversation/cwd come back, not the live process or its in-flight work; a daemon would fix
-that). Selection is positional; workspace manifests are flat and capped, and live reload can only
+that). Selection is positional; workspace manifests are flat, and live reload can only
 add and remove members live, while reordering still needs a reopen. These, and the planned daemon/client split, are tracked in
 [Contributing → Planned and Known Limits](08-contributing.md#planned-and-known-limits).

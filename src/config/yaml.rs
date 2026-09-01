@@ -54,13 +54,28 @@ pub(crate) const PROJECT_WORKSPACE_COMMENT: &str =
     # named bundle of projects that open together in one sidebar, each folder its own\n\
     # group (switch with [ and ]). Run `mmux init workspace` in their parent folder\n\
     # for the interactive picker, or list directories here by hand (relative to this\n\
-    # file; `.` includes its own directory). Up to 10 projects.\n";
+    # file; `.` includes its own directory).\n";
 
 /// The commented-out `workspace:` example.
 pub(crate) const PROJECT_WORKSPACE_EXAMPLE: &str = "# workspace:\n\
     #   folders:\n\
     #     - myproject\n\
     #     - myproject2\n";
+
+/// The `# Worktrees:` hint. Worktrees need no configuration at all, so this is
+/// purely about discovering `W` — and about the one thing mmux can't guess, which is
+/// the gitignored files a fresh checkout needs before it will run.
+pub(crate) const PROJECT_WORKTREES_COMMENT: &str =
+    "# Worktrees: press W in the git panel to open a branch as its own project box —\n\
+    # its own agents, terminals and processes, all running in that checkout. It works\n\
+    # with no config; this block only covers what git can't carry across, plus how\n\
+    # long a finished worktree (merged or pushed, clean, idle) sticks around.\n";
+
+/// The commented-out `worktrees:` example.
+pub(crate) const PROJECT_WORKTREES_EXAMPLE: &str = "# worktrees:\n\
+    #   copy: [.env]          # files copied, directories symlinked\n\
+    #   setup: npm install    # run once in a new checkout\n\
+    #   reap: 30m             # or `off`\n";
 
 /// Header for a fresh global config (`~/.mmux/config.yaml`); the `agents:` block follows.
 pub(crate) const GLOBAL_HEADER: &str = "# mmux global config (~/.mmux/config.yaml).\n\
@@ -346,6 +361,9 @@ fn scaffold_project_file(processes: &str) -> String {
         s.push('\n');
     }
 
+    s.push_str(PROJECT_WORKTREES_COMMENT);
+    s.push_str(PROJECT_WORKTREES_EXAMPLE);
+    s.push('\n');
     s.push_str(PROJECT_WORKSPACE_COMMENT);
     s.push_str(PROJECT_WORKSPACE_EXAMPLE);
     s
@@ -691,10 +709,20 @@ processes:
     autostart: false
     # stop: docker compose down
 
+# Worktrees: press W in the git panel to open a branch as its own project box —
+# its own agents, terminals and processes, all running in that checkout, and the
+# dev stack follows whichever one you're working in. Needs no config; this block
+# only covers what git can't carry across, plus how long a finished worktree
+# (merged or pushed, clean, idle) sticks around before mmux clears it away.
+# worktrees:
+#   copy: [.env]          # files copied, directories symlinked
+#   setup: npm install    # run once in a new checkout
+#   reap: 30m             # or `off`
+
 # Workspace: a `workspace:` block turns an mmux.yaml into a workspace manifest — a
 # named bundle of projects that open together in one sidebar, each folder its own
 # group (switch with [ and ]). Put one in a parent folder, list the project
-# directories (relative to that file; `.` includes its own directory; up to 10),
+# directories (relative to that file; `.` includes its own directory),
 # and run `mmux` there.
 # workspace:
 #   folders:

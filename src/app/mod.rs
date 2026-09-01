@@ -6,6 +6,8 @@
 //! - [`lifecycle`] — spawn/start/stop/restart actions and the live config reload.
 //! - [`input`] — keyboard, mouse and paste handling.
 //! - [`keymap`] — pure key-event → PTY-byte translation.
+//! - [`worktrees`] — worktrees-as-projects: adoption, create/merge/remove, the
+//!   one-dev-stack-per-repository swap, and the idle reaper.
 //! - [`view`] — all rendering (layout, sidebar, panes, footer).
 
 mod diff;
@@ -21,6 +23,7 @@ pub(crate) mod picker;
 mod procform;
 mod session;
 mod view;
+mod worktrees;
 
 use diff::DiffView;
 use git::{first_line, GitPanel, JobDone};
@@ -83,6 +86,31 @@ pub(crate) enum UpdateState {
     Unsupported,
 }
 
+/// A dev stack moving from one checkout of a repository to another.
+///
+/// Only one checkout of a repo runs its processes at a time, so a worktree's dev
+/// server reuses its parent's ports and you never think about which one is up. The
+/// move has two phases because it must not overlap: teardown commands
+/// ([`stop:`](crate::config::ProcessDef::stop)) run in the background, and starting
+/// the new checkout's processes before they finish would hand the new dev server a
+/// port the old one is still holding.
+pub(crate) enum Swap {
+    /// The selection is resting on `project`; the move fires once it's been held for
+    /// [`SWAP_DWELL`](worktrees::SWAP_DWELL). This delay is the whole reason the
+    /// feature is usable: `active` follows the selection *cursor*, so arrowing past a
+    /// project must never bounce a dev server.
+    Waiting { project: usize, since: Instant },
+    /// The old checkout's processes have been stopped and their teardown commands are
+    /// running; `names` start in `project` once `children` exit (or `deadline` passes,
+    /// so a wedged teardown can't strand the stack).
+    Draining {
+        project: usize,
+        names: Vec<String>,
+        children: Vec<std::process::Child>,
+        deadline: Instant,
+    },
+}
+
 pub(crate) struct App {
     /// The launch directory, canonical — the manifest's dir for a manifest workspace,
     /// else the (single) project's. Keys the restore-state file (see [`persist`]);
@@ -114,8 +142,25 @@ pub(crate) struct App {
     /// Agents, plain terminals and processes for every project, each tagged with its
     /// project index. Filtered by project + [`Kind`] to build each sidebar group.
     sessions: Vec<Session>,
+    /// The in-flight "dev stack follows the worktree you're in" move, if any. See
+    /// [`Swap`] and [`App::step_stack_swap`](worktrees).
+    swap: Option<Swap>,
+    /// When the idle-worktree reaper may next fork `git` to check its candidates.
+    /// Its per-worktree idle clocks update every tick regardless; this only paces the
+    /// checks. See [`App::step_worktree_reaper`](worktrees).
+    next_reap_scan: Instant,
 
     sel: usize, // index into build_nav()
+    /// How far the sidebar column is scrolled, in rows. The sidebar lays itself out at
+    /// full height and shows a window of it, so a workspace with more projects (or a
+    /// project with more sessions) than fit stays reachable. Follows the selection
+    /// when it moves, and is left alone while the wheel is browsing — see
+    /// [`App::settle_sidebar_scroll`](view).
+    sidebar_scroll: u16,
+    /// The selection the scroll offset last followed. Comparing against `sel` is what
+    /// distinguishes "the cursor moved, bring it into view" from "the user scrolled
+    /// away on purpose, leave it".
+    sidebar_scroll_sel: usize,
     /// Per-project memory of the last selected nav row, so returning to a project
     /// (via `[`/`]` or clicking its box) restores where you were. `None` ⇒ no row
     /// selected there yet, so we land on the project's first row.
@@ -191,24 +236,63 @@ pub(crate) struct App {
 /// (per-agent instance counters and its native git panel).
 struct Project {
     cfg: Config,
+    /// `cfg.dir` canonicalized, resolved once. Projects are *keyed* by this
+    /// everywhere they're matched up — reload, restore, worktree parentage — and it
+    /// never changes for the life of a project, so resolving it per lookup would be
+    /// a syscall for nothing.
+    dir: PathBuf,
     counts: Vec<usize>, // per-agent-template instance counter
     term_count: usize,  // running total, for "Terminal #N" naming
     /// This project's git panel — present when the project dir is a git repo,
     /// `None` otherwise. Each project tracks its own repo.
     git: Option<GitPanel>,
+    /// Set when this project is a linked git **worktree** of another loaded project
+    /// rather than a directory the user opened. It changes nothing about the session
+    /// model — a worktree spawns agents, terminals and processes exactly like any
+    /// other project — only how the box is drawn and which projects share a dev
+    /// stack. See [`crate::worktree`].
+    worktree: Option<Worktree>,
+}
+
+/// A project that is a linked checkout of another project's repository.
+pub(crate) struct Worktree {
+    /// The main worktree's canonical directory — the project this one branched from.
+    /// Matched against [`Project::dir`] to find the parent; a worktree whose parent
+    /// isn't loaded simply behaves like an ordinary project.
+    pub parent: PathBuf,
+    /// The branch checked out here. It's also the box title, since a worktree
+    /// directory name is an implementation detail.
+    pub branch: String,
+    /// Last time anything was happening here — it was the project in view, or one of
+    /// its sessions had a live pane. The idle clock the
+    /// [reaper](worktrees) measures against; see
+    /// [`worktrees.reap`](crate::config::WorktreeConfig::reap).
+    pub last_busy: Instant,
 }
 
 impl Project {
     fn new(cfg: Config) -> Project {
-        let dir = cfg.dir.clone();
+        let dir = crate::config::canonical(&cfg.dir);
         let counts = vec![0; cfg.agents.len()];
-        let git =
-            (cfg.git_panel_enabled() && crate::git::is_repo(&dir)).then(|| GitPanel::new(dir));
+        let git = (cfg.git_panel_enabled() && crate::git::is_repo(&dir))
+            .then(|| GitPanel::new(dir.clone()));
         Project {
             cfg,
+            dir,
             counts,
             term_count: 0,
             git,
+            worktree: None,
+        }
+    }
+
+    /// The name shown on this project's sidebar box. A worktree shows its **branch**
+    /// (prefixed by the caller's glyph): the directory it lives in is a hash under
+    /// `~/.mmux`, and the branch is the only part anyone thinks in.
+    fn label(&self) -> String {
+        match &self.worktree {
+            Some(wt) => wt.branch.clone(),
+            None => self.cfg.display_name(),
         }
     }
 }
@@ -257,7 +341,13 @@ impl App {
             priority_projects: vec![false; nproj],
             sticky_priority_project: None,
             sessions,
+            swap: None,
+            // Nothing is reaped in the first minute of a session — a worktree you just
+            // reopened mmux to look at should still be there when the UI settles.
+            next_reap_scan: Instant::now() + Duration::from_secs(60),
             sel: 0,
+            sidebar_scroll: 0,
+            sidebar_scroll_sel: 0,
             last_proj_sel: vec![None; nproj],
             focus: Focus::Sidebar,
             pending_leader: false,
@@ -307,6 +397,14 @@ impl App {
             app.sessions[i].spawn(rows, cols);
         }
 
+        // Adopt any worktrees these projects already have on disk, as projects of their
+        // own. This must happen **before** the restore below: restored rows are bound to
+        // a canonical project directory, so an agent that was working in a worktree only
+        // finds its way home if that worktree is already a loaded project. Deliberately
+        // after the autostart loop — a worktree's processes arrive stopped, and start
+        // when the stack follows you there.
+        app.sync_worktree_projects();
+
         // Bring the previous agents/terminals back (Claude/Codex/Grok resumed). This runs
         // on every fresh start — after a quit, a crash, or a self-update restart — and
         // is a no-op when there's no saved state. It's safe to do unconditionally: the
@@ -315,6 +413,23 @@ impl App {
         app.restore_sessions();
         app.reset_project_priority();
         app
+    }
+
+    /// How project `pi` is named on screen: a plain project's display name, or a
+    /// worktree's `⑂ branch`. One place, so the sidebar box, the compact switcher and
+    /// any flash that names a project can never disagree about what to call it.
+    pub(crate) fn project_label(&self, pi: usize) -> String {
+        let project = &self.projects[pi];
+        match project.worktree.is_some() {
+            true => format!("{} {}", view::theme::WORKTREE_GLYPH, project.label()),
+            false => project.label(),
+        }
+    }
+
+    /// Whether the project in view is a worktree — gates the footer chips (and keys)
+    /// that only mean something there.
+    pub(crate) fn active_is_worktree(&self) -> bool {
+        self.projects[self.active].worktree.is_some()
     }
 
     /// The launch directory's effective config — drives workspace identity,
@@ -415,6 +530,10 @@ impl App {
             }
         }
         self.sync_project_priority();
+        // Move the dev stack to the checkout you've settled in (see `Swap`).
+        self.step_stack_swap();
+        // Clear away worktrees that are finished and have gone quiet.
+        self.step_worktree_reaper();
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
         // Advance the background self-update (drain workers, run the periodic re-check).

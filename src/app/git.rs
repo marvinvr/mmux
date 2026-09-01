@@ -99,6 +99,10 @@ pub(crate) struct GitPanel {
     pub rows: Vec<TreeRow>,
     pub branches: Vec<Branch>,
     pub log: Vec<Commit>,
+    /// Subject of the checkout's HEAD commit. A worktree's sidebar box already carries
+    /// its branch in the title, so it shows this underneath instead — which is what
+    /// stops a generated name like `smug-toaster` from staying anonymous.
+    pub head_subject: String,
     /// Which box currently has the cursor.
     pub section: Section,
     /// Cursor into `rows` (the Changes box's tree).
@@ -128,6 +132,7 @@ impl GitPanel {
             rows: Vec::new(),
             branches: Vec::new(),
             log: Vec::new(),
+            head_subject: String::new(),
             section: Section::Changes,
             cursor: 0,
             branch_cursor: 0,
@@ -152,6 +157,8 @@ impl GitPanel {
         self.rows = git::tree_rows(&self.files);
         self.branches = git::branches(&self.dir);
         self.log = git::log(&self.dir, LOG_LINES);
+        // Free here — the log we just read already starts at HEAD.
+        self.head_subject = self.log.first().map(|c| c.summary.clone()).unwrap_or_default();
         self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
         self.branch_cursor = self.branch_cursor.min(self.branches.len().saturating_sub(1));
         self.commit_cursor = self.commit_cursor.min(self.log.len().saturating_sub(1));
@@ -185,6 +192,9 @@ impl GitPanel {
         self.branch = st.branch;
         self.files = st.files;
         self.rows = git::tree_rows(&self.files);
+        // One more cheap fork so a collapsed worktree box keeps saying what it's for
+        // as commits land in it; the full log waits until the project is visible.
+        self.head_subject = git::head_subject(&self.dir);
         self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
         self.last_status_refresh = Some(Instant::now());
     }
@@ -499,6 +509,23 @@ impl App {
 
     pub(crate) fn git_newbranch_prompt(&mut self) {
         self.overlay = Some(Overlay::new_branch(String::new()));
+    }
+
+    /// `w` (sidebar or git panel): open the new-worktree prompt. An existing branch
+    /// under the Branches cursor is the obvious thing to open, so it's offered as-is
+    /// (the worktree checks it out rather than cutting a new branch); otherwise it
+    /// suggests a generated two-word name, since a worktree branch is throwaway and
+    /// naming one is friction.
+    /// Either way it's pre-filled — ⏎ is the whole interaction.
+    pub(crate) fn git_worktree_prompt(&mut self) {
+        let existing = self
+            .active_git()
+            .filter(|g| g.section == Section::Branches)
+            .and_then(|g| g.selected_branch())
+            .filter(|b| !b.current)
+            .map(|b| b.name.clone());
+        let prefill = existing.unwrap_or_else(|| self.generated_branch_name());
+        self.overlay = Some(Overlay::new_worktree(prefill));
     }
 
     /// Open (or replace) the centre-pane diff preview for the file under the Changes

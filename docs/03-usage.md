@@ -93,7 +93,8 @@ terminal input.
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
 | `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and cycle each one's launch mode (`m`: normal → auto → danger); saves to the global config and reloads |
-| `w` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and manifest order (manifest workspaces only) |
+| `w` | New [worktree](#worktrees) of the active project — the same pre-filled prompt as `w` in the git panel (git repositories only) |
+| `W` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and manifest order (manifest workspaces only) |
 | `p` | Open the project switcher in [phone mode](#narrow-terminals-and-phones) (multi-project workspaces only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |
@@ -168,6 +169,9 @@ Focus the panel with `Tab` (or click it), then:
 | `a` | Stage all changes (press again to unstage all) |
 | `c` | Commit (opens a message prompt; `Ctrl+P` there commits **and** pushes — as does `Ctrl+⏎` where the terminal reports it) |
 | `n` | New branch (opens a name prompt; creates and switches) |
+| `w` | New [worktree](#worktrees) (opens a pre-filled name prompt; `Ctrl+R` there suggests another) |
+| `M` | Merge this worktree into the branch it came from (worktrees only; asks to confirm) |
+| `X` | Remove this worktree (worktrees only; asks to confirm) |
 | `d` | Discard the selected path (destructive — asks for confirmation) |
 | `s` | Stash (`git stash push -u`, includes untracked; recover with `git stash pop`) |
 | `p` · `P` | Pull · Push (run in the background; the result is flashed in the footer) |
@@ -196,6 +200,67 @@ throttle, so commits an agent makes in the main pane show up on their own. For r
 remote, mmux also runs a quiet background `git fetch` every five minutes so branch tracking and
 remote commits stay current. The first fetch is spread across the first 30 seconds per repository,
 fetches never overlap pull/push, and local-only directories make no network calls.
+
+## Worktrees
+
+A git worktree is a second checkout of the same repository on its own branch. In mmux **a worktree
+is just another project box** in the same session — indented under the project it branched from,
+violet-bordered, titled `⑂ branch`. That is the whole idea: everything you already know keeps
+working, and the question "which checkout is this agent/terminal/command running in?" stops
+existing, because it's the box you started it from.
+
+Press `w` — in the sidebar, or in the git panel. The prompt opens **pre-filled** — with a
+generated two-word name (`smug-toaster`, `noble-parsnip`), or with the branch under the Branches
+cursor if you're on an existing one — so ⏎ is usually the entire interaction. `Ctrl+R` suggests another name. Worktree
+branches are throwaway, so naming them is pure friction; the box shows its latest commit subject
+underneath the name, which is what tells you what it's actually for.
+
+```
+┌ mmux ─────────────────┐     the project you opened
+│ AGENTS                │
+│ ▌ Claude #1           │
+└───────────────────────┘
+ ┌ ⑂ smug-toaster ─────┐      a worktree of it: indented, violet, branch-titled
+ │ fix: retry on 429    │      ← its HEAD commit, so the name isn't anonymous
+ │ git ±3               │
+ └──────────────────────┘
+```
+
+**They stay with their parent.** A repository and its worktrees are one block in the sidebar: the
+main checkout on top, its worktrees directly under it, always in that order. The block also sorts
+as a unit — activity anywhere in it lifts the whole family, and while you're working in any of its
+checkouts the family sits at the top of the sidebar. Moving between checkouts never rearranges
+them under you.
+
+New checkouts are created under `~/.mmux/worktrees/`, never inside the repository — nothing to add
+to `.gitignore`, and no second copy of the tree for editors and watchers to crawl. mmux copies
+across the gitignored files a checkout needs to actually run (`.env` and friends) and can run a
+one-time [`setup:`](04-configuration.md#worktrees) command, which appears as an ordinary terminal
+row you can watch.
+
+**One dev stack, shared.** Only one checkout of a repository runs its processes at a time. Settle
+in a worktree for a few seconds and the set of *running* processes moves there: they stop in the
+old checkout (teardown commands included, and mmux waits for them), then start in the new one. So
+every checkout reuses the same ports, `localhost:3000` is always whatever you're working in, and
+you never think about it. With nothing running, switching costs nothing. Merely arrowing past a
+project never moves anything — it has to be where you've settled.
+
+**Finishing up.** `M` merges the worktree into the branch it came from (mmux remembered which one
+when it cut the branch) and offers to clear the checkout away in the same keystroke: `y` merges and
+removes, `m` merges only. It checks first, and says exactly what's in the way — an uncommitted
+change here, the main checkout sitting on a different branch — instead of failing later with git's
+version of it. `P` pushes exactly as it does anywhere else.
+
+**They tidy themselves up.** A worktree that is *finished* — nothing running in it, a clean tree,
+and every commit already merged into its base **or** pushed to its upstream — is cleared away after
+30 minutes idle (configurable, or `off`). Only the checkout goes, and only when its contents
+already live somewhere else; a branch with unpushed, unmerged commits is never touched, and an
+unmerged branch is kept even when its checkout is removed by hand. The footer says what went and
+why. See [`worktrees.reap`](04-configuration.md#worktrees).
+
+`X` removes one on demand. The confirmation is specific about what it would cost — merged into
+`main` (nothing lost), pushed (commits stay on the remote), *n* commits that are neither (the
+branch is kept), or uncommitted changes (gone for good).
 
 ### The Diff Preview
 
@@ -318,7 +383,9 @@ instead. Programs that don't track the mouse are unaffected: their pane drag-sel
   double-click **restarts** it in place — start if stopped, respawn if running — without jumping
   in (the `r` key does the same). In a wide
   [multi-project](04-configuration.md#workspace-manifests) workspace, clicking another project's
-  box switches to it; on a phone, tap `[projects]` and then the project row instead.
+  box switches to it; on a phone, tap `[projects]` and then the project row instead. The scroll
+  wheel scrolls the column when there's more than fits — browsing this way leaves the cursor where
+  it is, and moving the cursor (`↑`/`↓`, `[`/`]`, …) always brings it back into view.
 - **Git panel.** Single-click focuses a box and selects a row; on a changed file or a commit it also
   [previews the diff](#the-diff-preview) in the main pane. Double-click a file to stage/unstage it or
   a branch to switch to it. The scroll wheel moves the cursor (and the open preview follows it in the

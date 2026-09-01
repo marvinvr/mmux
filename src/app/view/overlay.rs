@@ -82,7 +82,8 @@ pub(crate) fn render_projects(
             (false, false) => "    ",
         };
         let name_w = inner.width.saturating_sub(4) as usize;
-        let name = truncate_middle(&app.projects[pi].cfg.display_name(), name_w);
+        // Worktrees carry the same `⑂ branch` identity here as in the sidebar.
+        let name = truncate_middle(&app.project_label(pi), name_w);
         let mut title = Line::from(vec![
             Span::styled(
                 marker,
@@ -600,13 +601,10 @@ fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
         },
     );
 
-    let status = m.error.clone().unwrap_or_else(|| {
-        format!(
-            "{} / {} projects selected",
-            m.selected_count(),
-            crate::config::MAX_PROJECTS
-        )
-    });
+    let status = m
+        .error
+        .clone()
+        .unwrap_or_else(|| format!("{} projects selected", m.selected_count()));
     let status_style = if m.error.is_some() {
         Style::default().fg(Color::Yellow)
     } else {
@@ -922,6 +920,7 @@ fn render_prompt(f: &mut Frame, area: Rect, title: &str, buf: &str, kind: Prompt
         PromptKind::Commit { push: false } => "⏎ commit · ^P commit & push · esc cancel",
         PromptKind::Commit { push: true } => "⏎ commit & push · esc cancel",
         PromptKind::NewBranch => "⏎ create & switch · esc cancel",
+        PromptKind::NewWorktree => "⏎ create worktree · ^R another name · esc cancel",
     };
     let lines = vec![
         Line::from(Span::styled(

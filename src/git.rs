@@ -6,7 +6,7 @@
 //! `flash`. Everything here shells out to `git`; nothing is cached.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// Unit separator — a byte that can't occur in a path or a commit subject, so we
@@ -455,6 +455,212 @@ pub fn stash(dir: &Path) -> Result<String, String> {
     Ok(out.lines().next().unwrap_or("stashed").trim().to_string())
 }
 
+// ── Worktrees ────────────────────────────────────────────────────────────────
+//
+// A linked worktree is a second checkout of the same repository on its own branch.
+// mmux loads one as an ordinary project (see [`crate::worktree`]), so everything
+// here is deliberately plain: list them, add one, remove one, merge one back. The
+// repository config is shared by every checkout, which is what makes
+// [`config_get`]/[`config_set`] a durable place to remember a branch's base.
+
+/// One entry from `git worktree list`: a checkout of the repository and the branch
+/// it has out. The first entry is always the repository's **main** worktree.
+#[derive(Clone)]
+pub struct WorktreeEntry {
+    pub path: PathBuf,
+    /// The checked-out branch, empty for a detached HEAD.
+    pub branch: String,
+}
+
+/// Every checkout of the repository containing `dir`, main worktree first. This is
+/// the only place that knows `--porcelain`'s layout: blank-line separated records,
+/// each opened by `worktree <path>`, with `branch refs/heads/<name>` naming the
+/// branch (absent when detached). A non-repo yields an empty list rather than an
+/// error — callers treat "has no worktrees" and "isn't a repo" the same way.
+pub fn worktrees(dir: &Path) -> Vec<WorktreeEntry> {
+    let raw = run(dir, &["worktree", "list", "--porcelain"]).unwrap_or_default();
+    let mut out: Vec<WorktreeEntry> = Vec::new();
+    for line in raw.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            out.push(WorktreeEntry {
+                path: PathBuf::from(path.trim()),
+                branch: String::new(),
+            });
+        } else if let Some(branch) = line.strip_prefix("branch refs/heads/") {
+            if let Some(last) = out.last_mut() {
+                last.branch = branch.trim().to_string();
+            }
+        }
+    }
+    out
+}
+
+/// The repository's main worktree — the checkout that owns `.git`. Adding, removing
+/// and merging all run there: a linked worktree cannot remove itself, and the branch
+/// a worktree merges back into lives in the main checkout.
+pub fn main_worktree(dir: &Path) -> Option<PathBuf> {
+    worktrees(dir).into_iter().next().map(|w| w.path)
+}
+
+/// Whether `name` is an existing local branch — decides whether creating a worktree
+/// checks a branch out or cuts a new one.
+pub fn branch_exists(dir: &Path, name: &str) -> bool {
+    run(
+        dir,
+        &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")],
+    )
+    .is_ok()
+}
+
+/// Whether the working tree at `dir` has nothing changed at all (tracked *or*
+/// untracked). The gate on merging a worktree back and on removing one without
+/// discarding work.
+pub fn is_clean(dir: &Path) -> bool {
+    status(dir).files.is_empty()
+}
+
+/// Create a linked worktree at `path`. `base` picks the two cases apart: `Some(b)`
+/// cuts `branch` fresh off `b`, `None` checks out a branch that already exists. Git
+/// refuses to have one branch checked out in two worktrees, and that refusal comes
+/// back verbatim as the error.
+pub fn worktree_add(
+    dir: &Path,
+    path: &Path,
+    branch: &str,
+    base: Option<&str>,
+) -> Result<(), String> {
+    let path = path.to_string_lossy().into_owned();
+    match base {
+        Some(base) => run(dir, &["worktree", "add", &path, "-b", branch, base]).map(drop),
+        None => run(dir, &["worktree", "add", &path, branch]).map(drop),
+    }
+}
+
+/// Remove a linked worktree and its directory. Without `force`, git refuses when the
+/// checkout has changes — which is exactly the confirmation mmux wants to surface
+/// rather than paper over.
+pub fn worktree_remove(dir: &Path, path: &Path, force: bool) -> Result<(), String> {
+    let path = path.to_string_lossy().into_owned();
+    let mut args = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.push(&path);
+    run(dir, &args).map(drop)
+}
+
+/// Forget worktrees whose directories have gone away. Cheap, and it keeps a
+/// hand-deleted directory from leaving a stale entry that blocks re-creating the
+/// same branch's worktree later.
+pub fn worktree_prune(dir: &Path) {
+    let _ = run(dir, &["worktree", "prune"]);
+}
+
+/// What already holds a branch's commits — i.e. how much a checkout is still the
+/// only copy of anything. This is the whole basis for throwing a worktree away, by
+/// hand or automatically: a branch that is merged, or fully pushed, has nothing left
+/// that only exists here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Integration {
+    /// Every commit on the branch is already contained in its base.
+    pub merged: bool,
+    /// It has an upstream and nothing left to push to it.
+    pub pushed: bool,
+    /// Commits the base branch doesn't have — `0` exactly when `merged`.
+    pub ahead: usize,
+}
+
+impl Integration {
+    /// Whether the branch's work is safe somewhere other than this checkout.
+    pub fn is_safe(&self) -> bool {
+        self.merged || self.pushed
+    }
+}
+
+/// Measure `branch` against `base` and against its upstream. Three cheap revision
+/// walks; shared by the removal confirmation (so its warning is proportional to what
+/// would actually be lost) and by the idle-worktree reaper (so it only ever clears
+/// away work that is already somewhere else).
+pub fn integration(dir: &Path, branch: &str, base: &str) -> Integration {
+    let merged = run(dir, &["merge-base", "--is-ancestor", branch, base]).is_ok();
+    let ahead = if merged {
+        0
+    } else {
+        run(dir, &["rev-list", "--count", &format!("{base}..{branch}")])
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0)
+    };
+    // No upstream ⇒ nothing was ever pushed; an upstream with an empty
+    // `upstream..branch` range ⇒ the remote has everything.
+    let pushed = run(
+        dir,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            &format!("{branch}@{{u}}"),
+        ],
+    )
+    .ok()
+    .map(|upstream| {
+        let range = format!("{}..{}", upstream.trim(), branch);
+        run(dir, &["rev-list", "--count", &range])
+            .ok()
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .is_some_and(|n| n == 0)
+    })
+    .unwrap_or(false);
+    Integration {
+        merged,
+        pushed,
+        ahead,
+    }
+}
+
+/// Delete a local branch. `-d`, never `-D`: an unmerged branch is *kept* and git's
+/// refusal is returned, so removing a worktree can't silently drop work.
+pub fn delete_branch(dir: &Path, name: &str) -> Result<(), String> {
+    run(dir, &["branch", "-d", name]).map(drop)
+}
+
+/// Merge `branch` into whatever is checked out at `dir`, fast-forwarding when it can
+/// (`--no-edit` keeps git's default message and opens no editor). Merging a branch
+/// that is checked out in *another* worktree is fine — git only forbids checking one
+/// branch out twice.
+pub fn merge(dir: &Path, branch: &str) -> Result<String, String> {
+    let out = run(dir, &["merge", "--no-edit", branch])?;
+    Ok(out.lines().next().unwrap_or("merged").trim().to_string())
+}
+
+/// Read a repository config value, `None` when unset or blank. Every checkout of a
+/// repository shares one config, so a value written from any worktree is readable
+/// from all of them — which is why mmux remembers a branch's base here instead of in
+/// a state file that could drift from the repo.
+pub fn config_get(dir: &Path, key: &str) -> Option<String> {
+    let value = run(dir, &["config", "--get", key]).ok()?.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+pub fn config_set(dir: &Path, key: &str, value: &str) -> Result<(), String> {
+    run(dir, &["config", key, value]).map(drop)
+}
+
+/// Drop a config key. Unsetting one that was never set exits non-zero, which isn't an
+/// error here — so this reports nothing.
+pub fn config_unset(dir: &Path, key: &str) {
+    let _ = run(dir, &["config", "--unset", key]);
+}
+
+/// The subject line of `dir`'s HEAD commit. A worktree's sidebar box already carries
+/// its branch in the title, so it shows this instead — the box labels itself with the
+/// work as soon as any lands. Empty on a branch with no commits yet.
+pub fn head_subject(dir: &Path) -> String {
+    run(dir, &["log", "-1", "--format=%s"])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
 /// Like [`run`] but hands back stdout no matter the exit status. Some porcelain
 /// (notably `diff --no-index`) exits non-zero *because* there's output to show, so
 /// the usual success/failure split would throw the diff away.
@@ -545,6 +751,205 @@ mod tests {
         run(&work, &["remote", "remove", "aaa"]).unwrap();
         assert_eq!(default_remote(&work).unwrap_err(), "no remote configured");
         let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// The worktree round-trip mmux actually performs: cut a branch into a linked
+    /// checkout, remember its base in the shared repo config, merge it back, and take
+    /// the worktree away again.
+    #[test]
+    fn worktree_add_merge_and_remove_round_trip() {
+        let (work, _) = scratch_repo("worktree");
+        let wt = work.parent().unwrap().join("wt-otter");
+
+        // A fresh branch is cut off the current one and checked out beside it.
+        assert!(!branch_exists(&work, "brave-otter"));
+        worktree_add(&work, &wt, "brave-otter", Some("main")).unwrap();
+        assert!(branch_exists(&work, "brave-otter"));
+        assert!(is_clean(&wt));
+
+        // Both checkouts are listed, main first, each with its own branch.
+        let list = worktrees(&work);
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].branch, "main");
+        assert_eq!(canon(&list[0].path), canon(&work));
+        assert_eq!(list[1].branch, "brave-otter");
+        assert_eq!(main_worktree(&wt).map(|p| canon(&p)), Some(canon(&work)));
+
+        // The base is remembered in the repository config, so it is readable from
+        // the worktree as well as from main.
+        config_set(&work, "branch.brave-otter.mmuxbase", "main").unwrap();
+        assert_eq!(
+            config_get(&wt, "branch.brave-otter.mmuxbase").as_deref(),
+            Some("main")
+        );
+
+        // Work in the worktree, then merge it back from the main checkout.
+        std::fs::write(wt.join("f"), "changed").unwrap();
+        assert!(!is_clean(&wt));
+        run(&wt, &["commit", "-am", "edit"]).unwrap();
+        assert!(is_clean(&wt));
+        merge(&work, "brave-otter").unwrap();
+        assert_eq!(std::fs::read_to_string(work.join("f")).unwrap(), "changed");
+
+        // Removing takes the checkout away; the now-merged branch deletes cleanly.
+        worktree_remove(&work, &wt, false).unwrap();
+        assert!(!wt.exists());
+        assert_eq!(worktrees(&work).len(), 1);
+        delete_branch(&work, "brave-otter").unwrap();
+        assert!(!branch_exists(&work, "brave-otter"));
+
+        config_unset(&work, "branch.brave-otter.mmuxbase");
+        assert!(config_get(&work, "branch.brave-otter.mmuxbase").is_none());
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// The two refusals mmux relies on rather than re-implementing: a dirty worktree
+    /// isn't removed without `--force`, and an unmerged branch isn't deleted at all.
+    #[test]
+    fn worktree_removal_protects_uncommitted_and_unmerged_work() {
+        let (work, _) = scratch_repo("worktree-guard");
+        let wt = work.parent().unwrap().join("wt-guard");
+        worktree_add(&work, &wt, "spicy-toaster", Some("main")).unwrap();
+        // A commit main never saw, so the branch is genuinely unmerged below…
+        std::fs::write(wt.join("f"), "committed").unwrap();
+        run(&wt, &["commit", "-am", "work"]).unwrap();
+        // …plus a change that was never committed at all.
+        std::fs::write(wt.join("f"), "uncommitted").unwrap();
+        assert!(worktree_remove(&work, &wt, false).is_err());
+        assert!(wt.exists());
+        // …but the user can still say yes.
+        worktree_remove(&work, &wt, true).unwrap();
+        assert!(!wt.exists());
+
+        // The branch carries a commit main never saw, so `-d` declines to drop it.
+        assert!(delete_branch(&work, "spicy-toaster").is_err());
+        assert!(branch_exists(&work, "spicy-toaster"));
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// An existing branch is checked out rather than re-created, and git's own refusal
+    /// to have one branch out in two places is what stops a double checkout.
+    #[test]
+    fn worktree_add_checks_out_an_existing_branch() {
+        let (work, _) = scratch_repo("worktree-existing");
+        run(&work, &["branch", "noble-parsnip"]).unwrap();
+        let wt = work.parent().unwrap().join("wt-existing");
+        worktree_add(&work, &wt, "noble-parsnip", None).unwrap();
+        assert_eq!(worktrees(&work)[1].branch, "noble-parsnip");
+
+        // The same branch a second time is git's error, surfaced as-is.
+        let twice = work.parent().unwrap().join("wt-existing-2");
+        assert!(worktree_add(&work, &twice, "noble-parsnip", None).is_err());
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// The judgement the reaper and the removal warning both rest on: work is only
+    /// disposable once the base branch or a remote already has it.
+    #[test]
+    fn integration_tracks_merged_and_pushed_separately() {
+        let (work, _) = scratch_repo("integration");
+        let wt = work.parent().unwrap().join("wt-integration");
+        worktree_add(&work, &wt, "feral-ferret", Some("main")).unwrap();
+
+        // Brand new branch, no commits of its own: already contained in main.
+        let fresh = integration(&work, "feral-ferret", "main");
+        assert_eq!(
+            fresh,
+            Integration {
+                merged: true,
+                pushed: false,
+                ahead: 0
+            }
+        );
+        assert!(fresh.is_safe());
+
+        // A commit only this checkout has: not merged, not pushed, nothing to fall
+        // back on — the case that must never be reaped.
+        std::fs::write(wt.join("f"), "work").unwrap();
+        run(&wt, &["commit", "-am", "work"]).unwrap();
+        let stranded = integration(&work, "feral-ferret", "main");
+        assert_eq!(
+            stranded,
+            Integration {
+                merged: false,
+                pushed: false,
+                ahead: 1
+            }
+        );
+        assert!(!stranded.is_safe());
+
+        // Pushing is enough on its own — the remote now holds it, merged or not.
+        run(&wt, &["push", "--set-upstream", "origin", "feral-ferret"]).unwrap();
+        let pushed = integration(&work, "feral-ferret", "main");
+        assert!(pushed.pushed && !pushed.merged && pushed.ahead == 1);
+        assert!(pushed.is_safe());
+
+        // A further local commit strands it again until it's pushed or merged.
+        std::fs::write(wt.join("f"), "more").unwrap();
+        run(&wt, &["commit", "-am", "more"]).unwrap();
+        assert!(!integration(&work, "feral-ferret", "main").is_safe());
+
+        // Merging is the other way home.
+        merge(&work, "feral-ferret").unwrap();
+        let merged = integration(&work, "feral-ferret", "main");
+        assert!(merged.merged && merged.ahead == 0 && merged.is_safe());
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// Every read the git panel makes is scoped to the directory it's given, so a
+    /// worktree's panel shows *that* checkout and nothing else. `GitPanel` holds one
+    /// `dir` per project and the app draws the active project's panel, so this is the
+    /// property the whole "the panel follows the checkout you're in" behaviour rests on.
+    #[test]
+    fn panel_reads_are_scoped_to_their_own_checkout() {
+        let (work, _) = scratch_repo("scoped");
+        let wt = work.parent().unwrap().join("wt-scoped");
+        worktree_add(&work, &wt, "tidy-walrus", Some("main")).unwrap();
+
+        // Change one file in each checkout, differently.
+        std::fs::write(work.join("only-main"), "m").unwrap();
+        std::fs::write(wt.join("only-wt"), "w").unwrap();
+        std::fs::write(wt.join("f"), "edited").unwrap();
+
+        let main = status(&work);
+        let side = status(&wt);
+
+        // Each reports its own branch…
+        assert_eq!(main.branch, "main");
+        assert_eq!(side.branch, "tidy-walrus");
+
+        // …and strictly its own changed paths.
+        let names = |s: &Status| {
+            let mut v: Vec<String> = s.files.iter().map(|f| f.path.clone()).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(names(&main), vec!["only-main".to_string()]);
+        assert_eq!(names(&side), vec!["f".to_string(), "only-wt".to_string()]);
+
+        // The diff the preview pane renders is scoped the same way: `f` is modified in
+        // the worktree and untouched in main.
+        assert!(diff(&wt, "f", false).contains("edited"));
+        assert!(diff(&work, "f", false).is_empty());
+
+        // As is the commit log each panel shows.
+        run(&wt, &["commit", "-am", "worktree only"]).unwrap();
+        assert_eq!(log(&wt, 1)[0].summary, "worktree only");
+        assert_eq!(log(&work, 1)[0].summary, "init");
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    #[test]
+    fn head_subject_reads_the_tip_commit() {
+        let (work, _) = scratch_repo("subject");
+        assert_eq!(head_subject(&work), "init");
+        let _ = std::fs::remove_dir_all(work.parent().unwrap());
+    }
+
+    /// Temp dirs are symlinked on macOS (`/tmp` → `/private/tmp`), so paths that come
+    /// back from git are compared canonically.
+    fn canon(p: &Path) -> PathBuf {
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
     }
 
     fn fe(path: &str) -> FileEntry {

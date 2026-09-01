@@ -13,6 +13,7 @@ mod tmux;
 mod update;
 mod wizard;
 mod workspacemgr;
+mod worktree;
 
 fn main() -> anyhow::Result<()> {
     cli::run()

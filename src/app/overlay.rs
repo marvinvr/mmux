@@ -59,6 +59,10 @@ pub(crate) enum PromptKind {
         push: bool,
     },
     NewBranch,
+    /// A new worktree's branch. Opens pre-filled — with a generated two-word name, or
+    /// the existing branch under the Branches cursor — so the common case is one
+    /// keystroke; `Ctrl+R` rolls another suggestion.
+    NewWorktree,
 }
 
 /// The deferred action a [`Overlay::Confirm`] runs when accepted.
@@ -84,6 +88,19 @@ pub(crate) enum Confirmed {
     /// Run `brew upgrade mmux` to apply the offered self-update on a Homebrew install
     /// (see [`App::start_brew_upgrade`](super::App::start_brew_upgrade)).
     BrewUpgrade { version: String },
+    /// Merge worktree `project`'s `branch` into `base`. `remove` folds the usual
+    /// follow-up into the same keystroke: `y` merges and removes, `m` merges only.
+    /// Both the project index and the branch are carried so the action can verify it
+    /// is still acting on the worktree the modal was opened for.
+    MergeWorktree {
+        project: usize,
+        branch: String,
+        base: String,
+        remove: bool,
+    },
+    /// Remove worktree `project` (checkout + merged branch). See
+    /// [`App::remove_worktree`](super::App::remove_worktree).
+    RemoveWorktree { project: usize, branch: String },
 }
 
 impl Overlay {
@@ -100,6 +117,14 @@ impl Overlay {
             title: "New branch",
             buf: prefill,
             kind: PromptKind::NewBranch,
+        }
+    }
+
+    pub(crate) fn new_worktree(prefill: String) -> Overlay {
+        Overlay::Prompt {
+            title: "New worktree",
+            buf: prefill,
+            kind: PromptKind::NewWorktree,
         }
     }
 
@@ -195,6 +220,10 @@ impl App {
             Submit(PromptKind, String),
             Confirm(Confirmed),
             OpenFile(usize, String),
+            /// Replace a new-worktree prompt's buffer with another generated name.
+            /// Deferred like everything else here: generating one reads `self`, and
+            /// the overlay is borrowed for the duration of the match.
+            RerollName,
         }
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         let act = match &mut self.overlay {
@@ -257,6 +286,11 @@ impl App {
                     }
                     _ => Act::None,
                 },
+                // Ctrl+R: another suggested worktree name (no-op elsewhere).
+                KeyCode::Char('r') if ctrl => match kind {
+                    PromptKind::NewWorktree => Act::RerollName,
+                    _ => Act::None,
+                },
                 KeyCode::Backspace => {
                     buf.pop();
                     Act::None
@@ -276,6 +310,21 @@ impl App {
                     Act::Confirm(action.clone())
                 }
                 KeyCode::Char('d') if matches!(action, Confirmed::Quit) => Act::Detach,
+                // The merge confirm's middle option: merge but keep the worktree.
+                KeyCode::Char('m') => match action {
+                    Confirmed::MergeWorktree {
+                        project,
+                        branch,
+                        base,
+                        ..
+                    } => Act::Confirm(Confirmed::MergeWorktree {
+                        project: *project,
+                        branch: branch.clone(),
+                        base: base.clone(),
+                        remove: false,
+                    }),
+                    _ => Act::Close,
+                },
                 _ => Act::Close,
             },
             // Handled above by their dedicated key handlers; arms kept for match
@@ -306,6 +355,12 @@ impl App {
                 self.overlay = None;
                 self.open_in_editor(pi, path);
             }
+            Act::RerollName => {
+                let name = self.generated_branch_name();
+                if let Some(Overlay::Prompt { buf, .. }) = &mut self.overlay {
+                    *buf = name;
+                }
+            }
         }
     }
 
@@ -332,6 +387,7 @@ impl App {
                 Some(Err(e)) => self.flash(first_line(&e)),
                 _ => {}
             },
+            PromptKind::NewWorktree => self.create_worktree(&buf),
         }
     }
 
@@ -355,6 +411,15 @@ impl App {
                 self.flash_result(r);
             }
             Confirmed::BrewUpgrade { version } => self.start_brew_upgrade(version),
+            Confirmed::MergeWorktree {
+                project,
+                branch,
+                base,
+                remove,
+            } => self.merge_worktree(project, &branch, &base, remove),
+            Confirmed::RemoveWorktree { project, branch } => {
+                self.remove_worktree(project, &branch)
+            }
         }
     }
 

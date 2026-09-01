@@ -68,6 +68,19 @@ impl Recipe {
         }
     }
 
+    /// A one-off shell line run in `dir` — a new worktree's
+    /// [`setup:`](crate::config::WorktreeConfig::setup) command. It's an ordinary
+    /// terminal session, so you watch it work in the main pane and the row prunes
+    /// itself the moment it exits cleanly.
+    pub fn shell_line(dir: &Path, line: &str) -> Recipe {
+        Recipe {
+            cmd: "sh".into(),
+            args: vec!["-c".into(), line.to_string()],
+            cwd: dir.to_path_buf(),
+            env: BTreeMap::new(),
+        }
+    }
+
     /// A plain login shell rooted at `dir`.
     pub fn shell(dir: &Path) -> Recipe {
         Recipe {

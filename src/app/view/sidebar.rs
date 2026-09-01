@@ -3,15 +3,16 @@
 
 use super::theme::{
     agent_glyph_style, badge, entry_line, header, project_header, status_style, ACTIVE_BORDER,
-    IDLE_BORDER, SPINNER,
+    IDLE_BORDER, SPINNER, WORKTREE_ACTIVE_BORDER, WORKTREE_BORDER,
 };
 use crate::app::nav::Nav;
 use crate::app::session::Kind;
 use crate::app::{App, Focus, Status};
+use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph, Widget};
 use ratatui::Frame;
 
 #[derive(Default)]
@@ -61,13 +62,9 @@ impl App {
                 } else {
                     (self.collapsed_project_lines(pi, inner_w), Vec::new())
                 };
-                (
-                    self.projects[pi].cfg.display_name(),
-                    active,
-                    Some(pi),
-                    lines,
-                    rows,
-                )
+                // A worktree is titled by its branch, since the directory it lives in
+                // is a hash under `~/.mmux` that nobody thinks in.
+                (self.project_label(pi), active, Some(pi), lines, rows)
             })
             .collect();
         if self.compact && self.active_git().is_some() {
@@ -83,44 +80,172 @@ impl App {
             .iter()
             .map(|(_, _, _, lines, _)| lines.len() as u16 + 2)
             .collect();
-        let heights = box_heights(&collapsed_heights, active_pos, area.height);
-        let chunks = Layout::vertical(heights.iter().map(|h| Constraint::Length(*h))).split(area);
+        // When the column fits, the active box absorbs the slack exactly as it always
+        // has. When it doesn't, every box keeps its natural height and the column
+        // becomes taller than the viewport — which is what there is to scroll.
+        let natural: u16 = collapsed_heights.iter().sum();
+        let (heights, column_h) = if natural <= area.height {
+            (
+                box_heights(&collapsed_heights, active_pos, area.height),
+                area.height,
+            )
+        } else {
+            (collapsed_heights, natural)
+        };
+
+        // Lay the whole column out off-screen at full height, then blit the visible
+        // window. Rendering into the frame directly can't express "this box starts
+        // above the top edge", and clipping every widget by hand would put the same
+        // arithmetic in five places.
+        let column = Rect {
+            x: 0,
+            y: 0,
+            width: area.width,
+            height: column_h,
+        };
+        let chunks = Layout::vertical(heights.iter().map(|h| Constraint::Length(*h))).split(column);
+        let mut scratch = Buffer::empty(column);
+        // Hit rects, gathered in column coordinates and translated once at the end.
+        let mut col_rows: Vec<(u16, usize)> = Vec::new();
+        let mut col_boxes: Vec<(Rect, usize)> = Vec::new();
 
         for (i, (name, active, project, lines, rows)) in blocks.into_iter().enumerate() {
-            let rect = chunks[i];
+            let mut rect = chunks[i];
             if rect.height == 0 {
                 continue;
+            }
+            let worktree = project
+                .map(|pi| self.projects[pi].worktree.is_some())
+                .unwrap_or(false);
+            // Indent a worktree by a column so it reads as hanging off the box above
+            // it. Everything downstream (inner area, click regions) is derived from
+            // this rect, so the inset carries through on its own.
+            if worktree && rect.width > 2 {
+                rect.x += 1;
+                rect.width -= 1;
             }
             let title_style = if active {
                 Style::default()
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD)
+            } else if worktree {
+                Style::default().fg(WORKTREE_BORDER)
             } else {
                 Style::default().fg(Color::Gray)
             };
-            let border = if active { ACTIVE_BORDER } else { IDLE_BORDER };
+            let border = match (worktree, active) {
+                (true, true) => WORKTREE_ACTIVE_BORDER,
+                (true, false) => WORKTREE_BORDER,
+                (false, true) => ACTIVE_BORDER,
+                (false, false) => IDLE_BORDER,
+            };
             let block = Block::default()
                 .borders(Borders::ALL)
                 .title(Span::styled(format!(" {name} "), title_style))
                 .border_style(Style::default().fg(border));
             let inner = padded_inner(block.inner(rect));
-            f.render_widget(block, rect);
+            block.render(rect, &mut scratch);
             // Remember the actual project index so clicks stay correct after the
             // activity-based display ordering. The trailing git box has no project.
             if let Some(pi) = project {
-                self.regions.project_boxes.push((rect, pi));
+                col_boxes.push((rect, pi));
             }
-            // Map each row's local line index to an absolute screen `y` for click
-            // routing, skipping any the box is too short to actually show.
+            // Map each row's local line index to a column `y` for click routing,
+            // skipping any the box is too short to actually show.
             for (ly, pos) in rows {
                 let ry = inner.y + ly;
                 if ry < inner.y + inner.height {
-                    self.regions.rows.push((ry, pos));
+                    col_rows.push((ry, pos));
                 }
             }
-            f.render_widget(Paragraph::new(lines), inner);
+            Paragraph::new(lines).render(inner, &mut scratch);
+        }
+
+        let selected_y = col_rows
+            .iter()
+            .find(|(_, pos)| *pos == self.sel)
+            .map(|(y, _)| *y);
+        self.settle_sidebar_scroll(column_h, area.height, selected_y);
+        let off = self.sidebar_scroll;
+
+        blit_window(&scratch, f.buffer_mut(), area, off);
+        for (y, pos) in col_rows {
+            if let Some(sy) = visible_y(y, area, off) {
+                self.regions.rows.push((sy, pos));
+            }
+        }
+        // A partly-scrolled box stays clickable over the part you can see.
+        for (rect, pi) in col_boxes {
+            if let Some(rect) = clip_to_window(rect, area, off) {
+                self.regions.project_boxes.push((rect, pi));
+            }
         }
     }
+
+    /// Keep [`sidebar_scroll`](App) sane, and bring the selected row into view **when
+    /// the selection moves**. The distinction is what makes the wheel usable: browsing
+    /// away from the cursor has to stay put rather than snapping back every frame, but
+    /// pressing `j`/`k` (or anything else that moves the cursor) should always follow.
+    fn settle_sidebar_scroll(&mut self, column_h: u16, view_h: u16, selected_y: Option<u16>) {
+        if self.sel != self.sidebar_scroll_sel {
+            self.sidebar_scroll_sel = self.sel;
+            if let Some(y) = selected_y {
+                if y < self.sidebar_scroll {
+                    self.sidebar_scroll = y;
+                } else if y >= self.sidebar_scroll + view_h {
+                    self.sidebar_scroll = y + 1 - view_h;
+                }
+            }
+        }
+        // The column shrinks as boxes collapse and sessions close, so an offset that
+        // was fine last frame can be past the end of this one.
+        self.sidebar_scroll = self.sidebar_scroll.min(column_h.saturating_sub(view_h));
+    }
+
+    /// Scroll the sidebar by `delta` rows (positive scrolls down). The clamp against
+    /// the column height happens at render time, which is the only place that knows
+    /// how tall the column currently is.
+    pub(crate) fn scroll_sidebar(&mut self, delta: i32) {
+        let next = (self.sidebar_scroll as i32 + delta).max(0) as u16;
+        self.sidebar_scroll = next;
+        // Wheeling is browsing, not selecting: keep the cursor where it is, and stop
+        // the next frame's follow from yanking the view back to it.
+        self.sidebar_scroll_sel = self.sel;
+    }
+}
+
+/// Copy the visible window of a full-height sidebar column into the frame.
+fn blit_window(src: &Buffer, dst: &mut Buffer, area: Rect, off: u16) {
+    for y in 0..area.height {
+        let sy = y + off;
+        if sy >= src.area.height {
+            break;
+        }
+        for x in 0..area.width {
+            dst[(area.x + x, area.y + y)] = src[(x, sy)].clone();
+        }
+    }
+}
+
+/// A column row's on-screen `y`, or `None` when it's scrolled out of the window.
+fn visible_y(y: u16, area: Rect, off: u16) -> Option<u16> {
+    (y >= off && y - off < area.height).then(|| area.y + y - off)
+}
+
+/// A column rect clipped to the visible window, in screen coordinates. `None` when
+/// none of it is on screen.
+fn clip_to_window(rect: Rect, area: Rect, off: u16) -> Option<Rect> {
+    let top = rect.y.max(off);
+    let bottom = (rect.y + rect.height).min(off + area.height);
+    (bottom > top).then(|| Rect {
+        x: area.x + rect.x,
+        y: area.y + top - off,
+        width: rect.width,
+        height: bottom - top,
+    })
+}
+
+impl App {
 
     fn agent_activity(&self, pi: usize) -> AgentActivity {
         let mut activity = AgentActivity::default();
@@ -191,21 +316,26 @@ impl App {
                 Style::default().fg(Color::Yellow),
             )
         };
+        // A worktree's title already *is* its branch, so repeating it here would waste
+        // the only line it gets. It shows the tip commit's subject instead — which is
+        // what turns a generated name into something you recognise.
+        let (label, label_style) = match self.projects[pi].worktree.is_some() {
+            true if !g.head_subject.is_empty() => (
+                g.head_subject.as_str(),
+                Style::default().fg(Color::DarkGray),
+            ),
+            true => ("no commits yet", Style::default().fg(Color::DarkGray)),
+            false if g.branch.is_empty() => ("HEAD", Style::default().fg(Color::Magenta)),
+            false => (g.branch.as_str(), Style::default().fg(Color::Magenta)),
+        };
         let git_w = git.chars().count();
-        let branch_w = (width as usize).saturating_sub(git_w + 1);
-        let branch = if branch_w == 0 {
+        let label_w = (width as usize).saturating_sub(git_w + 1);
+        let label = if label_w == 0 {
             String::new()
         } else {
-            super::git::truncate_middle(
-                if g.branch.is_empty() {
-                    "HEAD"
-                } else {
-                    &g.branch
-                },
-                branch_w,
-            )
+            super::git::truncate_middle(label, label_w)
         };
-        let mut line = Line::from(Span::styled(branch, Style::default().fg(Color::Magenta)));
+        let mut line = Line::from(Span::styled(label, label_style));
         let pad = (width as usize).saturating_sub(line.width() + git_w);
         line.spans.push(Span::raw(" ".repeat(pad)));
         line.spans.push(Span::styled(git, git_style));
@@ -290,7 +420,10 @@ impl App {
         self.regions.rows.clear();
         let nav = self.build_nav();
         let mut lines: Vec<Line> = Vec::new();
-        let mut y = inner.y;
+        // Rows are recorded relative to the top of the (possibly taller than the
+        // viewport) content, then translated to screen coordinates once the scroll
+        // offset is known below.
+        let mut y = 0u16;
 
         // One group of sections per project. With a single project we drop the
         // project header entirely so the layout reads exactly as it did before.
@@ -349,7 +482,22 @@ impl App {
             );
         }
 
-        f.render_widget(Paragraph::new(lines), inner);
+        let selected_y = self
+            .regions
+            .rows
+            .iter()
+            .find(|(_, pos)| *pos == self.sel)
+            .map(|(y, _)| *y);
+        self.settle_sidebar_scroll(lines.len() as u16, inner.height, selected_y);
+        let off = self.sidebar_scroll;
+        // Drop the rows that scrolled out of view, then move the rest onto the screen.
+        self.regions
+            .rows
+            .retain(|(y, _)| visible_y(*y, inner, off).is_some());
+        for (y, _) in self.regions.rows.iter_mut() {
+            *y = inner.y + *y - off;
+        }
+        f.render_widget(Paragraph::new(lines).scroll((off, 0)), inner);
     }
 
     /// The sidebar block title: the launch directory's display name. For a manifest
@@ -515,10 +663,12 @@ fn padded_inner(area: Rect) -> Rect {
     }
 }
 
-/// Vertical heights for the stacked per-project boxes: every inactive box gets its
-/// compact content height (one row, or two with git), while the active box absorbs
-/// the remaining space. If the sidebar is too short, split it evenly and give the
-/// remainder to the active box so the selected project remains the most visible one.
+/// Per-box heights for the sidebar column: every collapsed box keeps its natural
+/// height and the **active** one absorbs the slack, so the column is filled exactly.
+///
+/// The caller only reaches here when the natural total fits the viewport — when it
+/// doesn't, the column is laid out at full height and *scrolled* instead, which is why
+/// there is no "squeeze everything" branch to get wrong.
 fn box_heights(collapsed_heights: &[u16], active: usize, total: u16) -> Vec<u16> {
     const MIN_BOX: u16 = 3; // top border + ≥1 row + bottom border
     let n = collapsed_heights.len();
@@ -532,14 +682,37 @@ fn box_heights(collapsed_heights: &[u16], active: usize, total: u16) -> Vec<u16>
         .filter(|(i, _)| *i != active)
         .map(|(_, height)| *height)
         .sum();
-    if collapsed + MIN_BOX <= total {
-        let mut h = collapsed_heights.to_vec();
-        h[active] = total - collapsed;
-        return h;
+    // Collapsed boxes keep their natural height; the active one takes what's left, so
+    // the column is filled exactly. Saturating arithmetic keeps a violated
+    // precondition to a squeezed box rather than a panic.
+    let mut h = collapsed_heights.to_vec();
+    h[active] = total.saturating_sub(collapsed).max(MIN_BOX);
+    h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::box_heights;
+
+    /// Collapsed boxes keep their size and the active one takes the rest, filling the
+    /// column exactly — whichever box is active.
+    #[test]
+    fn active_box_absorbs_the_remaining_height() {
+        assert_eq!(box_heights(&[3, 3, 3], 1, 30), vec![3, 24, 3]);
+        assert_eq!(box_heights(&[3, 4, 3], 0, 20), vec![13, 4, 3]);
+        for active in 0..3 {
+            let h = box_heights(&[3, 3, 3], active, 30);
+            assert_eq!(h.iter().sum::<u16>(), 30, "column not filled at {active}");
+        }
     }
 
-    let each = total / n as u16;
-    let mut h = vec![each; n];
-    h[active] += total % n as u16;
-    h
+    /// Degenerate inputs must not panic: no boxes, an out-of-range active index, or a
+    /// column too short for what it was handed (the precondition the caller upholds).
+    #[test]
+    fn degenerate_columns_are_safe() {
+        assert!(box_heights(&[], 0, 30).is_empty());
+        assert_eq!(box_heights(&[3, 3], 5, 30).len(), 2);
+        let squeezed = box_heights(&[3, 3, 3], 0, 2);
+        assert_eq!(squeezed[0], 3, "active box keeps a usable minimum");
+    }
 }

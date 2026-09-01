@@ -52,25 +52,44 @@ impl App {
     /// Stable-partition projects by useful background activity: a running agent, a
     /// running configured process, or Git changes. If the selected project loses its
     /// last signal, `sticky_priority_project` holds it there until selection moves
-    /// elsewhere; selecting an already-quiet project never promotes it. Activity
+    /// elsewhere; selecting an already-quiet lone project never promotes it. Activity
     /// counts and states do not rank projects within a group; display names sort
     /// case-insensitively, with manifest order as the stable tie-breaker.
+    ///
+    /// Worktrees never leave their parent's side: a repository's checkouts are
+    /// partitioned and sorted as one **family**, so a busy worktree lifts the whole
+    /// group rather than being torn out of it and stranded at the top of the sidebar.
+    /// The family you are working in leads the list outright — see
+    /// [`arrange_families`].
     pub(crate) fn project_display_order(&self) -> Vec<usize> {
-        let mut priority = Vec::new();
-        let mut quiet = Vec::new();
+        let roots: Vec<usize> = (0..self.projects.len())
+            .map(|pi| self.family_root(pi))
+            .collect();
+        // Activity is pooled onto the family root, so the block moves together.
+        let mut hot = vec![false; self.projects.len()];
         for pi in 0..self.projects.len() {
             if self.priority_projects.get(pi).copied().unwrap_or(false)
                 || self.sticky_priority_project == Some(pi)
             {
-                priority.push(pi);
-            } else {
-                quiet.push(pi);
+                hot[roots[pi]] = true;
             }
         }
-        priority.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
-        quiet.sort_by_cached_key(|&pi| self.projects[pi].cfg.display_name().to_lowercase());
-        priority.extend(quiet);
-        priority
+        let keys: Vec<SortKey> = (0..self.projects.len())
+            .map(|pi| self.project_sort_key(pi, &roots))
+            .collect();
+        arrange_families(&roots, &hot, Some(self.active), &keys)
+    }
+
+    /// Sort key that keeps a family contiguous and in a fixed shape: the family's
+    /// name (then its root index, so two repositories that happen to share a display
+    /// name still can't interleave), then the parent ahead of its worktrees, then the
+    /// worktree's own branch.
+    fn project_sort_key(&self, pi: usize, roots: &[usize]) -> SortKey {
+        let root = roots[pi];
+        let family = self.projects[root].cfg.display_name().to_lowercase();
+        let own = self.projects[pi].label().to_lowercase();
+        let depth = u8::from(self.projects[pi].worktree.is_some());
+        (family, root, depth, own)
     }
 
     fn project_has_priority(&self, pi: usize) -> bool {
@@ -221,5 +240,118 @@ impl App {
             Focus::Right | Focus::Sidebar => None,
             Focus::Terminal => self.current_nav().and_then(|n| self.pane_at(n)),
         }
+    }
+}
+
+/// A project's place in the sidebar: family name, family root, parent-before-worktree,
+/// own name. Built by `App::project_sort_key`.
+type SortKey = (String, usize, u8, String);
+
+/// Order the projects for display, given each one's family root, whether its family
+/// carries background activity, the active project, and its sort key.
+///
+/// Three groups, each sorted by key: **the active family**, then families with
+/// activity, then everything else. Sorting by a key that leads with the family root
+/// is what makes a family a block — worktrees always sit directly under the checkout
+/// they were cut from, and the block moves as one.
+///
+/// The active family leads only when it *is* a family. A lone project is still not
+/// promoted merely for being selected — browsing with `[`/`]` must not reshuffle the
+/// list under the cursor — but sibling checkouts of one repository are a single unit
+/// of work you move between constantly, so they stay together at the top while you do.
+fn arrange_families(
+    roots: &[usize],
+    hot: &[bool],
+    active: Option<usize>,
+    keys: &[SortKey],
+) -> Vec<usize> {
+    let lead = active
+        .and_then(|pi| roots.get(pi).copied())
+        .filter(|&root| roots.iter().filter(|&&r| r == root).count() > 1);
+    let mut groups: [Vec<usize>; 3] = Default::default();
+    for (pi, &root) in roots.iter().enumerate() {
+        let g = if lead == Some(root) {
+            0
+        } else if hot[root] {
+            1
+        } else {
+            2
+        };
+        groups[g].push(pi);
+    }
+    let mut out = Vec::with_capacity(roots.len());
+    for mut group in groups {
+        group.sort_by(|&a, &b| keys[a].cmp(&keys[b]));
+        out.append(&mut group);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Projects `names`, each `(family root, name, is_worktree)`.
+    fn keys(spec: &[(usize, &str, bool)]) -> Vec<SortKey> {
+        spec.iter()
+            .map(|&(root, name, wt)| {
+                (
+                    spec[root].1.to_string(),
+                    root,
+                    u8::from(wt),
+                    name.to_string(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn worktrees_sit_under_their_parent_and_the_family_moves_as_one() {
+        // 0: "zed" (quiet), 1: "app", 2/3: worktrees of "app" — one of them busy.
+        let roots = [0, 1, 1, 1];
+        let hot = [false, true, false, false];
+        let k = keys(&[
+            (0, "zed", false),
+            (1, "app", false),
+            (1, "brave-otter", true),
+            (1, "calm-yak", true),
+        ]);
+        // Activity on the family lifts parent + both worktrees above the quiet project,
+        // parent first, worktrees in name order.
+        assert_eq!(arrange_families(&roots, &hot, None, &k), vec![1, 2, 3, 0]);
+    }
+
+    #[test]
+    fn the_active_family_leads_from_either_end() {
+        let roots = [0, 1, 1];
+        let k = keys(&[(0, "zed", false), (1, "app", false), (1, "brave-otter", true)]);
+        // "zed" is the busy one, but working in the worktree (2) — or in its parent
+        // (1) — puts the whole family first anyway.
+        let hot = [true, false, false];
+        assert_eq!(arrange_families(&roots, &hot, Some(2), &k), vec![1, 2, 0]);
+        assert_eq!(arrange_families(&roots, &hot, Some(1), &k), vec![1, 2, 0]);
+        assert_eq!(arrange_families(&roots, &hot, Some(0), &k), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn a_lone_project_is_not_promoted_by_being_selected() {
+        let roots = [0, 1];
+        let hot = [true, false];
+        let k = keys(&[(0, "zed", false), (1, "app", false)]);
+        // Selecting the quiet "app" leaves it below the busy "zed".
+        assert_eq!(arrange_families(&roots, &hot, Some(1), &k), vec![0, 1]);
+    }
+
+    #[test]
+    fn families_sharing_a_display_name_still_cannot_interleave() {
+        let roots = [0, 0, 2, 2];
+        let hot = [false, false, false, false];
+        let k = keys(&[
+            (0, "app", false),
+            (0, "brave-otter", true),
+            (2, "app", false),
+            (2, "calm-yak", true),
+        ]);
+        assert_eq!(arrange_families(&roots, &hot, None, &k), vec![0, 1, 2, 3]);
     }
 }

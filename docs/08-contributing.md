@@ -134,11 +134,25 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
 - **Agent activity is protocol-first.** `OSC 9;4` progress state is authoritative when present,
   with animated terminal titles as the compatibility fallback. Attention notifications remain
   separate and key off the bell or notification OSCs (9/777/99).
-- **Workspace manifests are flat and structural.** They load at most 10 member folders and do not
-  nest. `R` adds and removes folders live; removal kills that member's panes and compacts runtime
+- **Workspace manifests are flat and structural.** They do not nest, and there is no limit on how
+  many member folders they load. `R` adds and removes folders live; removal kills that member's panes and compacts runtime
   project indices without touching its Git worktree. Reordering members needs a reopen. Restore
   snapshots carry both the legacy member index and the canonical member directory, so manifest
   reordering resolves safely.
+
+- **Worktrees are discovered, not watched.** `git worktree list` is read on startup and on `R`, so
+  one created in a shell appears on the next reload rather than immediately. There is no cap on projects: past
+  what fits, the sidebar column is laid out at full height and scrolled (wheel, or by moving the
+  cursor), so every project stays reachable.
+- **The stack swap is checkout-granular, not process-granular.** Whether a process moves is decided
+  by "is it running in a sibling checkout", with no per-process opt-out. A process whose `stop:`
+  teardown outlives its pane (a compose stack) is the case the `Draining` phase exists for; a
+  process that leaks children *without* declaring a `stop:` will keep its port and the new
+  checkout's copy will fail to bind, exactly as a manual stop/start would.
+- **Reaping can't see gitignored edits.** A finished worktree is removed on the strength of `git
+  status` plus merged/pushed state, so changes to gitignored files inside it (a tweaked `.env`)
+  are invisible to the check and go with the checkout. `worktrees.reap: off` for repositories where
+  that matters.
 
 ## Maintaining This Documentation
 

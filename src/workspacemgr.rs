@@ -125,38 +125,17 @@ impl WorkspaceManager {
     }
 
     pub(crate) fn toggle_enabled(&mut self) {
-        let Some(current) = self.rows.get(self.cursor) else {
-            return;
-        };
-        if !current.enabled && self.selected_count() >= config::MAX_PROJECTS {
-            self.error = Some(format!(
-                "a workspace can contain at most {} projects",
-                config::MAX_PROJECTS
-            ));
-            return;
-        }
         if let Some(r) = self.rows.get_mut(self.cursor) {
             r.enabled = !r.enabled;
         }
         self.error = None;
     }
 
-    /// Select every candidate up to the workspace cap, or clear the selection when
-    /// every row that can fit is already selected.
+    /// Select every candidate, or clear the selection when they all already are.
     pub(crate) fn toggle_all(&mut self) {
-        let all_on = !self.rows.is_empty()
-            && self
-                .rows
-                .iter()
-                .take(config::MAX_PROJECTS)
-                .all(|r| r.enabled)
-            && self
-                .rows
-                .iter()
-                .skip(config::MAX_PROJECTS)
-                .all(|r| !r.enabled);
-        for (i, r) in self.rows.iter_mut().enumerate() {
-            r.enabled = !all_on && i < config::MAX_PROJECTS;
+        let all_on = !self.rows.is_empty() && self.rows.iter().all(|r| r.enabled);
+        for r in self.rows.iter_mut() {
+            r.enabled = !all_on;
         }
         self.error = None;
     }
@@ -193,13 +172,6 @@ impl WorkspaceManager {
         }
         if self.selected_count() == 0 {
             self.error = Some("select at least one project folder".into());
-            return false;
-        }
-        if self.selected_count() > config::MAX_PROJECTS {
-            self.error = Some(format!(
-                "reduce the selection to {} projects",
-                config::MAX_PROJECTS
-            ));
             return false;
         }
         self.error = None;

@@ -38,6 +38,15 @@ pub(crate) const FOCUS_BORDER: Color = Color::Magenta;
 pub(crate) const ACTIVE_BORDER: Color = Color::Cyan;
 pub(crate) const IDLE_BORDER: Color = Color::DarkGray;
 
+/// A worktree's box reads as a *branch of* the project above it, not as another
+/// project: violet borders instead of the cyan/gray pair, a `⑂` before the branch
+/// name, and a one-column indent (see `render_sidebar_projects`). Three quiet cues
+/// rather than one loud one, so a throwaway checkout is never mistaken for real work
+/// at a glance — and the active box still reads as the active box.
+pub(crate) const WORKTREE_BORDER: Color = Color::Rgb(110, 88, 150);
+pub(crate) const WORKTREE_ACTIVE_BORDER: Color = Color::Rgb(178, 140, 236);
+pub(crate) const WORKTREE_GLYPH: &str = "⑂";
+
 /// The footer bar's palette: black text on a cyan bar, with the braces/hints dimmed to
 /// a muted teal so the shortcut keys (kept at full contrast) pop against them.
 pub(crate) const FOOTER_BG: Color = Color::Cyan;

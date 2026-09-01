@@ -100,7 +100,19 @@ workspace:
 ```
 
 The projects share one sidebar; switch between them with `[` and `]` or by clicking their boxes.
-Inside that workspace, press `w` in the sidebar to reopen the same manager.
+Inside that workspace, press `W` in the sidebar to reopen the same manager.
+
+## Worktrees
+
+Press `w` (in the sidebar or the git panel) and a git worktree opens as **another project box** in
+the same session — its own agents, terminals, processes and git panel — so whatever you start from
+that box runs in that checkout, and "which one am I in?" stops being a question. The name prompt
+comes pre-filled with a throwaway two-word branch name, so ⏎ is the whole interaction.
+
+Only one checkout of a repository runs its processes at a time: settle in a worktree and the
+running ones follow you there, so every branch reuses the same ports. `M` merges back into the
+branch it came from and clears the checkout away. Finished worktrees — merged or pushed, clean, and
+idle — tidy themselves up. See [Worktrees](docs/03-usage.md#worktrees).
 
 `mmux check` prints the effective merged config; `mmux docs` prints a self-contained setup guide.
 See [Configuration](docs/04-configuration.md) for the full schema, the merge rules,

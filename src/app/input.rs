@@ -136,8 +136,11 @@ impl App {
             // Manage the built-in agent harnesses (add/remove, danger mode) — the popup
             // writes to the global config and reloads. Available from any sidebar row.
             KeyCode::Char('a') => self.open_agent_manager(),
+            // Cut a worktree from the active project without a detour through the git
+            // panel — same key as there, since it's the same action on the same repo.
+            KeyCode::Char('w') if self.active_git().is_some() => self.git_worktree_prompt(),
             // Manifest-only: manage the workspace name, folders, and manifest order.
-            KeyCode::Char('w') if self.manifest => self.open_workspace_manager(),
+            KeyCode::Char('W') if self.manifest => self.open_workspace_manager(),
             // Compact-only project switcher; desktop keeps its direct project boxes.
             KeyCode::Char('p') if self.compact && self.projects.len() > 1 => self.open_projects(),
             // Apply a staged self-update (only acts when the "↻ restart to update" badge
@@ -227,6 +230,13 @@ impl App {
             KeyCode::Char('n') => self.git_newbranch_prompt(),
             KeyCode::Char('p') => self.git_start("pull"),
             KeyCode::Char('P') => self.git_start("push"),
+            // Worktrees: cut one from here (w), and — when the active project *is* a
+            // worktree — merge it back into the branch it came from (M) or take it
+            // away (X). Both gate on being in a worktree, so they explain themselves
+            // rather than acting on the wrong project.
+            KeyCode::Char('w') => self.git_worktree_prompt(),
+            KeyCode::Char('M') => self.merge_worktree_prompt(),
+            KeyCode::Char('X') => self.remove_worktree_prompt(),
             // Commits-box actions (each gates on the active section, so they're no-ops in
             // the other boxes): copy short/full hash, copy message, revert, uncommit.
             KeyCode::Char('y') => self.git_copy_commit_hash(false),
@@ -473,6 +483,9 @@ impl App {
             FooterAction::GitStash => self.git_stash(),
             FooterAction::GitCommit => self.git_commit_prompt(),
             FooterAction::GitNewBranch => self.git_newbranch_prompt(),
+            FooterAction::GitNewWorktree => self.git_worktree_prompt(),
+            FooterAction::GitMergeWorktree => self.merge_worktree_prompt(),
+            FooterAction::GitRemoveWorktree => self.remove_worktree_prompt(),
             FooterAction::GitPull => self.git_start("pull"),
             FooterAction::GitPush => self.git_start("push"),
             FooterAction::GitCopyHash => self.git_copy_commit_hash(false),
@@ -886,7 +899,11 @@ impl App {
     /// older scrollback (wheel up); the git panel isn't a buffer, so the wheel
     /// moves its file cursor instead.
     fn scroll_at(&mut self, col: u16, row: u16, delta: i32) {
-        if hit(self.regions.right, col, row) {
+        if hit(self.regions.sidebar, col, row) {
+            // Browse the project column without moving the cursor. Positive `delta` is
+            // a wheel-up, which reveals what's above.
+            self.scroll_sidebar(-delta);
+        } else if hit(self.regions.right, col, row) {
             // Scroll moves (and activates) the box under the cursor; over a border it
             // does nothing.
             if let Some(sec) = self.git_section_at(col, row) {

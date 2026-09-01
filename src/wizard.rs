@@ -462,10 +462,7 @@ fn select_workspace(m: &mut WorkspaceManager) -> Result<bool> {
     );
     println!(
         "{}",
-        dim(&format!(
-            "Choose up to {} folders; their row order is saved in the manifest.",
-            config::MAX_PROJECTS
-        ))
+        dim("Their row order is saved in the manifest.")
     );
     // A bounded window keeps a parent containing many directories usable without
     // taking over the whole terminal. The extra line is the live count/error footer.
@@ -574,7 +571,7 @@ fn draw_workspace_rows(
     let status = m
         .error
         .clone()
-        .unwrap_or_else(|| format!("{} / {} selected", m.selected_count(), config::MAX_PROJECTS));
+        .unwrap_or_else(|| format!("{} selected", m.selected_count()));
     let status = if m.error.is_some() {
         paint(YELLOW, &status)
     } else {
@@ -710,6 +707,9 @@ fn build_local_yaml(
 
     // Project setup leaves workspace creation to the other `mmux init` branch; this
     // commented example documents the shape without emitting a live block.
+    s.push_str(config::PROJECT_WORKTREES_COMMENT);
+    s.push_str(config::PROJECT_WORKTREES_EXAMPLE);
+    s.push('\n');
     s.push_str(config::PROJECT_WORKSPACE_COMMENT);
     s.push_str(config::PROJECT_WORKSPACE_EXAMPLE);
     s

@@ -118,6 +118,7 @@ session goes away.
 | `agents` | list | [Agent](#agent) templates you spawn on demand. |
 | `processes` | list | [Process](#process) definitions you start/stop and watch. |
 | `git-panel` | map | [Git panel](#git-panel) settings. |
+| `worktrees` | map | [Worktree](#worktrees) settings — what a fresh checkout needs, and when finished ones are cleared away. |
 | `notifications` | map | [Notification](05-notifications.md) settings. |
 | `auto-update` | map | [Self-update](#auto-update) settings (Homebrew + script-installed binaries). |
 | `workspace` | map | Turn this file into a [workspace manifest](#workspace-manifests). Project-layer only; ignored in the global config. |
@@ -126,7 +127,7 @@ session goes away.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `folders` | list of paths | Member project directories, relative to the manifest directory, in load order. Up to 10. |
+| `folders` | list of paths | Member project directories, relative to the manifest directory, in load order. No limit. |
 
 ### Agent
 
@@ -191,6 +192,40 @@ turning the panel (and its background fetch) off:
 git-panel:
   enabled: false
 ```
+
+### Worktrees
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `copy` | list of paths | Gitignored things a new checkout needs. Files are copied, directories symlinked, missing entries skipped. Defaults to `.env`, `.env.local`, `mmux.local.yml`, `mmux.local.yaml`. An empty list copies nothing. |
+| `setup` | string | Shell line run once in a new worktree. Appears as an ordinary terminal row, so you can watch it. |
+| `reap` | duration | How long a **finished** worktree idles before it's cleared away: `30m` (default), `2h`, `90s`, a bare number of minutes, or `off`. |
+
+[Worktrees](03-usage.md#worktrees) work with no configuration at all — this block only covers what
+git can't carry across on its own:
+
+```yaml
+worktrees:
+  copy: [.env, .env.local, node_modules]   # files copied, directories symlinked
+  setup: pnpm install
+  reap: 30m                                # or `off` to keep them until you say
+```
+
+Paths in `copy` are relative to the project and may not escape it (a `..` entry is ignored). A
+directory is symlinked rather than copied, so `node_modules` costs nothing — but note that the two
+checkouts then genuinely share it, which is wrong for a branch that changes dependencies. Copy
+those, or leave them to `setup`.
+
+`reap` only removes a checkout whose contents already live somewhere else. **All** of these must
+hold: nothing running in the worktree (no agent, terminal, or process), a clean working tree, and
+every commit either merged into its base branch or pushed to its upstream. A branch with work that
+exists nowhere else is never touched, and an unmerged branch survives even when its checkout is
+removed. The one thing a reaped checkout doesn't preserve is edits to *gitignored* files made
+inside it (a tweaked `.env`) — git reports nothing about them, so mmux can't either. Set `reap:
+off` if that matters to you.
+
+An unparseable value (`reap: soon`) is treated as `off`: a typo must never turn into surprise
+deletions.
 
 ### Notifications
 
@@ -260,7 +295,7 @@ mmux init workspace
 ```
 
 The inline picker discovers immediate subdirectories. Use `space` to include/exclude one, `J`/`K`
-to arrange manifest order, `a` for all/none, and `Enter` to save (up to 10 projects). It writes the
+to arrange manifest order, `a` for all/none, and `Enter` to save. It writes the
 workspace name and manifest while preserving unrelated settings and comments. You can also write
 the equivalent YAML by hand:
 
@@ -287,7 +322,7 @@ projects (plus the global config) as usual.
   de-duplication removes repeats. Missing or unreadable members are skipped with a warning.
 - Expansion is one level deep: a member that is itself a workspace manifest is loaded as a plain
   project with a warning. Workspaces never nest.
-- At most **10 projects** load. If none are loadable, mmux warns and opens the manifest directory
+- There is **no limit** on how many load. If none are loadable, mmux warns and opens the manifest directory
   as an ordinary single-project session.
 - Switch member projects with `[` and `]`, or click a project box. The git panel follows the active
   project, while every member's panel and panes stay alive in the background.
@@ -309,7 +344,7 @@ projects (plus the global config) as usual.
   start checked and keep their order; configured outside paths remain visible even when they are
   not immediate children, so saving never silently drops them. `mmux` and `git` tags are hints,
   not requirements.
-- **Inside the TUI:** press `w` from the sidebar. This hotkey and its footer button appear only in
+- **Inside the TUI:** press `W` from the sidebar. This hotkey and its footer button appear only in
   a manifest workspace. Press `n` to edit the name; folder selection and ordering use the same
   keys as the terminal picker. Saving reloads safely: name changes appear immediately and new
   members append live with their normal autostarts and removals apply immediately. Ordering applies

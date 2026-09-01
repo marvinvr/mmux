@@ -83,7 +83,7 @@ pub(crate) enum FooterAction {
     About,
     /// Open the agent manager popup (add/remove harnesses, toggle danger mode).
     ManageAgents,
-    /// Open the manifest workspace manager (name, folders, manifest order).
+    /// Open the manifest workspace manager (name, folders, manifest order) — `W`.
     ManageWorkspace,
     /// Compact-only: open the status-rich project switcher.
     OpenProjects,
@@ -97,6 +97,12 @@ pub(crate) enum FooterAction {
     GitStash,
     GitCommit,
     GitNewBranch,
+    /// Cut a worktree from this repository (the `w` key, in the sidebar or the panel).
+    GitNewWorktree,
+    /// Merge the active worktree into its base branch (`M`); worktrees only.
+    GitMergeWorktree,
+    /// Remove the active worktree (`X`); worktrees only.
+    GitRemoveWorktree,
     GitPull,
     GitPush,
     // Commits-box actions (mirror the keys in `key_git`).
@@ -480,8 +486,11 @@ impl App {
                     }
                 }
                 v.push(Seg::btn("a", "agents", ManageAgents));
+                if self.active_git().is_some() {
+                    v.push(Seg::btn("w", "worktree", GitNewWorktree));
+                }
                 if self.manifest {
-                    v.push(Seg::btn("w", "workspace", ManageWorkspace));
+                    v.push(Seg::btn("W", "workspace", ManageWorkspace));
                 }
                 v.push(Seg::btn("R", "reload", Reload));
                 if self.projects.len() > 1 {
@@ -537,6 +546,15 @@ impl App {
                             Seg::btn("s", "stash", GitStash),
                             Seg::btn("c", "commit", GitCommit),
                             Seg::btn("n", "branch", GitNewBranch),
+                            Seg::btn("w", "worktree", GitNewWorktree),
+                        ]);
+                        // Merge/remove only mean something in a worktree, so they only
+                        // appear there rather than sitting in the bar as no-ops.
+                        if self.active_is_worktree() {
+                            v.push(Seg::btn("M", "merge", GitMergeWorktree));
+                            v.push(Seg::btn("X", "remove", GitRemoveWorktree));
+                        }
+                        v.extend([
                             Seg::btn("p", "pull", GitPull),
                             Seg::btn("P", "push", GitPush),
                         ]);

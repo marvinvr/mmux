@@ -652,13 +652,6 @@ impl App {
                             .collect();
                         for cfg in ws.projects {
                             if loaded.insert(config::canonical(&cfg.dir)) {
-                                if self.projects.len() >= config::MAX_PROJECTS {
-                                    workspace_warnings.push(format!(
-                                        "workspace already has {} live projects — ignoring additional members",
-                                        config::MAX_PROJECTS
-                                    ));
-                                    break;
-                                }
                                 let pi = self.projects.len();
                                 self.projects.push(Project::new(cfg));
                                 self.last_proj_sel.push(None);
@@ -670,6 +663,11 @@ impl App {
                 Err(_) => failed += 1,
             }
         }
+
+        // Pick up worktrees created (or removed) since the last reload, before the
+        // dir snapshot below — so an adopted one goes through the ordinary config and
+        // process reconciliation like any other project.
+        let (worktrees_added, worktrees_dropped) = self.sync_worktree_projects();
 
         // Reload each project's config by dir. A project whose config fails to load
         // keeps its current one (recorded as `None`) instead of aborting the reload.
@@ -859,6 +857,12 @@ impl App {
                 names.join(", ")
             )),
         }
+        if worktrees_added > 0 {
+            parts.push(format!("+{worktrees_added} worktree(s)"));
+        }
+        if worktrees_dropped > 0 {
+            parts.push(format!("-{worktrees_dropped} worktree(s)"));
+        }
         if added > 0 {
             parts.push(format!("+{added} process(es)"));
         }
@@ -894,9 +898,20 @@ impl App {
             .projects
             .iter()
             .enumerate()
-            .filter(|(_, p)| !wanted.contains(&config::canonical(&p.cfg.dir)))
+            // Worktrees are not manifest members: their lifetime belongs to git (and
+            // to `sync_worktree_projects`), not to the `folders:` list.
+            .filter(|(_, p)| p.worktree.is_none() && !wanted.contains(&p.dir))
             .map(|(pi, _)| pi)
             .collect();
+        self.remove_projects(&remove)
+    }
+
+    /// Drop projects by index: kill their panes (running a configured process's
+    /// teardown on the way out), then compact every positional project reference —
+    /// sessions, the active index, per-project selection memory. The one place that
+    /// knows how to take a project out, shared by manifest removal and worktree
+    /// removal. Returns the display names of what went.
+    pub(super) fn remove_projects(&mut self, remove: &HashSet<usize>) -> Vec<String> {
         if remove.is_empty() {
             return Vec::new();
         }
@@ -907,7 +922,7 @@ impl App {
         let mut kept = Vec::new();
         for (old, project) in std::mem::take(&mut self.projects).into_iter().enumerate() {
             if remove.contains(&old) {
-                removed_names.push(project.cfg.display_name());
+                removed_names.push(project.label());
             } else {
                 project_map[old] = Some(kept.len());
                 kept.push(project);
@@ -945,6 +960,8 @@ impl App {
         self.sticky_priority_project = None;
         self.reset_project_priority();
         self.last_proj_sel = vec![None; self.projects.len()];
+        // A pending/draining stack swap holds project indices that just moved.
+        self.swap = None;
         self.clear_diff();
         removed_names
     }
