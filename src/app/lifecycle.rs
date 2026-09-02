@@ -44,7 +44,7 @@ impl App {
         let name = format!("{} #{}", def.name, self.projects[pi].counts[t]);
         let (rows, cols) = self.last_inner;
         let mut s = Session::new(name, Kind::Agent, recipe, pi);
-        // Claude/Codex/Grok agents get resume bookkeeping so a restart reattaches to the
+        // Claude/Codex/Pi/Grok agents get resume bookkeeping so a restart reattaches to the
         // same conversation; any other agent command just spawns plainly.
         if let Some(tool) = crate::agent::Tool::detect(&s.recipe.cmd) {
             s.agent = Some(crate::agent::Resume::new(tool));

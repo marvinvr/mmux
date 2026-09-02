@@ -59,7 +59,9 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
     }
 
     if which_tmux().is_none() {
-        eprintln!("tmux not found on PATH. mmux uses tmux to keep sessions alive — please install it.");
+        eprintln!(
+            "tmux not found on PATH. mmux uses tmux to keep sessions alive — please install it."
+        );
         std::process::exit(1);
     }
 
@@ -97,7 +99,9 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
             &format!("MMUX_DIR={dir_str}"),
         ]);
         for (name, value) in &outer_terminal {
-            command.arg("-e").arg(format!("{}={value}", outer_env_name(name)));
+            command
+                .arg("-e")
+                .arg(format!("{}={value}", outer_env_name(name)));
         }
         let status = command
             .args(["--", &exe, "--inner"])
@@ -182,7 +186,9 @@ fn session_exists(name: &str) -> bool {
 /// `always`), so ordinary shells and unrelated panes keep legacy key behavior.
 fn configure_server() {
     for (k, v) in [("extended-keys", "on"), ("extended-keys-format", "csi-u")] {
-        let _ = Command::new("tmux").args(["set-option", "-s", k, v]).status();
+        let _ = Command::new("tmux")
+            .args(["set-option", "-s", k, v])
+            .status();
     }
     // TERM is commonly xterm-256color even for Kitty/Ghostty/iTerm2. Mark that
     // family as extended-key capable so tmux actually asks the outer terminal for
@@ -213,19 +219,19 @@ fn configure_session(name: &str, title: &str) {
     // `#` is the format-escape in set-titles-string, so a literal name must double it.
     let titles_string = title.replace('#', "##");
     let opts = [
-        ("status", "off"),            // no tmux status bar
-        ("prefix", "None"),           // don't steal keys — everything goes to the TUI
-        ("prefix2", "None"),          //
-        ("mouse", "on"),              // tmux enables outer-terminal mouse reporting and, since the
-                                      // TUI sets its own mouse mode, forwards events to it rather
-                                      // than acting itself. `off` silently drops wheel/clicks when
-                                      // attached over SSH (nothing tells the terminal to report).
-        ("set-clipboard", "on"),      // pass our OSC 52 copies through to the outer terminal
-        ("allow-passthrough", "on"),  // let our notification OSCs reach the outer terminal
+        ("status", "off"),   // no tmux status bar
+        ("prefix", "None"),  // don't steal keys — everything goes to the TUI
+        ("prefix2", "None"), //
+        ("mouse", "on"),     // tmux enables outer-terminal mouse reporting and, since the
+        // TUI sets its own mouse mode, forwards events to it rather
+        // than acting itself. `off` silently drops wheel/clicks when
+        // attached over SSH (nothing tells the terminal to report).
+        ("set-clipboard", "on"), // pass our OSC 52 copies through to the outer terminal
+        ("allow-passthrough", "on"), // let our notification OSCs reach the outer terminal
         ("destroy-unattached", "off"), // keep running after detach (default; explicit)
-        ("detach-on-destroy", "on"),  // when the TUI exits, detach cleanly
-        ("window-size", "latest"),    // track the single attached client
-        ("set-titles", "on"),         // let tmux set the outer terminal's tab title…
+        ("detach-on-destroy", "on"), // when the TUI exits, detach cleanly
+        ("window-size", "latest"), // track the single attached client
+        ("set-titles", "on"),    // let tmux set the outer terminal's tab title…
         ("set-titles-string", titles_string.as_str()), // …to the project name
     ];
     for (k, v) in opts {
@@ -266,7 +272,11 @@ pub(crate) fn outer_terminal_env() -> HashMap<String, String> {
 fn current_outer_terminal() -> HashMap<String, String> {
     OUTER_TERMINAL_ENV
         .into_iter()
-        .filter_map(|(name, _)| std::env::var(name).ok().map(|value| (name.to_string(), value)))
+        .filter_map(|(name, _)| {
+            std::env::var(name)
+                .ok()
+                .map(|value| (name.to_string(), value))
+        })
         .collect()
 }
 
@@ -347,7 +357,9 @@ pub fn attach_picker() -> Result<()> {
         println!("No running or recent mmux sessions.");
         return Ok(());
     }
-    let Some(i) = pick(&entries)? else { return Ok(()) };
+    let Some(i) = pick(&entries)? else {
+        return Ok(());
+    };
     let entry = &entries[i];
     if entry.running {
         // Live session — just join it.
@@ -371,8 +383,11 @@ fn build_entries() -> Vec<Entry> {
     let recents = read_recents();
     // MRU rank by canonical directory: lower index = more recently used. Recents and
     // each session's `MMUX_DIR` are both stored canonical, so they key the same map.
-    let rank: HashMap<&str, usize> =
-        recents.iter().enumerate().map(|(i, d)| (d.as_str(), i)).collect();
+    let rank: HashMap<&str, usize> = recents
+        .iter()
+        .enumerate()
+        .map(|(i, d)| (d.as_str(), i))
+        .collect();
 
     // Active sessions, sorted most-recently-used first. A session whose directory isn't
     // in the log (e.g. `MMUX_DIR` couldn't be read) sorts last, stably.
@@ -398,8 +413,17 @@ fn build_entries() -> Vec<Entry> {
         });
     }
     entries.sort_by_key(|e| {
-        let group = if e.workspace { 0 } else if e.running { 1 } else { 2 };
-        (group, rank.get(e.dir.as_str()).copied().unwrap_or(usize::MAX))
+        let group = if e.workspace {
+            0
+        } else if e.running {
+            1
+        } else {
+            2
+        };
+        (
+            group,
+            rank.get(e.dir.as_str()).copied().unwrap_or(usize::MAX),
+        )
     });
     entries
 }
@@ -407,7 +431,11 @@ fn build_entries() -> Vec<Entry> {
 /// All running `mmux-*` tmux sessions, with the directory each was opened for.
 fn list_sessions() -> Vec<Entry> {
     let out = Command::new("tmux")
-        .args(["list-sessions", "-F", "#{session_name}\t#{session_attached}"])
+        .args([
+            "list-sessions",
+            "-F",
+            "#{session_name}\t#{session_attached}",
+        ])
         .output();
     let Ok(out) = out else { return Vec::new() };
     if !out.status.success() {
@@ -424,7 +452,14 @@ fn list_sessions() -> Vec<Entry> {
         let attached = parts.next().unwrap_or("0").trim() != "0";
         let dir = session_dir(&name).unwrap_or_else(|| name.clone());
         let (display, workspace) = crate::config::project_identity(Path::new(&dir));
-        sessions.push(Entry { name, display, dir, running: true, attached, workspace });
+        sessions.push(Entry {
+            name,
+            display,
+            dir,
+            running: true,
+            attached,
+            workspace,
+        });
     }
     sessions
 }
@@ -456,10 +491,18 @@ fn record_recent(canon: &Path) {
 /// Recent directories that still exist on disk, most-recent-first. Opportunistically
 /// rewrites the log to drop entries whose directory is gone.
 fn read_recents() -> Vec<String> {
-    let Some(path) = history_path() else { return Vec::new() };
-    let Ok(text) = std::fs::read_to_string(&path) else { return Vec::new() };
+    let Some(path) = history_path() else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
     let all = recent_lines(&text);
-    let live: Vec<String> = all.iter().filter(|d| Path::new(d).is_dir()).cloned().collect();
+    let live: Vec<String> = all
+        .iter()
+        .filter(|d| Path::new(d).is_dir())
+        .cloned()
+        .collect();
     if live.len() != all.len() {
         let _ = std::fs::write(&path, live.join("\n") + "\n");
     }
@@ -546,7 +589,9 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
                 } else {
                     search.push(Span::styled(
                         query.clone(),
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
                     ));
                     search.push(Span::styled("▏", Style::default().fg(Color::Magenta)));
                 }
@@ -579,7 +624,9 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
                     let selected = pos == sel;
                     let bar = if selected { "▌ " } else { "  " };
                     let style = if selected {
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
                     } else if e.running {
                         Style::default().fg(Color::Gray)
                     } else {
@@ -686,7 +733,11 @@ fn pick(entries: &[Entry]) -> Result<Option<usize>> {
     })();
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
     res?;
     Ok(chosen)
@@ -747,16 +798,22 @@ mod tests {
         let b = session_name(Path::new("/Users/me/project"));
         assert_eq!(a, b, "the same path must map to the same session name");
 
-        let hex = a.strip_prefix("mmux-").expect("session names are mmux-prefixed");
+        let hex = a
+            .strip_prefix("mmux-")
+            .expect("session names are mmux-prefixed");
         assert_eq!(hex.len(), 16, "16 hex digits of the path hash");
         assert!(
-            hex.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            hex.bytes()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
             "lowercase hex only — no `.`/`:` tmux forbids: {a}"
         );
     }
 
     #[test]
     fn session_name_differs_by_path() {
-        assert_ne!(session_name(Path::new("/a/one")), session_name(Path::new("/a/two")));
+        assert_ne!(
+            session_name(Path::new("/a/one")),
+            session_name(Path::new("/a/two"))
+        );
     }
 }

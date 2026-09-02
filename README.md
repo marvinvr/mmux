@@ -20,7 +20,7 @@ The whole thing runs inside an invisible, per-directory **tmux session**, so:
   from anywhere, to rejoin.
 
 Even after you **quit** (or a crash, or a restart-to-update), reopening a directory **restores your
-session** — Claude/Codex/Grok agents resume their conversation and terminals reopen where you
+session** — Claude/Codex/Pi/Grok agents resume their conversation and terminals reopen where you
 left them.
 
 When an agent goes idle — finished, or waiting on you — its sidebar row lights up **green**. And

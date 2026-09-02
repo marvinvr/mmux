@@ -28,7 +28,7 @@ mmux init
 and Git panel) or a **Workspace** (several project folders in one persistent session). Use
 `mmux init project` or `mmux init workspace` to skip that first choice.
 
-Project setup offers the built-in agent presets — Claude, Codex, Gemini, Amp, opencode, and Grok —
+Project setup offers the built-in agent presets — Claude, Codex, Pi, Gemini, Amp, opencode, and Grok —
 as an **inline checkbox picker** you arrow through (`space` to toggle, `m` to cycle the launch mode:
 normal → auto → danger, `⏎` to confirm; installed ones start checked), then asks for start commands
 you want to watch. On a machine with no global config yet, your agents are saved to

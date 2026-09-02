@@ -161,9 +161,15 @@ impl GitPanel {
         self.branches = git::branches(&self.dir);
         self.log = git::log(&self.dir, LOG_LINES);
         // Free here — the log we just read already starts at HEAD.
-        self.head_subject = self.log.first().map(|c| c.summary.clone()).unwrap_or_default();
+        self.head_subject = self
+            .log
+            .first()
+            .map(|c| c.summary.clone())
+            .unwrap_or_default();
         self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
-        self.branch_cursor = self.branch_cursor.min(self.branches.len().saturating_sub(1));
+        self.branch_cursor = self
+            .branch_cursor
+            .min(self.branches.len().saturating_sub(1));
         self.commit_cursor = self.commit_cursor.min(self.log.len().saturating_sub(1));
         self.last_refresh = Some(Instant::now());
         self.last_status_refresh = self.last_refresh;
@@ -223,7 +229,9 @@ impl GitPanel {
             Section::Branches => {
                 self.branch_cursor = step(self.branch_cursor, self.branches.len(), delta)
             }
-            Section::Commits => self.commit_cursor = step(self.commit_cursor, self.log.len(), delta),
+            Section::Commits => {
+                self.commit_cursor = step(self.commit_cursor, self.log.len(), delta)
+            }
         }
     }
 
@@ -368,7 +376,11 @@ impl GitPanel {
         let tx = self.tx.clone();
         let dir = self.dir.clone();
         thread::spawn(move || {
-            let _ = tx.send(JobDone { verb: op.verb(), result: op.run(&dir), announce });
+            let _ = tx.send(JobDone {
+                verb: op.verb(),
+                result: op.run(&dir),
+                announce,
+            });
         });
     }
 
@@ -492,7 +504,11 @@ impl App {
 
     /// Kick off a background pull (`verb == "pull"`) or push (any other value).
     pub(crate) fn git_start(&mut self, verb: &'static str) {
-        let op = if verb == "pull" { RemoteOp::Pull } else { RemoteOp::Push };
+        let op = if verb == "pull" {
+            RemoteOp::Pull
+        } else {
+            RemoteOp::Push
+        };
         if let Some(g) = self.active_git_mut() {
             g.start_job(op);
         }
@@ -561,7 +577,10 @@ impl App {
         let built = self
             .active_git()
             .filter(|g| g.section == Section::Commits)
-            .and_then(|g| g.selected_commit().map(|c| DiffView::build_commit(proj, &g.dir, c)));
+            .and_then(|g| {
+                g.selected_commit()
+                    .map(|c| DiffView::build_commit(proj, &g.dir, c))
+            });
         if let Some(view) = built {
             self.diff = Some(view);
         }
@@ -574,7 +593,13 @@ impl App {
             .active_git()
             .filter(|g| g.section == Section::Commits)
             .and_then(|g| g.selected_commit())
-            .map(|c| if full { c.hash.clone() } else { c.short.clone() });
+            .map(|c| {
+                if full {
+                    c.hash.clone()
+                } else {
+                    c.short.clone()
+                }
+            });
         if let Some(hash) = hash {
             crate::clipboard::copy(&hash);
             self.flash(format!("copied {hash}"));
@@ -698,9 +723,13 @@ impl App {
             view.built_at.elapsed() >= REFRESH_EVERY,
             view.image.is_some(),
         );
-        let entry = self
-            .active_git()
-            .and_then(|g| g.files.iter().find(|f| f.path == path).cloned().map(|f| (g.dir.clone(), f)));
+        let entry = self.active_git().and_then(|g| {
+            g.files
+                .iter()
+                .find(|f| f.path == path)
+                .cloned()
+                .map(|f| (g.dir.clone(), f))
+        });
         match entry {
             None => self.diff = None, // committed or discarded — nothing left to show
             // A text diff re-reads on the throttle so an agent's live edits show; an

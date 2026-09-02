@@ -6,7 +6,7 @@
 //! goes away (quit/crash, or the in-place re-exec an update does) they're gone. To
 //! make a reopen seamless we snapshot the live agents/terminals to a small YAML
 //! file under `~/.mmux/state/` keyed by the same canonical-dir hash tmux uses,
-//! then rebuild them on the next start (see [`crate::app`]). Claude/Codex/Grok rows
+//! then rebuild them on the next start (see [`crate::app`]). Claude/Codex/Pi/Grok rows
 //! additionally carry their session id so they *resume* their conversation rather
 //! than starting cold (see [`crate::agent`]); a terminal carries its **live** cwd
 //! so a `cd` survives.
@@ -33,7 +33,7 @@ pub struct State {
 }
 
 /// One restorable session. Mirrors the bits of `Session`/`Recipe` needed to
-/// respawn it; the `tool`/`session_id` pair is present only for Claude/Codex/Grok.
+/// respawn it; the `tool`/`session_id` pair is present only for Claude/Codex/Pi/Grok.
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {
     pub name: String,

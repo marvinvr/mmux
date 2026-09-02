@@ -29,7 +29,13 @@ impl Picker {
     pub(crate) fn new(project: usize, dir: PathBuf) -> Picker {
         let candidates = list_files(&dir);
         let matches = (0..candidates.len()).collect();
-        Picker { project, candidates, query: String::new(), matches, sel: 0 }
+        Picker {
+            project,
+            candidates,
+            query: String::new(),
+            matches,
+            sel: 0,
+        }
     }
 
     /// Re-filter and re-rank against the current query; the selection snaps to the
@@ -65,7 +71,9 @@ impl Picker {
 
     /// The highlighted path (relative to the project dir), if any.
     pub(crate) fn selected(&self) -> Option<&str> {
-        self.matches.get(self.sel).map(|&i| self.candidates[i].as_str())
+        self.matches
+            .get(self.sel)
+            .map(|&i| self.candidates[i].as_str())
     }
 
     /// The path at ranked row `row`, for the renderer's scrolling window.
@@ -96,20 +104,38 @@ fn list_files(dir: &Path) -> Vec<String> {
         .git_exclude(false) // … or .git/info/exclude
         // Prune the noise dirs by name (depth 0 is the root itself — never prune that).
         .filter_entry(|e| {
-            e.depth() == 0 || e.file_name().to_str().is_none_or(|n| !EXCLUDED_DIRS.contains(&n))
+            e.depth() == 0
+                || e.file_name()
+                    .to_str()
+                    .is_none_or(|n| !EXCLUDED_DIRS.contains(&n))
         })
         .build()
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_some_and(|t| t.is_file()))
-        .filter_map(|e| e.path().strip_prefix(dir).ok().map(|p| p.to_string_lossy().into_owned()))
+        .filter_map(|e| {
+            e.path()
+                .strip_prefix(dir)
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned())
+        })
         .collect()
 }
 
 /// Directories pruned from the picker listing. Since we no longer honour `.gitignore`,
 /// this names the heavy build/artifact trees we don't want flooding the list.
 const EXCLUDED_DIRS: &[&str] = &[
-    ".git", "node_modules", "dist", "build", "coverage", ".next", ".nuxt", "vendor",
-    "target", ".venv", "venv", "__pycache__",
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".nuxt",
+    "vendor",
+    "target",
+    ".venv",
+    "venv",
+    "__pycache__",
 ];
 
 /// Fuzzy subsequence score, case-insensitive. `None` if `needle` is not a

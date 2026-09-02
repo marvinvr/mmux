@@ -57,7 +57,7 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - Every session row shows a dim **subtitle** — the terminal title the program sets (e.g. what
   an agent is currently doing), falling back to its last error.
 - For an **agent**, an explicit `OSC 9;4` terminal-progress report drives the working/ready state
-  when available (Claude Code emits indeterminate while working and clears it when done). For older
+  when available (Claude Code and Pi emit indeterminate while working and clear it when done). For older
   agents, mmux falls back to the terminal title: once an animated title has been static for ~2s it
   reads the agent as idle/awaiting you. A Codex title containing `Action Required` is an explicit
   ready signal, so it stays green
@@ -92,7 +92,7 @@ terminal input.
 | `r` | Restart the selected session (or spawn a launcher) |
 | `e` | **Edit** the selected process — reopens the [guided form](#adding-editing-and-deleting-a-process) pre-filled (processes only) |
 | `D` | **Delete** the selected process — asks to confirm, then removes it from `mmux.yaml` (processes only) |
-| `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Gemini, Amp, opencode, Grok) and cycle each one's launch mode (`m`: normal → auto → danger); saves to the global config and reloads |
+| `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Pi, Gemini, Amp, opencode, Grok) and cycle each one's available launch modes (`m`: normal → auto → danger); saves to the global config and reloads |
 | `w` | New [worktree](#worktrees) of the active project — the same pre-filled prompt as `w` in the git panel (git repositories only) |
 | `X` | Remove the selected [worktree](#worktrees) — the same confirmation as `X` in the git panel, spelling out what would be lost (worktree rows only) |
 | `W` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and manifest order (manifest workspaces only) |
@@ -501,7 +501,7 @@ rather than consuming drawer height.
   so a `docker compose up` gets its `docker compose down` on the way out.
 - Run `mmux` again in the same directory to reattach.
 - **Your session comes back.** Even after a `q` (or a crash, or a restart-to-update), reopening a
-  directory **restores the agents and terminals** you had open: **Claude, Codex, and Grok agents
+  directory **restores the agents and terminals** you had open: **Claude, Codex, Pi, and Grok agents
   resume their conversation**, and **terminals reopen in the directory you left them in** (as a fresh
   shell — history, env, and background jobs don't carry over). Anything that can't resume starts
   fresh; processes come back via autostart or a click. To start clean instead, **close the sessions

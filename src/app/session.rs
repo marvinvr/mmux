@@ -114,9 +114,9 @@ pub struct Session {
     /// Index of the workspace project (see [`crate::app`]) this session belongs to.
     /// Drives which sidebar group it lands in; the lifecycle is identical regardless.
     pub project: usize,
-    /// Resume bookkeeping for a Claude/Codex/Grok agent: lets a (re)start reattach to
+    /// Resume bookkeeping for a Claude/Codex/Pi/Grok agent: lets a (re)start reattach to
     /// the same conversation rather than start cold. `None` for terminals,
-    /// processes, and any agent that isn't one of the three we support. See
+    /// processes, and any agent that isn't one of the four we support. See
     /// [`crate::agent`] and [`crate::restore`].
     pub agent: Option<crate::agent::Resume>,
     /// Optional teardown command (a shell line) run in `recipe.cwd` after this session's
@@ -146,7 +146,11 @@ impl Session {
     /// caller decides how to run it: fire-and-forget on a stop, or waited-on at quit.
     /// `None` for agents/terminals and any process without a (non-blank) `stop:`.
     pub fn stop_command(&self) -> Option<Command> {
-        let stop = self.stop.as_deref().map(str::trim).filter(|s| !s.is_empty())?;
+        let stop = self
+            .stop
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())?;
         let mut cmd = Command::new("sh");
         cmd.arg("-c")
             .arg(stop)
@@ -185,9 +189,9 @@ impl Session {
         if let Some(p) = self.pane.as_mut() {
             p.kill();
         }
-        // Append any Claude/Codex/Grok resume flags. The first launch *creates* the
+        // Append any Claude/Codex/Pi/Grok resume flags. The first launch *creates* the
         // session (`--session-id`); after that, and for a restored agent, launches
-        // *resume* it (`--resume` / `codex resume`).
+        // *resume* it (`--resume`, `--session-id`, or `codex resume`).
         if let Some(r) = self.agent.as_mut() {
             r.mark_launch();
         }
@@ -255,7 +259,8 @@ impl Session {
         self.is_running()
             && self.pane.as_ref().is_some_and(|p| {
                 !p.title().contains("Action Required")
-                    && p.progress_active().unwrap_or_else(|| p.title_active(within))
+                    && p.progress_active()
+                        .unwrap_or_else(|| p.title_active(within))
             })
     }
 
@@ -304,7 +309,10 @@ fn editor_command() -> (String, Vec<String>) {
             }
         }
     }
-    let cmd = ["micro", "nano", "vim", "vi"].into_iter().find(|c| on_path(c)).unwrap_or("vi");
+    let cmd = ["micro", "nano", "vim", "vi"]
+        .into_iter()
+        .find(|c| on_path(c))
+        .unwrap_or("vi");
     (cmd.to_string(), Vec::new())
 }
 

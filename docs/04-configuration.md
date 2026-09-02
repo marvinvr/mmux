@@ -140,14 +140,20 @@ session goes away.
 | `env` | map | Environment overrides. |
 
 **Built-in presets.** mmux ships presets for the common harnesses — **Claude** (`claude`),
-**Codex** (`codex`), **Gemini** (`gemini`), **Amp** (`amp`), **opencode** (`opencode`), and
-**Grok** (`grok`, xAI's Grok Build) — each with a **launch mode** you can cycle:
+**Codex** (`codex`), **Pi** (`pi`), **Gemini** (`gemini`), **Amp** (`amp`), **opencode**
+(`opencode`), and **Grok** (`grok`, xAI's Grok Build) — each with its available **launch
+modes**:
 
 | Mode | What it does | Example flags |
 | --- | --- | --- |
-| *(normal)* | The harness's own interactive default — every action prompts. | *(none)* |
+| *(normal)* | The harness's own interactive default; approval behavior depends on the harness. | *(none)* |
 | `auto` | Auto-accept file edits; still prompt for riskier actions (shell, network). Claude/Codex/Gemini/Grok. | `--permission-mode auto`, `--sandbox workspace-write`, `--approval-mode auto_edit` |
 | `danger` | Skip **all** approvals ("danger" / yolo). | `--dangerously-skip-permissions`, `--yolo`, `--always-approve` |
+
+Pi intentionally has no built-in action-approval prompts, so its preset has only the normal mode
+and already runs its tools with host access. Pi's `--approve` flag is not a permission mode: it
+trusts project-local Pi settings and extensions, so mmux leaves that decision to Pi. Pi does emit
+the same terminal progress protocol mmux uses for accurate working/idle state.
 
 The [`mmux init`](01-quick-start.md#2-set-up-a-project-or-workspace) wizard offers them as an **inline checkbox
 picker** — arrow keys to move, `space` to toggle, **`m` to cycle the mode** (normal → auto →
@@ -275,7 +281,7 @@ Either way:
 - **To check or apply on demand,** open the [About card](03-usage.md#the-about-card) with **`?`**: it
   shows the running version and the live update status, with `c` to check now and `u` to apply.
 - **The restart brings your work back.** Replacing the running process ends the live panes, but the
-  new one restores them the same way reopening a directory does — Claude/Codex/Grok agents resume
+  new one restores them the same way reopening a directory does — Claude/Codex/Pi/Grok agents resume
   their conversation, terminals reopen where you left them — so applying an update doesn't cost you your
   place. See [Session restore](03-usage.md#detaching-reattaching-and-the-attach-picker).
 

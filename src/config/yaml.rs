@@ -689,7 +689,7 @@ const STARTER: &str = r#"# mmux project config.
 # Agents: interactive programs you spawn on demand. Each "+ New <name>" in the
 # sidebar launches a fresh instance; its sidebar subtitle shows the terminal
 # title the program sets, and a red dot appears when it rings the bell.
-# More harnesses ship as presets (Gemini, Amp, opencode, Grok) — add/remove them
+# More harnesses ship as presets (Pi, Gemini, Amp, opencode, Grok) — add/remove them
 # any time with `mmux agents` or the sidebar's `a` key (both edit your global config).
 agents:
   - name: Claude
@@ -953,8 +953,8 @@ mod tests {
         let out = replace_agents_block(
             text,
             &[
-            ag("Claude", "claude", &["--dangerously-skip-permissions"]),
-            ag("Gemini", "gemini", &["--yolo"]),
+                ag("Claude", "claude", &["--dangerously-skip-permissions"]),
+                ag("Gemini", "gemini", &["--yolo"]),
             ],
         );
         assert!(out.starts_with("# mmux global config"));

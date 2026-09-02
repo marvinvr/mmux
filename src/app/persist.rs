@@ -111,7 +111,7 @@ impl App {
     /// Make sure every agent is bound to the conversation id it should resume by,
     /// **without mixing up** several agents in the same directory.
     ///
-    /// Claude and Grok *own* their ids: each instance is minted a UUID and launched
+    /// Claude, Pi, and Grok *own* their ids: each instance is minted a UUID and launched
     /// with `--session-id`, so it already writes — and resumes — its own thread. Those
     /// ids are authoritative and are never reassigned. Codex has no such flag, so
     /// a fresh Codex agent has to *discover* the id of the session it just created by
@@ -136,7 +136,7 @@ impl App {
         let mut changed = false;
         for s in &mut self.sessions {
             let Some(r) = s.agent.as_mut() else { continue };
-            // Claude/Grok ids are owned; a Codex agent that already found its session keeps
+            // Claude/Pi/Grok ids are owned; a Codex agent that already found its session keeps
             // it. Only an id-less Codex first launch still needs to discover one.
             if r.tool.owns_id() || r.id.is_some() {
                 continue;
@@ -163,7 +163,7 @@ impl App {
     }
 
     /// Rebuild the saved agents/terminals after a self-update restart: respawn
-    /// each (Claude/Codex/Grok resumed, everything else cold) at its saved cwd, bump
+    /// each (Claude/Codex/Pi/Grok resumed, everything else cold) at its saved cwd, bump
     /// the per-project name counters past the restored `#N`, and restore the
     /// selection. A no-op when there's no state file.
     pub(crate) fn restore_sessions(&mut self) {
@@ -182,7 +182,7 @@ impl App {
                     self.projects
                         .iter()
                         .position(|p| crate::config::canonical(&p.cfg.dir) == wanted)
-            }
+                }
                 None => (snap.project < self.projects.len()).then_some(snap.project),
             };
             let Some(project) = project else {

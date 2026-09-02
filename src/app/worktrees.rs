@@ -89,7 +89,9 @@ impl App {
             let entries = crate::git::worktrees(&dir);
             // The first entry is the repository's main checkout. Only *it* adopts
             // worktrees — a linked worktree the user opened directly is just a project.
-            let Some(main) = entries.first() else { continue };
+            let Some(main) = entries.first() else {
+                continue;
+            };
             if config::canonical(&main.path) != dir {
                 continue;
             }
@@ -128,7 +130,9 @@ impl App {
             }
             // A worktree is a checkout of the same repo, so it carries the project's
             // own `mmux.yaml` — its agents and processes come along for free.
-            let Ok(mut cfg) = Config::load(&path) else { continue };
+            let Ok(mut cfg) = Config::load(&path) else {
+                continue;
+            };
             cfg.workspace = None; // a worktree is a project, never a manifest
             let pi = self.projects.len();
             let mut project = Project::new(cfg);
@@ -166,8 +170,7 @@ impl App {
     /// worktree of it — after an operation that moved refs under them.
     fn refresh_repo_panels(&mut self, repo: &Path) {
         for p in self.projects.iter_mut() {
-            let mine =
-                p.dir == repo || p.worktree.as_ref().is_some_and(|w| w.parent == repo);
+            let mine = p.dir == repo || p.worktree.as_ref().is_some_and(|w| w.parent == repo);
             if mine {
                 if let Some(g) = p.git.as_mut() {
                     g.refresh();
@@ -292,7 +295,9 @@ impl App {
         };
         let (branch, repo) = (wt.branch.clone(), wt.parent.clone());
         if !crate::git::is_clean(&self.projects[pi].dir) {
-            self.flash(format!("⑂ {branch} has uncommitted changes — commit or stash first"));
+            self.flash(format!(
+                "⑂ {branch} has uncommitted changes — commit or stash first"
+            ));
             return;
         }
         let Some(base) = self.worktree_base(pi) else {
@@ -304,11 +309,15 @@ impl App {
         // work in progress, is exactly the surprise worktrees are meant to avoid.
         let on = crate::git::status(&repo).branch;
         if on != base {
-            self.flash(format!("main checkout is on {on}, not {base} — switch it first"));
+            self.flash(format!(
+                "main checkout is on {on}, not {base} — switch it first"
+            ));
             return;
         }
         if !crate::git::is_clean(&repo) {
-            self.flash(format!("{base} has uncommitted changes — commit or stash first"));
+            self.flash(format!(
+                "{base} has uncommitted changes — commit or stash first"
+            ));
             return;
         }
         self.overlay = Some(Overlay::confirm(
@@ -341,11 +350,15 @@ impl App {
         };
         let on = crate::git::status(&repo).branch;
         if on != base {
-            self.flash(format!("scheduled merge failed — main checkout is on {on}, not {base}"));
+            self.flash(format!(
+                "scheduled merge failed — main checkout is on {on}, not {base}"
+            ));
             return;
         }
         if !crate::git::is_clean(&repo) {
-            self.flash(format!("scheduled merge failed — {base} has uncommitted changes"));
+            self.flash(format!(
+                "scheduled merge failed — {base} has uncommitted changes"
+            ));
             return;
         }
         self.merge_worktree(pi, &branch, &base, false);
@@ -469,7 +482,11 @@ impl App {
                     s.project == pi
                         && s.kind == Kind::Process
                         && s.is_running()
-                        && self.projects[root].cfg.processes.iter().any(|p| p.name == s.name)
+                        && self.projects[root]
+                            .cfg
+                            .processes
+                            .iter()
+                            .any(|p| p.name == s.name)
                 })
                 .map(|s| s.name.clone())
                 .collect()
@@ -571,16 +588,19 @@ impl App {
             // The reap delay is the *parent's* setting: worktrees share the repo's
             // config, and it's the project you configured that owns the policy.
             let root = self.family_root(pi);
-            let Some(after) = config::worktree_reap_after(
-                self.projects[root].cfg.worktrees.as_ref(),
-            ) else {
+            let Some(after) =
+                config::worktree_reap_after(self.projects[root].cfg.worktrees.as_ref())
+            else {
                 continue;
             };
             if idle < after {
                 continue;
             }
-            let (branch, repo, dir) =
-                (wt.branch.clone(), wt.parent.clone(), self.projects[pi].dir.clone());
+            let (branch, repo, dir) = (
+                wt.branch.clone(),
+                wt.parent.clone(),
+                self.projects[pi].dir.clone(),
+            );
             if !crate::git::is_clean(&dir) {
                 continue;
             }
@@ -623,7 +643,12 @@ impl App {
             if self.family_root(s.project) != root {
                 continue;
             }
-            if !self.projects[to].cfg.processes.iter().any(|p| p.name == s.name) {
+            if !self.projects[to]
+                .cfg
+                .processes
+                .iter()
+                .any(|p| p.name == s.name)
+            {
                 continue;
             }
             if !names.contains(&s.name) {
@@ -740,11 +765,7 @@ impl App {
             }
         }
         if started > 0 {
-            let label = self
-                .projects
-                .get(to)
-                .map(|p| p.label())
-                .unwrap_or_default();
+            let label = self.projects.get(to).map(|p| p.label()).unwrap_or_default();
             self.flash(format!("stack → {label} ({started} running)"));
         }
     }

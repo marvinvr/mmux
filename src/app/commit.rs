@@ -183,10 +183,7 @@ impl App {
             MessagePurpose::Prompt { dir } => dir.clone(),
             _ => return,
         };
-        job.purpose = MessagePurpose::Submitted {
-            dir,
-            push,
-        };
+        job.purpose = MessagePurpose::Submitted { dir, push };
         self.flash(if push {
             "generating message, then committing & pushing…"
         } else {
@@ -199,12 +196,19 @@ impl App {
     pub(crate) fn git_schedule_prompt(&mut self) {
         let dir = self.projects[self.active].dir.clone();
         let existing = self.scheduled_commits.iter().find(|s| s.dir == dir);
-        let selected = existing.map(|s| {
+        let selected = existing
+            .map(|s| {
                 let left = s.due.saturating_duration_since(Instant::now());
                 let mut best = (0, Duration::MAX);
                 for (i, (_, delay)) in SCHEDULE_DELAYS.iter().enumerate() {
-                    let distance = if *delay >= left { *delay - left } else { left - *delay };
-                    if distance < best.1 { best = (i, distance); }
+                    let distance = if *delay >= left {
+                        *delay - left
+                    } else {
+                        left - *delay
+                    };
+                    if distance < best.1 {
+                        best = (i, distance);
+                    }
                 }
                 best.0
             })

@@ -460,10 +460,7 @@ fn select_workspace(m: &mut WorkspaceManager) -> Result<bool> {
         "{}",
         dim("↑↓ move · space toggle · J/K reorder · a all/none · ⏎ save · esc cancel")
     );
-    println!(
-        "{}",
-        dim("Their row order is saved in the manifest.")
-    );
+    println!("{}", dim("Their row order is saved in the manifest."));
     // A bounded window keeps a parent containing many directories usable without
     // taking over the whole terminal. The extra line is the live count/error footer.
     let term_h = ratatui::crossterm::terminal::size()

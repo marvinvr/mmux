@@ -152,7 +152,10 @@ impl DiffView {
             gutter: digits(max_no),
             scroll: 0,
             image: None,
-            commit: Some(CommitRef { short: c.short.clone(), subject: c.summary.clone() }),
+            commit: Some(CommitRef {
+                short: c.short.clone(),
+                subject: c.summary.clone(),
+            }),
             built_at: Instant::now(),
         }
     }
@@ -340,7 +343,10 @@ impl PreviewImage {
         if std::fs::metadata(&path).ok()?.len() > MAX_IMAGE_BYTES {
             return None;
         }
-        let mut reader = image::ImageReader::open(&path).ok()?.with_guessed_format().ok()?;
+        let mut reader = image::ImageReader::open(&path)
+            .ok()?
+            .with_guessed_format()
+            .ok()?;
         let mut limits = image::Limits::default();
         limits.max_image_width = Some(20_000);
         limits.max_image_height = Some(20_000);
@@ -351,7 +357,12 @@ impl PreviewImage {
         if dims.0 == 0 || dims.1 == 0 {
             return None;
         }
-        Some(PreviewImage { src, dims, cache: None, sixel_cache: None })
+        Some(PreviewImage {
+            src,
+            dims,
+            cache: None,
+            sixel_cache: None,
+        })
     }
 
     /// The sixel encoding sized to fit `cols`×`rows` cells given the terminal's
@@ -381,7 +392,12 @@ impl PreviewImage {
 /// Resize `src` to fit the `cols`×`rows` cell area at `cell_px` pixels-per-cell
 /// (aspect preserved; sharp Lanczos downscale so text stays as legible as the pixel
 /// budget allows) and encode it as a sixel string. `None` if encoding fails.
-fn encode_sixel(src: &image::RgbaImage, cols: u16, rows: u16, cell_px: (u16, u16)) -> Option<String> {
+fn encode_sixel(
+    src: &image::RgbaImage,
+    cols: u16,
+    rows: u16,
+    cell_px: (u16, u16),
+) -> Option<String> {
     let (cw, ch) = (cell_px.0.max(1) as u32, cell_px.1.max(1) as u32);
     let (avail_w, avail_h) = (cols as u32 * cw, rows as u32 * ch);
     if avail_w == 0 || avail_h == 0 {
@@ -436,8 +452,11 @@ fn rasterize(src: &image::RgbaImage, cols: u16, rows: u16) -> Vec<Vec<HalfCell>>
                     let top = over_black(img.get_pixel(x, cy * 2));
                     let by = cy * 2 + 1;
                     // An odd height leaves the last cell's bottom pixel empty → black.
-                    let bottom =
-                        if by < nh { over_black(img.get_pixel(x, by)) } else { (0, 0, 0) };
+                    let bottom = if by < nh {
+                        over_black(img.get_pixel(x, by))
+                    } else {
+                        (0, 0, 0)
+                    };
                     HalfCell { top, bottom }
                 })
                 .collect()

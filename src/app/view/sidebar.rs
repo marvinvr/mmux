@@ -246,7 +246,6 @@ fn clip_to_window(rect: Rect, area: Rect, off: u16) -> Option<Rect> {
 }
 
 impl App {
-
     fn agent_activity(&self, pi: usize) -> AgentActivity {
         let mut activity = AgentActivity::default();
         for s in self

@@ -98,7 +98,11 @@ pub fn generate_name(taken: &[String]) -> String {
     let offset = (seed % (ADJECTIVES.len() * NOUNS.len()) as u64) as usize;
     for i in 0..ADJECTIVES.len() * NOUNS.len() {
         let at = (offset + i) % (ADJECTIVES.len() * NOUNS.len());
-        let name = format!("{}-{}", ADJECTIVES[at / NOUNS.len()], NOUNS[at % NOUNS.len()]);
+        let name = format!(
+            "{}-{}",
+            ADJECTIVES[at / NOUNS.len()],
+            NOUNS[at % NOUNS.len()]
+        );
         if !taken.iter().any(|t| t == &name) {
             return name;
         }
@@ -119,13 +123,64 @@ const ADJECTIVES: &[&str] = &[
 ];
 
 const NOUNS: &[&str] = &[
-    "anvil", "badger", "beacon", "bison", "cactus", "comet", "doorbell", "dumpling", "ferret",
-    "gizmo", "gopher", "hamster", "hedgehog", "igloo", "iguana", "jigsaw", "kazoo", "kettle",
-    "kiwi", "ladder", "lantern", "lemur", "mango", "marmot", "muffin", "noodle", "onion",
-    "ocelot", "otter", "pancake", "parsnip", "pigeon", "puffin", "quilt", "quokka", "raccoon",
-    "radish", "rhubarb", "sardine", "satchel", "seagull", "spreadsheet", "teapot", "toaster",
-    "tuba", "turnip", "ukulele", "umbrella", "vole", "vulture", "waffle", "walnut", "walrus",
-    "wombat", "wrench", "yak", "zeppelin", "zucchini",
+    "anvil",
+    "badger",
+    "beacon",
+    "bison",
+    "cactus",
+    "comet",
+    "doorbell",
+    "dumpling",
+    "ferret",
+    "gizmo",
+    "gopher",
+    "hamster",
+    "hedgehog",
+    "igloo",
+    "iguana",
+    "jigsaw",
+    "kazoo",
+    "kettle",
+    "kiwi",
+    "ladder",
+    "lantern",
+    "lemur",
+    "mango",
+    "marmot",
+    "muffin",
+    "noodle",
+    "onion",
+    "ocelot",
+    "otter",
+    "pancake",
+    "parsnip",
+    "pigeon",
+    "puffin",
+    "quilt",
+    "quokka",
+    "raccoon",
+    "radish",
+    "rhubarb",
+    "sardine",
+    "satchel",
+    "seagull",
+    "spreadsheet",
+    "teapot",
+    "toaster",
+    "tuba",
+    "turnip",
+    "ukulele",
+    "umbrella",
+    "vole",
+    "vulture",
+    "waffle",
+    "walnut",
+    "walrus",
+    "wombat",
+    "wrench",
+    "yak",
+    "zeppelin",
+    "zucchini",
 ];
 
 /// Copy the gitignored things a fresh checkout needs from `parent` into `new`.
@@ -192,7 +247,11 @@ mod tests {
     #[test]
     fn generated_names_are_two_words_and_avoid_taken_ones() {
         let name = generate_name(&[]);
-        assert_eq!(name.split('-').count(), 2, "{name} should be adjective-noun");
+        assert_eq!(
+            name.split('-').count(),
+            2,
+            "{name} should be adjective-noun"
+        );
         assert_eq!(slug(&name), name, "a generated name is already path-safe");
 
         // Every name but one is spoken for: generation must find the survivor.
@@ -243,7 +302,10 @@ mod tests {
         let root = root_for(repo).unwrap();
         for branch in ["brave-otter", "feat/deep/name", "WEIRD Name"] {
             let path = path_for(repo, branch).unwrap();
-            assert!(path.starts_with(&root), "{branch}: {path:?} not under {root:?}");
+            assert!(
+                path.starts_with(&root),
+                "{branch}: {path:?} not under {root:?}"
+            );
             // …and one component deep, so the branch can never climb out of it.
             assert_eq!(path.parent(), Some(root.as_path()));
         }
@@ -275,7 +337,10 @@ mod tests {
         let copied = prepare(&parent, &new, Some(&cfg));
 
         assert_eq!(copied, vec![".env".to_string(), "node_modules".to_string()]);
-        assert_eq!(std::fs::read_to_string(new.join(".env")).unwrap(), "SECRET=1");
+        assert_eq!(
+            std::fs::read_to_string(new.join(".env")).unwrap(),
+            "SECRET=1"
+        );
         // A directory is linked, not duplicated.
         assert!(new.join("node_modules").is_dir());
         assert!(std::fs::symlink_metadata(new.join("node_modules"))

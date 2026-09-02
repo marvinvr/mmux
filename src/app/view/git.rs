@@ -20,12 +20,12 @@ use ratatui::Frame;
 /// The clickable rows the panel exposes this frame, for mouse routing.
 #[derive(Default)]
 pub(crate) struct GitRows {
-    pub rows: Vec<(u16, usize)>,     // tree rows: screen y → cursor (tree-row) index
+    pub rows: Vec<(u16, usize)>, // tree rows: screen y → cursor (tree-row) index
     pub branches: Vec<(u16, usize)>, // branch rows: screen y → branch index
-    pub commits: Vec<(u16, usize)>,  // commit rows: screen y → log index
-    pub changes_area: Option<Rect>,  // the Changes box, so a whitespace click focuses it
+    pub commits: Vec<(u16, usize)>, // commit rows: screen y → log index
+    pub changes_area: Option<Rect>, // the Changes box, so a whitespace click focuses it
     pub branches_area: Option<Rect>, // the Branches box, ditto
-    pub commits_area: Option<Rect>,  // the Commits box, ditto
+    pub commits_area: Option<Rect>, // the Commits box, ditto
 }
 
 /// Draw the git panel into `area` as three bordered boxes, returning the file, branch
@@ -73,7 +73,11 @@ pub(crate) fn render_git(f: &mut Frame, area: Rect, git: &GitPanel, focused: boo
 /// A bordered box; `active` paints the border magenta (the focused section),
 /// otherwise dim.
 fn boxed(title: String, active: bool) -> Block<'static> {
-    let border = if active { Color::Magenta } else { Color::DarkGray };
+    let border = if active {
+        Color::Magenta
+    } else {
+        Color::DarkGray
+    };
     Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -130,12 +134,25 @@ fn render_changes(
         title.push_str(&format!("· {b} "));
     }
     // Every tree row (dir / file) is selectable, so every visible one is registered.
-    render_box(f, area, title, active, git.rows.len(), git.cursor, "  working tree clean", hit, |i, selected, w| {
-        match &git.rows[i] {
-            TreeRow::Dir { label, depth, staged, .. } => node_row(label, *depth, *staged, selected, w),
+    render_box(
+        f,
+        area,
+        title,
+        active,
+        git.rows.len(),
+        git.cursor,
+        "  working tree clean",
+        hit,
+        |i, selected, w| match &git.rows[i] {
+            TreeRow::Dir {
+                label,
+                depth,
+                staged,
+                ..
+            } => node_row(label, *depth, *staged, selected, w),
             TreeRow::File { idx, depth } => file_row(&git.files[*idx], *depth, selected, w),
-        }
-    });
+        },
+    );
 }
 
 fn render_branches(
@@ -146,9 +163,17 @@ fn render_branches(
     hit: &mut Vec<(u16, usize)>,
 ) {
     let active = focused && git.section == Section::Branches;
-    render_box(f, area, " Branches ".into(), active, git.branches.len(), git.branch_cursor, "  no branches", hit, |i, selected, w| {
-        branch_row(&git.branches[i], selected, w)
-    });
+    render_box(
+        f,
+        area,
+        " Branches ".into(),
+        active,
+        git.branches.len(),
+        git.branch_cursor,
+        "  no branches",
+        hit,
+        |i, selected, w| branch_row(&git.branches[i], selected, w),
+    );
 }
 
 fn render_commits(
@@ -159,9 +184,17 @@ fn render_commits(
     hit: &mut Vec<(u16, usize)>,
 ) {
     let active = focused && git.section == Section::Commits;
-    render_box(f, area, " Commits ".into(), active, git.log.len(), git.commit_cursor, "  no commits", hit, |i, selected, w| {
-        commit_row(&git.log[i], selected, w)
-    });
+    render_box(
+        f,
+        area,
+        " Commits ".into(),
+        active,
+        git.log.len(),
+        git.commit_cursor,
+        "  no commits",
+        hit,
+        |i, selected, w| commit_row(&git.log[i], selected, w),
+    );
 }
 
 /// Pad a selected row with trailing spaces and paint the highlight background so the
@@ -233,10 +266,10 @@ fn change_color(file: &FileEntry) -> Color {
         return Color::Green; // brand-new file = an addition
     }
     match file.glyph {
-        'A' => Color::Green,            // added
-        'D' | 'U' => Color::Red,        // deleted / unmerged
-        'R' | 'C' => Color::Cyan,       // renamed / copied
-        _ => Color::Yellow,             // modified & friends
+        'A' => Color::Green,      // added
+        'D' | 'U' => Color::Red,  // deleted / unmerged
+        'R' | 'C' => Color::Cyan, // renamed / copied
+        _ => Color::Yellow,       // modified & friends
     }
 }
 
@@ -245,7 +278,9 @@ fn branch_row(b: &Branch, selected: bool, width: u16) -> Line<'static> {
     let bar = if selected { "▌" } else { " " };
     let dot = if b.current { "●" } else { " " };
     let name_style = if b.current {
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Gray)
     };

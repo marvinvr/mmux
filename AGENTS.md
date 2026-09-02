@@ -49,6 +49,7 @@ The full covenant is in
 ## Build & Check
 
 ```sh
+cargo fmt              # required before every commit
 cargo build            # primary check while iterating
 cargo test             # unit tests
 mmux check             # validate the effective (global + project) config, no TUI

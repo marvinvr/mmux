@@ -5,6 +5,7 @@ How to build, test, and extend mmux — and how to keep this documentation hones
 ## Build & Check
 
 ```sh
+cargo fmt              # required before every commit
 cargo build            # primary check while iterating
 cargo build --release  # optimized binary at target/release/mmux
 cargo test             # unit tests
@@ -47,6 +48,8 @@ handles it). See [Installation](02-installation.md#from-source).
 - **Comments explain *why*.** Match the existing density and tone — they capture load-bearing
   rationale (e.g. the cursor double-invert note in `view/pane.rs`, the OSC-9 ConEmu-progress
   guard in `pane.rs`).
+- **Run `cargo fmt` before every commit.** The repository uses the standard Cargo formatter for
+  all Rust sources.
 - **No co-author trailer** on commits in this repo.
 
 ## Tests
@@ -66,8 +69,8 @@ PTY/TUI layers are verified by hand by the maintainer — with one automated exc
 `.github/workflows/ci.yml` runs on every push to `main` and every PR, all jobs in parallel:
 
 - **`lint`** — `shellcheck` + a shebang-aware syntax check over `ci/*.sh`, `web/install.sh`, and
-  `.github/scripts/*.sh`. (No `cargo fmt`/`clippy` gate — this codebase's style is hand-tuned, so a
-  formatter gate would fail spuriously.)
+  `.github/scripts/*.sh`. (`cargo fmt` is required before commits but is not currently enforced by
+  this CI job; there is also no `clippy` gate.)
 - **`test`** — `cargo test`.
 - **`build+smoke`** — the reusable `.github/workflows/_build.yml`: builds the release binary for
   all three shipped targets, **each on its own native-arch runner** (macOS arm `macos-14`, Linux

@@ -185,19 +185,18 @@ fn parse_duration(raw: &str) -> Option<Duration> {
 /// that most reliably decide whether a fresh checkout runs at all, and that git
 /// deliberately never carries across. Kept short on purpose — anything heavier is a
 /// per-project choice, not a default.
-pub const DEFAULT_WORKTREE_COPY: &[&str] = &[
-    ".env",
-    ".env.local",
-    "mmux.local.yml",
-    "mmux.local.yaml",
-];
+pub const DEFAULT_WORKTREE_COPY: &[&str] =
+    &[".env", ".env.local", "mmux.local.yml", "mmux.local.yaml"];
 
 /// The effective copy list for a project: its own `worktrees.copy` when set (empty
 /// included — that's a deliberate "copy nothing"), else [`DEFAULT_WORKTREE_COPY`].
 pub fn worktree_copy_list(cfg: Option<&WorktreeConfig>) -> Vec<String> {
     match cfg.and_then(|w| w.copy.as_ref()) {
         Some(list) => list.clone(),
-        None => DEFAULT_WORKTREE_COPY.iter().map(|s| s.to_string()).collect(),
+        None => DEFAULT_WORKTREE_COPY
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     }
 }
 
@@ -232,10 +231,11 @@ pub struct AgentPreset {
     pub blurb: &'static str,
 }
 
-/// The agent harnesses mmux offers out of the box. Every one ships a documented
-/// danger-mode flag, and four also ship an auto middle mode; add new
-/// harnesses here and they appear in both the wizard and the in-TUI agent manager
-/// automatically. Flags verified against each tool's CLI.
+/// The agent harnesses mmux offers out of the box. Most ship a documented
+/// danger-mode flag, and four also ship an auto middle mode; add new harnesses
+/// here and they appear in both the wizard and the in-TUI agent manager
+/// automatically. Flags verified against each tool's CLI. Pi has neither mode:
+/// its core intentionally runs tools without approval prompts.
 pub const PRESETS: &[AgentPreset] = &[
     AgentPreset {
         name: "Claude",
@@ -253,6 +253,13 @@ pub const PRESETS: &[AgentPreset] = &[
         auto: Some(&["--sandbox", "workspace-write"]),
         danger: Some(&["--dangerously-bypass-approvals-and-sandbox"]),
         blurb: "OpenAI Codex CLI",
+    },
+    AgentPreset {
+        name: "Pi",
+        cmd: "pi",
+        auto: None, // core Pi has no action-approval layer to relax
+        danger: None,
+        blurb: "Pi coding agent",
     },
     AgentPreset {
         name: "Gemini",
@@ -830,10 +837,7 @@ mod tests {
     #[test]
     fn worktree_copy_defaults_but_an_empty_list_means_nothing() {
         // Unset falls back to the built-in list…
-        assert_eq!(
-            worktree_copy_list(None).len(),
-            DEFAULT_WORKTREE_COPY.len()
-        );
+        assert_eq!(worktree_copy_list(None).len(), DEFAULT_WORKTREE_COPY.len());
         // …while an explicit empty list is a deliberate "copy nothing", not a no-op.
         let none = WorktreeConfig {
             copy: Some(vec![]),
@@ -881,10 +885,10 @@ mod tests {
         assert_eq!(claude.danger, Some(&["--dangerously-skip-permissions"][..]));
         assert_eq!(claude.auto, Some(&["--permission-mode", "auto"][..]));
         assert!(preset_by_name("Nope").is_none());
-        // Every shipped preset has a command and a danger flag.
-        assert!(PRESETS
-            .iter()
-            .all(|p| !p.cmd.is_empty() && p.danger.is_some()));
+        let pi = preset_by_name("Pi").unwrap();
+        assert_eq!(pi.cmd, "pi");
+        assert!(pi.auto.is_none() && pi.danger.is_none());
+        assert!(PRESETS.iter().all(|p| !p.cmd.is_empty()));
     }
 
     #[test]

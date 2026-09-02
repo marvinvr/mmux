@@ -1,15 +1,17 @@
-//! Resume support for three agents mmux ships presets for: **Claude Code**,
-//! **Codex**, and **Grok**. This is deliberately *not* configurable — detection is
+//! Resume support for four agents mmux ships presets for: **Claude Code**,
+//! **Codex**, **Pi**, and **Grok**. This is deliberately *not* configurable — detection is
 //! purely the launch command's basename, and each tool's quirks live here:
 //!
 //! - **Claude** and **Grok** let us *own* the session id: we mint a UUID, start
 //!   them with `--session-id <uuid>`, and later reattach with `--resume <uuid>`.
 //!   That means several instances in one directory each resume their own conversation.
+//! - **Pi** also accepts an owned `--session-id <uuid>`, but uses that same flag
+//!   both to create the session and to reopen it.
 //! - **Codex** has no "set the id" flag — it only resumes one we *discover*. So we
 //!   start it plain, find the session it wrote under `~/.codex/sessions`, and
 //!   reattach with `codex resume <uuid>`.
 //!
-//! Claude and Grok's minted ids are authoritative — mmux launches by them and
+//! Claude, Pi, and Grok's minted ids are authoritative — mmux launches by them and
 //! resumes by them, so each instance keeps its own thread and several in one
 //! directory never get mixed up. Codex hands us no id, so a fresh Codex agent
 //! has to *discover* the session it just created via [`sessions_for`]. Claude and
@@ -34,35 +36,37 @@ const DISCOVERY_RETRY: Duration = Duration::from_millis(500);
 pub enum Tool {
     Claude,
     Codex,
+    Pi,
     Grok,
 }
 
 impl Tool {
     /// Detect a resumable agent from its launch command by basename, so
-    /// `claude`, `/opt/homebrew/bin/claude`, `codex`, and `grok` all match.
+    /// `claude`, `/opt/homebrew/bin/claude`, `codex`, `pi`, and `grok` all match.
     pub fn detect(cmd: &str) -> Option<Tool> {
         match Path::new(cmd).file_name()?.to_str()? {
             "claude" => Some(Tool::Claude),
             "codex" => Some(Tool::Codex),
+            "pi" => Some(Tool::Pi),
             "grok" => Some(Tool::Grok),
             _ => None,
         }
     }
 
-    /// Whether mmux assigns the session id at launch (Claude/Grok) rather than having
+    /// Whether mmux assigns the session id at launch (Claude/Pi/Grok) rather than having
     /// to discover it afterwards (Codex).
     pub fn owns_id(self) -> bool {
-        matches!(self, Tool::Claude | Tool::Grok)
+        matches!(self, Tool::Claude | Tool::Pi | Tool::Grok)
     }
 }
 
-/// Per-session resume bookkeeping for a Claude/Codex/Grok agent: which tool, the
+/// Per-session resume bookkeeping for a Claude/Codex/Pi/Grok agent: which tool, the
 /// session id we reattach by, and whether the *next* spawn should resume an
 /// existing session rather than start a fresh one.
 #[derive(Clone)]
 pub struct Resume {
     pub tool: Tool,
-    /// The session id. Claude/Grok: minted up front. Codex: `None` until discovered.
+    /// The session id. Claude/Pi/Grok: minted up front. Codex: `None` until discovered.
     pub id: Option<String>,
     /// `false` for a brand-new agent (its first launch *creates* the session);
     /// `true` afterwards and for any restored agent (launches *resume* it).
@@ -75,7 +79,7 @@ pub struct Resume {
 }
 
 impl Resume {
-    /// A fresh resumable agent: Claude/Grok get a minted id; Codex starts id-less.
+    /// A fresh resumable agent: Claude/Pi/Grok get a minted id; Codex starts id-less.
     pub fn new(tool: Tool) -> Resume {
         let id = tool.owns_id().then(mint_uuid);
         Resume {
@@ -131,6 +135,9 @@ impl Resume {
             (Tool::Claude | Tool::Grok, true, Some(id)) => {
                 vec!["--resume".into(), id.into()]
             }
+            // Pi uses the same exact-id option to create a missing project session
+            // and to reopen one that already exists.
+            (Tool::Pi, _, Some(id)) => vec!["--session-id".into(), id.into()],
             // Codex `resume` is a subcommand taking the session UUID.
             (Tool::Codex, true, Some(id)) => vec!["resume".into(), id.into()],
             _ => Vec::new(),
@@ -138,7 +145,7 @@ impl Resume {
     }
 }
 
-/// A v4 UUID from `/dev/urandom`, formatted `8-4-4-4-12`. Enough for Claude/Grok's
+/// A v4 UUID from `/dev/urandom`, formatted `8-4-4-4-12`. Enough for Claude/Pi/Grok's
 /// `--session-id` without pulling in the `uuid`/`rand` crates. Falls back to a
 /// time-seeded value if `/dev/urandom` is somehow unreadable; a collision there
 /// could at worst fail a launch or resume the wrong conversation, never corrupt
@@ -188,16 +195,18 @@ fn session_root(tool: Tool) -> Option<PathBuf> {
     Some(match tool {
         Tool::Claude => home.join(".claude").join("projects"),
         Tool::Codex => home.join(".codex").join("sessions"),
-        // Grok ids are minted before launch, so its on-disk session tree never
-        // needs to be scanned to discover which conversation belongs to a pane.
-        Tool::Grok => return None,
+        // Pi/Grok ids are minted before launch, so their on-disk session trees never
+        // need to be scanned to discover which conversation belongs to a pane.
+        Tool::Pi | Tool::Grok => return None,
     })
 }
 
 /// The transcripts under `root` whose recorded `cwd` matches, newest first. Split
 /// from [`sessions_for`] so the home-independent scan is unit-testable.
 fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime)> {
-    let Some(want) = cwd.to_str() else { return Vec::new() };
+    let Some(want) = cwd.to_str() else {
+        return Vec::new();
+    };
     let mut files = Vec::new();
     collect_jsonl(root, &mut files, 0);
     // Newest first by modification time.
@@ -208,7 +217,7 @@ fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime
         let meta = match tool {
             Tool::Claude => read_claude_meta(&path),
             Tool::Codex => read_codex_meta(&path),
-            Tool::Grok => None,
+            Tool::Pi | Tool::Grok => None,
         };
         if let Some((id, file_cwd)) = meta {
             if file_cwd == want {
@@ -216,7 +225,7 @@ fn scan_sessions(tool: Tool, root: &Path, cwd: &Path) -> Vec<(String, SystemTime
                 // activity and made old but recently-used sessions look new.
                 let started_at = match tool {
                     Tool::Codex => codex_id_time(&id).unwrap_or(mtime),
-                    Tool::Claude | Tool::Grok => mtime,
+                    Tool::Claude | Tool::Pi | Tool::Grok => mtime,
                 };
                 out.push((id, started_at));
             }
@@ -258,7 +267,9 @@ fn collect_jsonl(dir: &Path, out: &mut Vec<(std::time::SystemTime, PathBuf)>, de
 fn read_claude_meta(path: &Path) -> Option<(String, String)> {
     let id = path.file_stem()?.to_str()?.to_string();
     let mut buf = [0u8; 8192];
-    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).ok()?;
+    let n = std::fs::File::open(path)
+        .and_then(|mut f| f.read(&mut buf))
+        .ok()?;
     let head = String::from_utf8_lossy(&buf[..n]);
     let cwd = head.lines().find_map(|l| json_str_field(l, "cwd"))?;
     Some((id, cwd))
@@ -268,7 +279,9 @@ fn read_claude_meta(path: &Path) -> Option<(String, String)> {
 /// JSON parser — the header is a single line of `"key":"value"` pairs.
 fn read_codex_meta(path: &Path) -> Option<(String, String)> {
     let mut buf = [0u8; 4096];
-    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).ok()?;
+    let n = std::fs::File::open(path)
+        .and_then(|mut f| f.read(&mut buf))
+        .ok()?;
     let head = String::from_utf8_lossy(&buf[..n]);
     let line = head.lines().next()?;
     let session_id = json_str_field(line, "session_id")?;
@@ -313,6 +326,8 @@ mod tests {
         assert_eq!(Tool::detect("/opt/homebrew/bin/claude"), Some(Tool::Claude));
         assert_eq!(Tool::detect("codex"), Some(Tool::Codex));
         assert_eq!(Tool::detect("/usr/local/bin/codex"), Some(Tool::Codex));
+        assert_eq!(Tool::detect("pi"), Some(Tool::Pi));
+        assert_eq!(Tool::detect("/opt/homebrew/bin/pi"), Some(Tool::Pi));
         assert_eq!(Tool::detect("grok"), Some(Tool::Grok));
         assert_eq!(Tool::detect("/Users/me/.grok/bin/grok"), Some(Tool::Grok));
         assert_eq!(Tool::detect("vim"), None);
@@ -324,22 +339,29 @@ mod tests {
         let id = mint_uuid();
         assert_eq!(id.len(), 36);
         let parts: Vec<&str> = id.split('-').collect();
-        assert_eq!(parts.iter().map(|p| p.len()).collect::<Vec<_>>(), vec![8, 4, 4, 4, 12]);
+        assert_eq!(
+            parts.iter().map(|p| p.len()).collect::<Vec<_>>(),
+            vec![8, 4, 4, 4, 12]
+        );
         assert!(id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
         assert_eq!(&id[14..15], "4"); // version nibble
         assert_ne!(mint_uuid(), mint_uuid());
     }
 
     #[test]
-    fn claude_and_grok_own_ids_codex_does_not() {
+    fn claude_pi_and_grok_own_ids_codex_does_not() {
         assert!(Tool::Claude.owns_id());
         assert!(!Tool::Codex.owns_id());
+        assert!(Tool::Pi.owns_id());
         assert!(Tool::Grok.owns_id());
 
         // Claude: create then resume.
         let mut r = Resume::new(Tool::Claude);
         let id = r.id.clone().unwrap();
-        assert_eq!(r.launch_args(), vec!["--session-id".to_string(), id.clone()]);
+        assert_eq!(
+            r.launch_args(),
+            vec!["--session-id".to_string(), id.clone()]
+        );
         r.resume = true;
         assert_eq!(r.launch_args(), vec!["--resume".to_string(), id]);
 
@@ -350,12 +372,28 @@ mod tests {
         c.resume = true;
         assert!(c.launch_args().is_empty());
         c.id = Some("abc".into());
-        assert_eq!(c.launch_args(), vec!["resume".to_string(), "abc".to_string()]);
+        assert_eq!(
+            c.launch_args(),
+            vec!["resume".to_string(), "abc".to_string()]
+        );
+
+        // Pi uses --session-id for both first launch and restore/restart.
+        let mut p = Resume::new(Tool::Pi);
+        let id = p.id.clone().unwrap();
+        assert_eq!(
+            p.launch_args(),
+            vec!["--session-id".to_string(), id.clone()]
+        );
+        p.resume = true;
+        assert_eq!(p.launch_args(), vec!["--session-id".to_string(), id]);
 
         // Grok uses long flags for both creating and resuming a conversation.
         let mut g = Resume::new(Tool::Grok);
         let id = g.id.clone().unwrap();
-        assert_eq!(g.launch_args(), vec!["--session-id".to_string(), id.clone()]);
+        assert_eq!(
+            g.launch_args(),
+            vec!["--session-id".to_string(), id.clone()]
+        );
         g.resume = true;
         assert_eq!(g.launch_args(), vec!["--resume".to_string(), id]);
     }
@@ -367,7 +405,10 @@ mod tests {
             json_str_field(line, "session_id").as_deref(),
             Some("019eff13-03d0-7c73-834c-c9a0c486e170")
         );
-        assert_eq!(json_str_field(line, "cwd").as_deref(), Some("/home/me/proj"));
+        assert_eq!(
+            json_str_field(line, "cwd").as_deref(),
+            Some("/home/me/proj")
+        );
         assert_eq!(json_str_field(line, "missing"), None);
     }
 
@@ -402,7 +443,10 @@ mod tests {
         );
         assert_eq!(
             read_claude_meta(&f),
-            Some(("11111111-1111-4111-8111-111111111111".into(), "/home/me/proj".into()))
+            Some((
+                "11111111-1111-4111-8111-111111111111".into(),
+                "/home/me/proj".into()
+            ))
         );
         // A just-launched session with only the preamble has no cwd yet → no match.
         let g = dir.join("22222222-2222-4222-8222-222222222222.jsonl");
@@ -443,7 +487,10 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(25));
         write(&p("bbbb2222-2222-4222-8222-222222222222"), &body("/want"));
         write(&p("cccc3333-3333-4333-8333-333333333333"), &body("/other"));
-        write(&p("dddd4444-4444-4444-8444-444444444444"), "{\"type\":\"mode\"}\n");
+        write(
+            &p("dddd4444-4444-4444-8444-444444444444"),
+            "{\"type\":\"mode\"}\n",
+        );
 
         let ids: Vec<String> = scan_sessions(Tool::Claude, &root, Path::new("/want"))
             .into_iter()

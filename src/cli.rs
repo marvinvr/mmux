@@ -267,7 +267,7 @@ GLOBAL FILE — ~/.mmux/config.yaml
           args: ["--dangerously-bypass-approvals-and-sandbox"]
 
     You don't have to hand-write this: `mmux init` offers the built-in harnesses
-    (Claude, Codex, Gemini, Amp, opencode, Grok) as a multi-select, and pressing `a` in
+    (Claude, Codex, Pi, Gemini, Amp, opencode, Grok) as a multi-select, and pressing `a` in
     the sidebar opens the same picker any time — toggle harnesses on/off, press `m` to
     cycle a launch mode (normal -> auto -> danger), and it writes here and reloads. A
     green check marks the ones found on your PATH.

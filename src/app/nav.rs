@@ -309,7 +309,11 @@ mod tests {
     #[test]
     fn a_quiet_family_is_not_promoted_over_a_busy_project() {
         let roots = [0, 1, 1];
-        let k = keys(&[(0, "zed", false), (1, "app", false), (1, "brave-otter", true)]);
+        let k = keys(&[
+            (0, "zed", false),
+            (1, "app", false),
+            (1, "brave-otter", true),
+        ]);
         // "zed" is the busy one, so it leads whether or not you're working in the
         // "app" family: having worktrees is not itself a reason to rank higher.
         let hot = [true, false, false];

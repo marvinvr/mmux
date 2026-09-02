@@ -4,9 +4,7 @@
 
 use anyhow::Result;
 use bytes::Bytes;
-use portable_pty::{
-    native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtyPair, PtySize,
-};
+use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -164,7 +162,10 @@ impl vt100::Callbacks for PaneEvents {
             Some(b"9") if params.len() == 2 => {
                 let body = text(params[1]);
                 if !body.is_empty() {
-                    self.notifications.push(Notify { title: None, body: Some(body) });
+                    self.notifications.push(Notify {
+                        title: None,
+                        body: Some(body),
+                    });
                 }
             }
             // OSC 777 ; notify ; <title> ; <body>
@@ -178,7 +179,10 @@ impl vt100::Callbacks for PaneEvents {
             // OSC 99 (kitty) — best-effort: surface the trailing payload as the body.
             Some(b"99") if params.len() >= 2 => {
                 if let Some(body) = params.last().map(|b| text(b)).filter(|b| !b.is_empty()) {
-                    self.notifications.push(Notify { title: None, body: Some(body) });
+                    self.notifications.push(Notify {
+                        title: None,
+                        body: Some(body),
+                    });
                 }
             }
             _ => {}
@@ -238,11 +242,17 @@ impl Pane {
         let outer_terminal = crate::tmux::outer_terminal_env();
         builder.env(
             "TERM",
-            outer_terminal.get("TERM").map(String::as_str).unwrap_or("xterm-256color"),
+            outer_terminal
+                .get("TERM")
+                .map(String::as_str)
+                .unwrap_or("xterm-256color"),
         );
         builder.env(
             "COLORTERM",
-            outer_terminal.get("COLORTERM").map(String::as_str).unwrap_or("truecolor"),
+            outer_terminal
+                .get("COLORTERM")
+                .map(String::as_str)
+                .unwrap_or("truecolor"),
         );
         for name in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
             match outer_terminal.get(name) {
@@ -425,7 +435,10 @@ impl Pane {
 
     /// The program's explicit OSC 9;4 progress state, if it has emitted one.
     pub fn progress_active(&self) -> Option<bool> {
-        self.parser.lock().ok().and_then(|p| p.callbacks().progress_active)
+        self.parser
+            .lock()
+            .ok()
+            .and_then(|p| p.callbacks().progress_active)
     }
 
     pub fn clear_attention(&self) {
@@ -486,7 +499,15 @@ impl Pane {
     /// `up` is the wheel direction; `col`/`row` are absolute screen cells and
     /// `ox`/`oy` the pane's content-area origin, used to place a forwarded
     /// mouse event in the program's own (1-based) coordinate space.
-    pub fn wheel_input(&self, up: bool, lines: u16, col: u16, row: u16, ox: u16, oy: u16) -> Option<Vec<u8>> {
+    pub fn wheel_input(
+        &self,
+        up: bool,
+        lines: u16,
+        col: u16,
+        row: u16,
+        ox: u16,
+        oy: u16,
+    ) -> Option<Vec<u8>> {
         self.with_screen(|s| {
             if !s.alternate_screen() {
                 return None;
@@ -521,7 +542,15 @@ impl Pane {
     /// `button` is the base button (0 left, 1 middle, 2 right); `col`/`row` are
     /// absolute screen cells and `ox`/`oy` the pane's content-area origin, used
     /// to place the report in the program's own (1-based) coordinate space.
-    pub fn mouse_input(&self, action: MouseAction, button: u8, col: u16, row: u16, ox: u16, oy: u16) -> Option<Vec<u8>> {
+    pub fn mouse_input(
+        &self,
+        action: MouseAction,
+        button: u8,
+        col: u16,
+        row: u16,
+        ox: u16,
+        oy: u16,
+    ) -> Option<Vec<u8>> {
         self.with_screen(|s| {
             use vt100::MouseProtocolMode as Mode;
             let mode = s.mouse_protocol_mode();
@@ -530,7 +559,10 @@ impl Pane {
             // needs AnyMotion. Anything else falls back to mmux's own handling.
             let reportable = match action {
                 MouseAction::Down => mode != Mode::None,
-                MouseAction::Up => matches!(mode, Mode::PressRelease | Mode::ButtonMotion | Mode::AnyMotion),
+                MouseAction::Up => matches!(
+                    mode,
+                    Mode::PressRelease | Mode::ButtonMotion | Mode::AnyMotion
+                ),
                 MouseAction::Drag => matches!(mode, Mode::ButtonMotion | Mode::AnyMotion),
                 MouseAction::Move => mode == Mode::AnyMotion,
             };
@@ -540,10 +572,21 @@ impl Pane {
             let motion = matches!(action, MouseAction::Drag | MouseAction::Move);
             let release = matches!(action, MouseAction::Up);
             // A bare move carries no held button, so it reports the "no button" code.
-            let btn = if matches!(action, MouseAction::Move) { 3 } else { button };
+            let btn = if matches!(action, MouseAction::Move) {
+                3
+            } else {
+                button
+            };
             let x = col.saturating_sub(ox) + 1;
             let y = row.saturating_sub(oy) + 1;
-            Some(mouse_seq(btn, motion, release, x, y, s.mouse_protocol_encoding()))
+            Some(mouse_seq(
+                btn,
+                motion,
+                release,
+                x,
+                y,
+                s.mouse_protocol_encoding(),
+            ))
         })
         .flatten()
     }
@@ -692,7 +735,14 @@ pub enum MouseAction {
 /// 64/65 for the wheel); `motion` adds the drag/move bit and `release` marks a
 /// button-up. `x`/`y` are 1-based cells. SGR signals a release with a trailing
 /// `m`; the legacy encodings report it as the generic button 3 instead.
-fn mouse_seq(btn: u8, motion: bool, release: bool, x: u16, y: u16, enc: vt100::MouseProtocolEncoding) -> Vec<u8> {
+fn mouse_seq(
+    btn: u8,
+    motion: bool,
+    release: bool,
+    x: u16,
+    y: u16,
+    enc: vt100::MouseProtocolEncoding,
+) -> Vec<u8> {
     let motion_bit = if motion { 32 } else { 0 };
     match enc {
         vt100::MouseProtocolEncoding::Sgr => {
@@ -724,8 +774,7 @@ mod tests {
     #[test]
     fn kitty_keyboard_negotiation_reports_only_supported_flags() {
         let (tx, rx) = mpsc::channel();
-        let mut parser =
-            vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
+        let mut parser = vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
 
         parser.process(b"\x1b[>7u\x1b[?u");
         assert_eq!(parser.callbacks().kitty_flags(), 1);
@@ -746,8 +795,7 @@ mod tests {
     #[test]
     fn grok_startup_queries_receive_terminal_replies() {
         let (tx, rx) = mpsc::channel();
-        let mut parser =
-            vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
+        let mut parser = vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
 
         // Grok probes both in sequence and waits for both replies before drawing
         // its first frame. This is the exact startup exchange emitted by 1.0.3.
@@ -760,8 +808,7 @@ mod tests {
     #[test]
     fn osc_progress_reports_explicit_activity_without_notifying() {
         let (tx, _rx) = mpsc::channel();
-        let mut parser =
-            vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
+        let mut parser = vt100::Parser::new_with_callbacks(2, 2, 0, PaneEvents::new(tx));
 
         parser.process(b"\x1b]9;4;3\x07");
         assert_eq!(parser.callbacks().progress_active, Some(true));
@@ -786,11 +833,20 @@ mod tests {
     #[test]
     fn legacy_offsets_by_32_and_reports_release_as_button_3() {
         // Left press: code 0, coords +32 (3→35, 5→37).
-        assert_eq!(mouse_seq(0, false, false, 3, 5, Legacy), vec![0x1b, b'[', b'M', 32, 35, 37]);
+        assert_eq!(
+            mouse_seq(0, false, false, 3, 5, Legacy),
+            vec![0x1b, b'[', b'M', 32, 35, 37]
+        );
         // Any release collapses to the generic button 3 (→ 35).
-        assert_eq!(mouse_seq(2, false, true, 3, 5, Legacy), vec![0x1b, b'[', b'M', 35, 35, 37]);
+        assert_eq!(
+            mouse_seq(2, false, true, 3, 5, Legacy),
+            vec![0x1b, b'[', b'M', 35, 35, 37]
+        );
         // A drag is button + the motion bit (0 + 32 → 64).
-        assert_eq!(mouse_seq(0, true, false, 3, 5, Legacy), vec![0x1b, b'[', b'M', 64, 35, 37]);
+        assert_eq!(
+            mouse_seq(0, true, false, 3, 5, Legacy),
+            vec![0x1b, b'[', b'M', 64, 35, 37]
+        );
     }
 
     #[test]

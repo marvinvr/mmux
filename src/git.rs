@@ -82,7 +82,10 @@ pub fn status(dir: &Path) -> Status {
     // can place, so it rendered as a nameless row — expanding it nests new files under
     // their folder like any other change (and matches the post-stage view).
     let raw = run(dir, &["status", "--porcelain=v2", "--branch", "-uall"]).unwrap_or_default();
-    let mut st = Status { branch: String::new(), files: Vec::new() };
+    let mut st = Status {
+        branch: String::new(),
+        files: Vec::new(),
+    };
     for line in raw.lines() {
         if let Some(rest) = line.strip_prefix("# branch.head ") {
             st.branch = rest.trim().to_string();
@@ -177,7 +180,11 @@ pub fn log(dir: &Path, n: usize) -> Vec<Commit> {
             let hash = it.next()?.to_string();
             let short = it.next()?.to_string();
             let summary = it.next().unwrap_or("").to_string();
-            (!hash.is_empty()).then(|| Commit { hash, short, summary })
+            (!hash.is_empty()).then(|| Commit {
+                hash,
+                short,
+                summary,
+            })
         })
         .collect()
 }
@@ -243,8 +250,16 @@ pub enum Stage {
 /// [`Dir`](TreeRow::Dir) stages its `path`, a [`File`](TreeRow::File) (whose `idx`
 /// points back into the slice handed to [`tree_rows`]) stages just itself.
 pub enum TreeRow {
-    Dir { label: String, path: String, depth: usize, staged: Stage },
-    File { idx: usize, depth: usize },
+    Dir {
+        label: String,
+        path: String,
+        depth: usize,
+        staged: Stage,
+    },
+    File {
+        idx: usize,
+        depth: usize,
+    },
 }
 
 /// Group changed files into a directory tree and flatten it depth-first (subdirs before
@@ -327,7 +342,12 @@ pub fn tree_rows(files: &[FileEntry]) -> Vec<TreeRow> {
                 format!("{prefix}/{label}")
             };
             let (s, t) = tally(cur, files);
-            out.push(TreeRow::Dir { label, path: path.clone(), depth, staged: stage_of(s, t) });
+            out.push(TreeRow::Dir {
+                label,
+                path: path.clone(),
+                depth,
+                staged: stage_of(s, t),
+            });
             walk(cur, depth + 1, &path, files, out);
         }
         let mut leaves = node.files.clone();
@@ -411,24 +431,58 @@ pub fn commit_context(dir: &Path) -> Result<String, String> {
         if out.len() >= TOTAL {
             break;
         }
-        let state = if file.untracked { "untracked" } else { "changed" };
-        push_capped(&mut out, &format!("\n--- {} ({state}) ---\n", file.path), TOTAL);
+        let state = if file.untracked {
+            "untracked"
+        } else {
+            "changed"
+        };
+        push_capped(
+            &mut out,
+            &format!("\n--- {} ({state}) ---\n", file.path),
+            TOTAL,
+        );
         let detail = if file.untracked && !staged {
             read_text_prefix(&dir.join(&file.path), PER_FILE)
         } else if staged {
             capped(
-                &run_lossy(dir, &["diff", "--cached", "--no-color", "--no-ext-diff", "--unified=3", "--", file.path.as_str()]),
+                &run_lossy(
+                    dir,
+                    &[
+                        "diff",
+                        "--cached",
+                        "--no-color",
+                        "--no-ext-diff",
+                        "--unified=3",
+                        "--",
+                        file.path.as_str(),
+                    ],
+                ),
                 PER_FILE,
             )
         } else {
             capped(
-                &run_lossy(dir, &["diff", "HEAD", "--no-color", "--no-ext-diff", "--unified=3", "--", file.path.as_str()]),
+                &run_lossy(
+                    dir,
+                    &[
+                        "diff",
+                        "HEAD",
+                        "--no-color",
+                        "--no-ext-diff",
+                        "--unified=3",
+                        "--",
+                        file.path.as_str(),
+                    ],
+                ),
                 PER_FILE,
             )
         };
         push_capped(
             &mut out,
-            if detail.is_empty() { "[binary or unavailable]\n" } else { &detail },
+            if detail.is_empty() {
+                "[binary or unavailable]\n"
+            } else {
+                &detail
+            },
             TOTAL,
         );
     }
@@ -439,7 +493,9 @@ pub fn commit_context(dir: &Path) -> Result<String, String> {
 }
 
 fn read_text_prefix(path: &Path, limit: usize) -> String {
-    let Ok(file) = File::open(path) else { return String::new() };
+    let Ok(file) = File::open(path) else {
+        return String::new();
+    };
     let mut bytes = Vec::new();
     let _ = file.take(limit as u64 + 1).read_to_end(&mut bytes);
     if bytes.iter().take(8192).any(|b| *b == 0) {
@@ -528,7 +584,11 @@ pub fn push(dir: &Path) -> Result<String, String> {
 /// The current branch's upstream (`origin/main`), or `None` when it has none — the
 /// case [`push`] publishes through.
 fn upstream(dir: &Path) -> Option<String> {
-    let out = run(dir, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).ok()?;
+    let out = run(
+        dir,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    )
+    .ok()?;
     let name = out.trim().to_string();
     (!name.is_empty()).then_some(name)
 }
@@ -539,7 +599,11 @@ fn upstream(dir: &Path) -> Option<String> {
 /// upstream it set.
 fn default_remote(dir: &Path) -> Result<String, String> {
     let out = run(dir, &["remote"])?;
-    let names: Vec<&str> = out.lines().map(str::trim).filter(|s| !s.is_empty()).collect();
+    let names: Vec<&str> = out
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
     if names.contains(&"origin") {
         return Ok("origin".into());
     }
@@ -608,7 +672,12 @@ pub fn main_worktree(dir: &Path) -> Option<PathBuf> {
 pub fn branch_exists(dir: &Path, name: &str) -> bool {
     run(
         dir,
-        &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")],
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{name}"),
+        ],
     )
     .is_ok()
 }
@@ -817,7 +886,11 @@ mod tests {
         std::fs::write(work.join("f"), "x").unwrap();
         run(&work, &["add", "-A"]).unwrap();
         run(&work, &["commit", "-m", "init"]).unwrap();
-        run(&work, &["remote", "add", "origin", remote.to_str().unwrap()]).unwrap();
+        run(
+            &work,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        )
+        .unwrap();
         (work, remote)
     }
 
@@ -1070,7 +1143,9 @@ mod tests {
         let files = vec![fe("src/app/view/git.rs"), fe("README.md")];
         let rows = tree_rows(&files);
         match &rows[..] {
-            [TreeRow::Dir { label, depth: 0, .. }, TreeRow::File { idx: 0, depth: 1 }, TreeRow::File { idx: 1, depth: 0 }] => {
+            [TreeRow::Dir {
+                label, depth: 0, ..
+            }, TreeRow::File { idx: 0, depth: 1 }, TreeRow::File { idx: 1, depth: 0 }] => {
                 assert_eq!(label, "src/app/view")
             }
             _ => panic!("unexpected tree shape"),
@@ -1084,7 +1159,12 @@ mod tests {
     fn trailing_slash_dir_is_named_not_nameless() {
         let rows = tree_rows(&[fe("embedded/")]);
         match &rows[..] {
-            [TreeRow::Dir { label, path, depth: 0, .. }] => {
+            [TreeRow::Dir {
+                label,
+                path,
+                depth: 0,
+                ..
+            }] => {
                 assert_eq!(label, "embedded");
                 assert_eq!(path, "embedded");
             }
@@ -1100,7 +1180,12 @@ mod tests {
         files[0].staged = true;
         let rows = tree_rows(&files);
         match &rows[..] {
-            [TreeRow::Dir { path, depth: 0, staged: Stage::Partial, .. }, TreeRow::File { depth: 1, .. }, TreeRow::File { depth: 1, .. }] => {
+            [TreeRow::Dir {
+                path,
+                depth: 0,
+                staged: Stage::Partial,
+                ..
+            }, TreeRow::File { depth: 1, .. }, TreeRow::File { depth: 1, .. }] => {
                 assert_eq!(path, "src")
             }
             _ => panic!("unexpected tree shape"),
@@ -1137,7 +1222,8 @@ mod tests {
     #[test]
     fn parse_change_rename_uses_new_path_before_the_tab() {
         // "2 XY sub mH mI mW hH hI <score> <new>\t<orig>" — keep the new name.
-        let e = parse_change("2 R. N... 100644 100644 100644 aaaa bbbb R100 new.rs\told.rs").unwrap();
+        let e =
+            parse_change("2 R. N... 100644 100644 100644 aaaa bbbb R100 new.rs\told.rs").unwrap();
         assert_eq!(e.path, "new.rs");
         assert!(e.staged);
         assert_eq!(e.glyph, 'R');

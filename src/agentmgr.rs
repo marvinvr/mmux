@@ -19,7 +19,7 @@ use crate::config;
 /// sequence of CLI tokens present in the row's `args`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Mode {
-    /// The harness's own interactive default — every action prompts.
+    /// The harness's own interactive default; approval behavior is harness-specific.
     Normal,
     /// Auto-accept file edits; still prompt for riskier actions (shell, network).
     Auto,
@@ -47,7 +47,7 @@ pub(crate) struct Row {
     pub blurb: &'static str,
     /// The preset's auto-accept-edits flags, if it has that mode.
     pub auto_flags: Option<&'static [&'static str]>,
-    /// The preset's danger flags, if it has that mode (every shipped preset does).
+    /// The preset's danger flags, if it has that mode.
     pub danger_flags: Option<&'static [&'static str]>,
     /// Whether this agent is configured (shown/spawnable).
     pub enabled: bool,
@@ -62,7 +62,10 @@ impl Row {
     /// The mode this row currently launches in, read back from its `args`: danger wins
     /// over auto if both flag sets are somehow present, else auto, else the plain default.
     pub(crate) fn mode(&self) -> Mode {
-        if self.danger_flags.is_some_and(|s| contains_seq(&self.args, s)) {
+        if self
+            .danger_flags
+            .is_some_and(|s| contains_seq(&self.args, s))
+        {
             Mode::Danger
         } else if self.auto_flags.is_some_and(|s| contains_seq(&self.args, s)) {
             Mode::Auto
@@ -113,7 +116,10 @@ impl Row {
 
 /// Whether `args` contains `seq` as a contiguous run of tokens.
 fn contains_seq(args: &[String], seq: &[&str]) -> bool {
-    !seq.is_empty() && args.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+    !seq.is_empty()
+        && args
+            .windows(seq.len())
+            .any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
 }
 
 /// Remove every contiguous occurrence of `seq` from `args` (flag *and* its value token).
@@ -164,9 +170,17 @@ impl AgentManager {
         let custom = current
             .into_iter()
             .filter(|a| config::preset_by_name(&a.name).is_none())
-            .map(|a| config::AgentDraft { name: a.name, cmd: a.cmd, args: a.args })
+            .map(|a| config::AgentDraft {
+                name: a.name,
+                cmd: a.cmd,
+                args: a.args,
+            })
             .collect();
-        AgentManager { rows, custom, cursor: 0 }
+        AgentManager {
+            rows,
+            custom,
+            cursor: 0,
+        }
     }
 
     /// A first-run manager for `mmux init`: a row per preset with **installed ones
@@ -189,7 +203,11 @@ impl AgentManager {
                 }
             })
             .collect();
-        AgentManager { rows, custom: Vec::new(), cursor: 0 }
+        AgentManager {
+            rows,
+            custom: Vec::new(),
+            cursor: 0,
+        }
     }
 
     pub(crate) fn move_cursor(&mut self, delta: i32) {
@@ -309,6 +327,16 @@ mod tests {
     }
 
     #[test]
+    fn cycle_is_a_noop_when_the_preset_has_no_modes() {
+        let mut r = row("Pi", true, &["--model", "anthropic/claude-sonnet-4-5"]);
+        r.auto_flags = None;
+        r.danger_flags = None;
+        r.cycle_mode();
+        assert_eq!(r.mode(), Mode::Normal);
+        assert_eq!(r.args, vec!["--model", "anthropic/claude-sonnet-4-5"]);
+    }
+
+    #[test]
     fn toggle_all_selects_then_clears() {
         let mut m = AgentManager {
             rows: vec![row("A", true, &[]), row("B", false, &[])],
@@ -324,8 +352,15 @@ mod tests {
     #[test]
     fn drafts_emit_enabled_presets_then_customs() {
         let m = AgentManager {
-            rows: vec![row("Claude", true, &["--dangerously-skip-permissions"]), row("Codex", false, &[])],
-            custom: vec![config::AgentDraft { name: "MyBot".into(), cmd: "mybot".into(), args: vec![] }],
+            rows: vec![
+                row("Claude", true, &["--dangerously-skip-permissions"]),
+                row("Codex", false, &[]),
+            ],
+            custom: vec![config::AgentDraft {
+                name: "MyBot".into(),
+                cmd: "mybot".into(),
+                args: vec![],
+            }],
             cursor: 0,
         };
         let d = m.drafts();

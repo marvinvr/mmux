@@ -119,8 +119,8 @@ mod tests {
 
     #[test]
     fn tmux_wraps_and_doubles_escapes() {
-        let s = String::from_utf8(note().escape_bytes(NotifyMechanism::Osc777, true).unwrap())
-            .unwrap();
+        let s =
+            String::from_utf8(note().escape_bytes(NotifyMechanism::Osc777, true).unwrap()).unwrap();
         assert!(s.starts_with("\x1bPtmux;"));
         assert!(s.ends_with("\x1b\\"));
         // The inner OSC's introducing ESC is doubled so tmux passes it through.

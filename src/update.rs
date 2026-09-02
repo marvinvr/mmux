@@ -74,9 +74,7 @@ pub enum UpdateMsg {
 /// escape hatch. The install-kind test is deferred into the worker thread so startup
 /// never blocks on `brew` or a filesystem probe.
 pub fn permitted(cfg_allows: bool) -> bool {
-    cfg_allows
-        && !cfg!(debug_assertions)
-        && std::env::var_os("MMUX_NO_UPDATE").is_none()
+    cfg_allows && !cfg!(debug_assertions) && std::env::var_os("MMUX_NO_UPDATE").is_none()
 }
 
 /// Kick off a background check: classify the install, then report whether a newer version
@@ -252,7 +250,15 @@ fn check_latest() -> Result<Option<String>, String> {
 /// `…/releases/tag/vX.Y.Z` URL. A plain web redirect, so no REST API rate limit, no token.
 fn latest_version() -> Result<String, String> {
     let out = Command::new("curl")
-        .args(["-fsSL", "--max-time", "10", "-o", "/dev/null", "-w", "%{url_effective}"])
+        .args([
+            "-fsSL",
+            "--max-time",
+            "10",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{url_effective}",
+        ])
         .arg(RELEASES_LATEST)
         .output()
         .map_err(|e| format!("running curl: {e}"))?;
@@ -296,7 +302,9 @@ fn run_self_install(version: &str) -> Result<(), String> {
     let target = asset_target().ok_or_else(|| "unsupported platform".to_string())?;
     let exe = std::env::current_exe().map_err(|e| format!("locating binary: {e}"))?;
     let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
-    let dir = exe.parent().ok_or_else(|| "binary has no parent directory".to_string())?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| "binary has no parent directory".to_string())?;
 
     let url = format!("{DOWNLOAD_BASE}/v{version}/mmux-{target}.tar.gz");
     let stage = dir.join(format!(".mmux-update-{}", std::process::id()));
@@ -382,7 +390,10 @@ fn version_gt(a: &str, b: &str) -> bool {
     }
     let (a, b) = (parts(a), parts(b));
     for i in 0..a.len().max(b.len()) {
-        let (x, y) = (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0));
+        let (x, y) = (
+            a.get(i).copied().unwrap_or(0),
+            b.get(i).copied().unwrap_or(0),
+        );
         if x != y {
             return x > y;
         }

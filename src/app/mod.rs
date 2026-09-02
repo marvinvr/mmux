@@ -180,8 +180,8 @@ pub(crate) struct App {
     start: Instant,
 
     // View scratch, recomputed every frame.
-    compact: bool,     // single-column (phone) mode
-    regions: Regions,  // per-frame hit rects + sidebar row map
+    compact: bool,           // single-column (phone) mode
+    regions: Regions,        // per-frame hit rects + sidebar row map
     drag: Option<Selection>, // in-progress mouse drag-to-copy selection
     /// A URL under the current left-press, opened on release if the press doesn't
     /// become a drag (a drag is a copy instead). Set in `on_left_down`, consumed in
@@ -224,7 +224,7 @@ pub(crate) struct App {
     last_sixel: Option<(Rect, String)>,
 
     // Notifications.
-    in_tmux: bool,                          // wrap notification OSCs in tmux passthrough?
+    in_tmux: bool, // wrap notification OSCs in tmux passthrough?
     last_notified: HashMap<String, Instant>, // per-session throttle, keyed by name
 
     // Background self-update (Homebrew + native-binary installs). Workers report
@@ -421,7 +421,7 @@ impl App {
         // when the stack follows you there.
         app.sync_worktree_projects();
 
-        // Bring the previous agents/terminals back (Claude/Codex/Grok resumed). This runs
+        // Bring the previous agents/terminals back (Claude/Codex/Pi/Grok resumed). This runs
         // on every fresh start — after a quit, a crash, or a self-update restart — and
         // is a no-op when there's no saved state. It's safe to do unconditionally: the
         // tmux singleton means a *new* inner process only starts when there's no live
@@ -908,10 +908,10 @@ fn emit_sixel(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) 
             if changed {
                 let mut out = stdout();
                 write!(out, "\x1b7")?; // save cursor
-                // Wipe the previous picture's cells first, so switching to a
-                // smaller/differently-shaped image leaves no leftover pixels around it.
-                // Both frames are image-mode (the pane buffer there is blank), so erasing
-                // to spaces stays consistent with what ratatui believes it drew.
+                                       // Wipe the previous picture's cells first, so switching to a
+                                       // smaller/differently-shaped image leaves no leftover pixels around it.
+                                       // Both frames are image-mode (the pane buffer there is blank), so erasing
+                                       // to spaces stays consistent with what ratatui believes it drew.
                 if let Some((old, _)) = &app.last_sixel {
                     erase_rect(&mut out, *old)?;
                 }
@@ -1003,10 +1003,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 for event in input.push(event::read()?, Instant::now()) {
                     dispatch_event(app, event);
                 }
-                if app.should_quit
-                    || app.restart
-                    || !event::poll(Duration::ZERO)?
-                {
+                if app.should_quit || app.restart || !event::poll(Duration::ZERO)? {
                     break;
                 }
             }

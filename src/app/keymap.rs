@@ -101,7 +101,10 @@ mod tests {
 
     #[test]
     fn plain_char() {
-        assert_eq!(encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0), b"a");
+        assert_eq!(
+            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0),
+            b"a"
+        );
     }
 
     #[test]
@@ -122,7 +125,10 @@ mod tests {
 
     #[test]
     fn enter_is_carriage_return() {
-        assert_eq!(encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 1), b"\r");
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 1),
+            b"\r"
+        );
         assert_eq!(
             encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 0),
             b"\r"
@@ -141,10 +147,7 @@ mod tests {
         );
         assert_eq!(
             encode_key(
-                &key(
-                    KeyCode::Enter,
-                    KeyModifiers::SHIFT | KeyModifiers::CONTROL
-                ),
+                &key(KeyCode::Enter, KeyModifiers::SHIFT | KeyModifiers::CONTROL),
                 1
             ),
             b"\x1b[13;6u"
