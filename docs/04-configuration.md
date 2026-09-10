@@ -351,10 +351,20 @@ projects (plus the global config) as usual.
   not immediate children, so saving never silently drops them. `mmux` and `git` tags are hints,
   not requirements.
 - **Inside the TUI:** press `W` from the sidebar. This hotkey and its footer button appear only in
-  a manifest workspace. Press `n` to edit the name; folder selection and ordering use the same
+  a manifest workspace. Press `Ctrl+N` to edit the name; folder selection and ordering use the same
   keys as the terminal picker. Saving reloads safely: name changes appear immediately and new
   members append live with their normal autostarts and removals apply immediately. Ordering applies
   on reopen.
+
+Both editors put a search bar above the folder list, the same one the
+[`mmux attach` picker](03-usage.md#attaching-from-anywhere) uses: a parent directory full of
+folders stays usable because plain typing fuzzy-filters the list by path. `↑`/`↓` move through the
+matches, `Space` toggles the highlighted folder, `Backspace` trims the query, and `Esc` clears it
+(cancelling on a second press). Because plain letters type, the shortcuts sit on chords:
+`Ctrl+A` selects or clears every shown folder, and `Shift`/`Alt`/`Ctrl` + `↑`/`↓` moves a folder in
+manifest order. Ordering needs an empty search, since a filtered list hides the neighbours a row
+would move past. Searching only hides rows — it never changes what is selected or what gets
+saved.
 
 Both editors replace only the owned `name` line and `workspace:` block. If a private
 `mmux.local.yml` already owns `workspace:`, that layer is edited so the saved choice is not hidden

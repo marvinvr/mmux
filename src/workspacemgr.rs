@@ -34,6 +34,10 @@ pub(crate) struct WorkspaceManager {
     /// restore snapshots to stable identities before a reorder is written.
     pub original_projects: Vec<PathBuf>,
     pub cursor: usize,
+    /// Live fuzzy filter over the row paths. Both frontends type straight into it —
+    /// a parent directory with dozens of children is unusable without one — and it
+    /// only ever hides rows: selection, order, and the saved manifest are untouched.
+    pub filter: String,
     /// TUI-only name-edit mode. The terminal frontend asks for the name before it
     /// enters raw mode, but keeping the edit buffer here lets both frontends still
     /// share one model and validation path.
@@ -110,17 +114,66 @@ impl WorkspaceManager {
             rows,
             original_projects,
             cursor: 0,
+            filter: String::new(),
             editing_name: false,
             error: None,
         })
     }
 
+    /// Row indices the filter lets through, in manifest order. Matching is the file
+    /// picker's fuzzy scorer, but the score only decides *whether* a row shows: manifest
+    /// order is the meaningful order here, so matches are never re-ranked.
+    pub(crate) fn visible(&self) -> Vec<usize> {
+        let q = self.filter.trim();
+        if q.is_empty() {
+            return (0..self.rows.len()).collect();
+        }
+        self.rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| crate::app::picker::score(q, &r.path).is_some())
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    pub(crate) fn push_filter(&mut self, c: char) {
+        self.filter.push(c);
+        self.settle_cursor();
+    }
+
+    pub(crate) fn pop_filter(&mut self) {
+        self.filter.pop();
+        self.settle_cursor();
+    }
+
+    /// Drop the filter, reporting whether there was one. Frontends use the answer to
+    /// give `Esc` the search-bar behavior: clear first, cancel on a second press.
+    pub(crate) fn clear_filter(&mut self) -> bool {
+        if self.filter.is_empty() {
+            return false;
+        }
+        self.filter.clear();
+        self.settle_cursor();
+        true
+    }
+
+    /// Keep the cursor on a row the filter still shows.
+    fn settle_cursor(&mut self) {
+        let visible = self.visible();
+        if !visible.contains(&self.cursor) {
+            self.cursor = visible.first().copied().unwrap_or(0);
+        }
+        self.error = None;
+    }
+
     pub(crate) fn move_cursor(&mut self, delta: i32) {
-        let len = self.rows.len() as i32;
-        if len == 0 {
+        let visible = self.visible();
+        if visible.is_empty() {
             return;
         }
-        self.cursor = (self.cursor as i32 + delta).clamp(0, len - 1) as usize;
+        let pos = visible.iter().position(|&i| i == self.cursor).unwrap_or(0) as i32;
+        let to = (pos + delta).clamp(0, visible.len() as i32 - 1) as usize;
+        self.cursor = visible[to];
         self.error = None;
     }
 
@@ -131,11 +184,12 @@ impl WorkspaceManager {
         self.error = None;
     }
 
-    /// Select every candidate, or clear the selection when they all already are.
+    /// Select every candidate the filter shows, or clear them when they all already are.
     pub(crate) fn toggle_all(&mut self) {
-        let all_on = !self.rows.is_empty() && self.rows.iter().all(|r| r.enabled);
-        for r in self.rows.iter_mut() {
-            r.enabled = !all_on;
+        let visible = self.visible();
+        let all_on = !visible.is_empty() && visible.iter().all(|&i| self.rows[i].enabled);
+        for i in visible {
+            self.rows[i].enabled = !all_on;
         }
         self.error = None;
     }
@@ -143,6 +197,12 @@ impl WorkspaceManager {
     /// Move the highlighted row, which also defines the persisted manifest order.
     pub(crate) fn reorder(&mut self, delta: i32) {
         if self.rows.is_empty() {
+            return;
+        }
+        // Moving a row past hidden neighbours would rewrite manifest order in ways the
+        // filtered view can't show, so ordering waits until the search is cleared.
+        if !self.filter.trim().is_empty() {
+            self.error = Some("clear the search to reorder".into());
             return;
         }
         let to = (self.cursor as i32 + delta).clamp(0, self.rows.len() as i32 - 1) as usize;
@@ -203,4 +263,61 @@ fn ignored_child(name: &str) -> bool {
             name,
             "node_modules" | "target" | "dist" | "build" | "vendor" | "coverage"
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WorkspaceManager;
+
+    /// A manager over a throwaway directory holding `names` as child folders.
+    fn manager(tag: &str, names: &[&str]) -> WorkspaceManager {
+        let root = std::env::temp_dir().join(format!("mmux-wsmgr-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for name in names {
+            std::fs::create_dir_all(root.join(name)).expect("creating a child directory");
+        }
+        WorkspaceManager::new(&root).expect("discovering the directory")
+    }
+
+    #[test]
+    fn filtering_hides_rows_without_touching_selection_or_order() {
+        let mut m = manager("filter", &["api", "web", "worker"]);
+        let order: Vec<String> = m.rows.iter().map(|r| r.path.clone()).collect();
+        m.toggle_all();
+        for c in "wor".chars() {
+            m.push_filter(c);
+        }
+        let shown: Vec<&str> = m
+            .visible()
+            .iter()
+            .map(|&i| m.rows[i].path.as_str())
+            .collect();
+        assert_eq!(shown, vec!["worker"], "fuzzy match on the folder path");
+        assert!(
+            m.rows.iter().map(|r| r.path.clone()).eq(order),
+            "a search must not reorder or drop rows"
+        );
+        assert_eq!(m.selected_count(), 4, "a search must not change selection");
+
+        // The cursor follows the filter, and returns to a full list on Esc.
+        assert_eq!(m.rows[m.cursor].path, "worker");
+        assert!(m.clear_filter(), "the first Esc reports a cleared search");
+        assert!(!m.clear_filter(), "a second Esc has nothing left to clear");
+        assert_eq!(m.visible().len(), m.rows.len());
+    }
+
+    #[test]
+    fn all_and_reorder_respect_the_active_search() {
+        let mut m = manager("scoped", &["api", "web"]);
+        for c in "web".chars() {
+            m.push_filter(c);
+        }
+        m.toggle_all();
+        assert_eq!(m.selected_count(), 1, "`all` covers only the shown rows");
+        m.reorder(-1);
+        assert!(
+            m.error.is_some(),
+            "ordering is refused while rows are hidden"
+        );
+    }
 }

@@ -513,14 +513,15 @@ fn render_agentmgr(f: &mut Frame, area: Rect, m: &AgentManager) {
     );
 }
 
-/// The manifest workspace manager: editable name plus a scrollable checkbox list.
-/// Tags help distinguish ready project folders from plain directories without making
-/// configuration or git a requirement.
+/// The manifest workspace manager: editable name, a search bar, and a scrollable
+/// checkbox list. Tags help distinguish ready project folders from plain directories
+/// without making configuration or git a requirement.
 fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
     let w = area.width.saturating_sub(6).clamp(42, 76);
-    let h = area.height.saturating_sub(4).clamp(9, 22);
+    let h = area.height.saturating_sub(4).clamp(11, 24);
     let inner = modal_frame(f, area, w, h, " Workspace ", Color::Magenta);
-    if inner.width == 0 || inner.height < 5 {
+    // Name, blank, search, blank, one row, status, hint.
+    if inner.width == 0 || inner.height < 7 {
         return;
     }
 
@@ -552,14 +553,50 @@ fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
         },
     );
 
-    let list_y = inner.y + 2;
+    // The search bar, mirroring the `mmux attach` picker: always drawn, never the
+    // selection, with a caret marking it as the live target for plain typing.
+    let mut search = Vec::new();
+    if m.filter.is_empty() {
+        search.push(Span::styled("▏", Style::default().fg(Color::Magenta)));
+        search.push(Span::styled(
+            " type to search folders",
+            Style::default().fg(Color::DarkGray),
+        ));
+    } else {
+        search.push(Span::styled(
+            m.filter.clone(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ));
+        search.push(Span::styled("▏", Style::default().fg(Color::Magenta)));
+    }
+    f.render_widget(
+        Paragraph::new(Line::from(search)),
+        Rect {
+            x: inner.x,
+            y: inner.y + 2,
+            width: inner.width,
+            height: 1,
+        },
+    );
+
+    let list_y = inner.y + 4;
     let hint_y = inner.y + inner.height - 1;
     let status_y = hint_y.saturating_sub(1);
     let list_h = status_y.saturating_sub(list_y) as usize;
-    let scroll = list_scroll(m.cursor, list_h);
+    let visible = m.visible();
+    let pos = visible.iter().position(|&i| i == m.cursor).unwrap_or(0);
+    let scroll = list_scroll(pos, list_h);
     let mut lines = Vec::new();
-    for i in scroll..scroll + list_h {
-        let Some(r) = m.rows.get(i) else { break };
+    if visible.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  no matching folders",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    for &i in visible.iter().skip(scroll).take(list_h) {
+        let r = &m.rows[i];
         let selected = i == m.cursor;
         let checkbox = if r.enabled { "[x]" } else { "[ ]" };
         let checkbox_style = if r.enabled {
@@ -618,10 +655,14 @@ fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
         },
     );
 
-    let status = m
-        .error
-        .clone()
-        .unwrap_or_else(|| format!("{} projects selected", m.selected_count()));
+    let status = m.error.clone().unwrap_or_else(|| {
+        let selected = format!("{} projects selected", m.selected_count());
+        if m.filter.is_empty() {
+            selected
+        } else {
+            format!("{selected} · {} of {} shown", visible.len(), m.rows.len())
+        }
+    });
     let status_style = if m.error.is_some() {
         Style::default().fg(Color::Yellow)
     } else {
@@ -639,7 +680,7 @@ fn render_workspacemgr(f: &mut Frame, area: Rect, m: &WorkspaceManager) {
     let hint = if m.editing_name {
         "type a name · ⏎ done · esc done"
     } else {
-        "space toggle · J/K manifest · a all · n name · ⏎ save · esc cancel"
+        "type to search · space toggle · ⇧↑↓ order · ^a all · ^n name · ⏎ save · esc clear/cancel"
     };
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(

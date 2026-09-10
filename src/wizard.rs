@@ -458,11 +458,12 @@ fn draw_agent_rows(out: &mut io::Stdout, m: &AgentManager, height: u16, first: b
 fn select_workspace(m: &mut WorkspaceManager) -> Result<bool> {
     println!(
         "{}",
-        dim("↑↓ move · space toggle · J/K reorder · a all/none · ⏎ save · esc cancel")
+        dim("type to search · ↑↓ move · space toggle · ⇧↑↓ reorder · ^a all/none · ⏎ save · esc cancel")
     );
     println!("{}", dim("Their row order is saved in the manifest."));
     // A bounded window keeps a parent containing many directories usable without
-    // taking over the whole terminal. The extra line is the live count/error footer.
+    // taking over the whole terminal. The extra lines are the search bar and the
+    // live count/error footer.
     let term_h = ratatui::crossterm::terminal::size()
         .map(|(_, h)| h)
         .unwrap_or(24);
@@ -471,7 +472,7 @@ fn select_workspace(m: &mut WorkspaceManager) -> Result<bool> {
         .len()
         .min(term_h.saturating_sub(8).clamp(5, 15) as usize)
         .max(1);
-    let height = visible as u16 + 1;
+    let height = visible as u16 + 2;
     let mut out = io::stdout();
     enable_raw_mode()?;
     let result = workspace_select_loop(&mut out, m, visible, height);
@@ -491,16 +492,34 @@ fn workspace_select_loop(
         draw_workspace_rows(out, m, visible, height, first)?;
         first = false;
         match event::read()? {
+            // Plain typing goes to the search bar (as in the TUI overlay and the
+            // `mmux attach` picker), so the letter shortcuts live on chords here too.
             Event::Key(k) if k.kind == KeyEventKind::Press => match (k.code, k.modifiers) {
-                (KeyCode::Up, _) | (KeyCode::Char('k'), _) => m.move_cursor(-1),
-                (KeyCode::Down, _) | (KeyCode::Char('j'), _) => m.move_cursor(1),
-                (KeyCode::Char('K'), _) => m.reorder(-1),
-                (KeyCode::Char('J'), _) => m.reorder(1),
-                (KeyCode::Char(' '), _) => m.toggle_enabled(),
-                (KeyCode::Char('a'), _) => m.toggle_all(),
-                (KeyCode::Enter, _) if m.validate() => return Ok(true),
-                (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => return Ok(false),
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(false),
+                (KeyCode::Up, mods) | (KeyCode::Down, mods)
+                    if mods.intersects(
+                        KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL,
+                    ) =>
+                {
+                    m.reorder(if k.code == KeyCode::Up { -1 } else { 1 })
+                }
+                (KeyCode::Up, _) => m.move_cursor(-1),
+                (KeyCode::Down, _) => m.move_cursor(1),
+                (KeyCode::Char(' '), _) => m.toggle_enabled(),
+                (KeyCode::Char('a'), KeyModifiers::CONTROL) => m.toggle_all(),
+                (KeyCode::Backspace, _) => m.pop_filter(),
+                (KeyCode::Enter, _) if m.validate() => return Ok(true),
+                // Esc clears the search first, then cancels.
+                (KeyCode::Esc, _) => {
+                    if !m.clear_filter() {
+                        return Ok(false);
+                    }
+                }
+                (KeyCode::Char(c), mods)
+                    if !mods.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    m.push_filter(c)
+                }
                 _ => {}
             },
             _ => {}
@@ -519,13 +538,22 @@ fn draw_workspace_rows(
         execute!(out, MoveToPreviousLine(height))?;
     }
     execute!(out, Clear(ClearType::FromCursorDown))?;
-    let start = if m.cursor >= visible {
-        m.cursor + 1 - visible
+    let search = if m.filter.is_empty() {
+        dim("▏ type to search folders")
     } else {
-        0
+        format!("{}{}", m.filter, dim("▏"))
     };
-    for i in start..start + visible {
-        if let Some(r) = m.rows.get(i) {
+    write!(out, "{search}\r\n")?;
+    let rows = m.visible();
+    let pos = rows.iter().position(|&i| i == m.cursor).unwrap_or(0);
+    let start = if pos >= visible { pos + 1 - visible } else { 0 };
+    for slot in start..start + visible {
+        if rows.is_empty() && slot == start {
+            write!(out, "{}\r\n", dim("  no matching folders"))?;
+            continue;
+        }
+        if let Some(&i) = rows.get(slot) {
+            let r = &m.rows[i];
             let selected = i == m.cursor;
             let marker = if selected { "› " } else { "  " };
             let checkbox = if r.enabled {
@@ -565,10 +593,14 @@ fn draw_workspace_rows(
             write!(out, "\r\n")?;
         }
     }
-    let status = m
-        .error
-        .clone()
-        .unwrap_or_else(|| format!("{} selected", m.selected_count()));
+    let status = m.error.clone().unwrap_or_else(|| {
+        let selected = format!("{} selected", m.selected_count());
+        if m.filter.is_empty() {
+            selected
+        } else {
+            format!("{selected} · {} of {} shown", rows.len(), m.rows.len())
+        }
+    });
     let status = if m.error.is_some() {
         paint(YELLOW, &status)
     } else {

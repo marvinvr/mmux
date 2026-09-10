@@ -958,6 +958,13 @@ impl App {
                 m.name.push_str(&s);
                 m.error = None;
             }
+            // Not editing the name: the workspace manager's other text target is its
+            // search bar, so a pasted fragment filters the folder list.
+            Some(Overlay::Workspace(m)) => {
+                for c in s.chars() {
+                    m.push_filter(c);
+                }
+            }
             _ if self.focus == Focus::Terminal => self.send_focused(s.into_bytes()),
             _ => {}
         }

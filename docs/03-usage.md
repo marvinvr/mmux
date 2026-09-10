@@ -95,7 +95,7 @@ terminal input.
 | `a` | Open the [agent manager](04-configuration.md#agent) — add/remove the built-in harnesses (Claude, Codex, Pi, Gemini, Amp, opencode, Grok) and cycle each one's available launch modes (`m`: normal → auto → danger); saves to the global config and reloads |
 | `w` | New [worktree](#worktrees) of the active project — the same pre-filled prompt as `w` in the git panel (git repositories only) |
 | `X` | Remove the selected [worktree](#worktrees) — the same confirmation as `X` in the git panel, spelling out what would be lost (worktree rows only) |
-| `W` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — edit its name, folders, and manifest order (manifest workspaces only) |
+| `W` | Open the [workspace manager](04-configuration.md#managing-a-workspace) — search, edit its name, folders, and manifest order (manifest workspaces only) |
 | `p` | Open the project switcher in [phone mode](#narrow-terminals-and-phones) (multi-project workspaces only) |
 | `R` | [Reload config](04-configuration.md#live-reload) live |
 | `U` | Restart to apply a staged [self-update](04-configuration.md#auto-update) (only when the `↻` badge is showing; you can also click it) |

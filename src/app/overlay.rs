@@ -495,10 +495,11 @@ impl App {
         self.overlay = Some(Overlay::Agents(m));
     }
 
-    /// Keys for the manifest workspace manager. `n` edits its display name; the list
-    /// uses the same checkbox vocabulary as the agent manager, with `J/K` additionally
-    /// changing persisted manifest order. Saving structural edits reconciles additions
-    /// and removals live; manifest reordering applies on reopen.
+    /// Keys for the manifest workspace manager. Like the `mmux attach` picker, plain
+    /// typing goes to the always-present search bar, so the letter shortcuts moved to
+    /// chords: `^n` edits the display name, `^a` toggles every shown row, and
+    /// `⇧/⌥/^ + ↑↓` changes persisted manifest order. Saving structural edits
+    /// reconciles additions and removals live; manifest reordering applies on reopen.
     fn workspacemgr_key(&mut self, k: KeyEvent) {
         let Some(Overlay::Workspace(mut m)) = self.overlay.take() else {
             return;
@@ -522,15 +523,35 @@ impl App {
             self.overlay = Some(Overlay::Workspace(m));
             return;
         }
+        // A modified arrow is the reorder gesture now that `J`/`K` type into the search.
+        let reorders = k
+            .modifiers
+            .intersects(KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL);
         match k.code {
-            KeyCode::Esc | KeyCode::Char('q') => return,
-            KeyCode::Up | KeyCode::Char('k') => m.move_cursor(-1),
-            KeyCode::Down | KeyCode::Char('j') => m.move_cursor(1),
-            KeyCode::Char('K') => m.reorder(-1),
-            KeyCode::Char('J') => m.reorder(1),
+            // Esc clears the search first (search-bar convention), then cancels.
+            KeyCode::Esc => {
+                if !m.clear_filter() {
+                    return;
+                }
+            }
+            KeyCode::Up if reorders => m.reorder(-1),
+            KeyCode::Down if reorders => m.reorder(1),
+            KeyCode::Up => m.move_cursor(-1),
+            KeyCode::Down => m.move_cursor(1),
             KeyCode::Char(' ') => m.toggle_enabled(),
-            KeyCode::Char('a') => m.toggle_all(),
-            KeyCode::Char('n') => m.editing_name = true,
+            KeyCode::Char('a') if k.modifiers.contains(KeyModifiers::CONTROL) => m.toggle_all(),
+            KeyCode::Char('n') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                m.editing_name = true
+            }
+            KeyCode::Backspace => m.pop_filter(),
+            // Anything else printable types into the search bar; chords stay free.
+            KeyCode::Char(c)
+                if !k
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                m.push_filter(c)
+            }
             KeyCode::Enter if m.validate() => {
                 self.apply_workspace_manager(&m);
                 return;
