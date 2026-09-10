@@ -283,7 +283,7 @@ cursor through all three.
   Changes cursor, self-refreshes) and a static commit diff (`git show`, rendered with per-file
   dividers, chosen in the Commits box).
 - **`app/commit.rs`** owns commit-message workers and scheduled commits. It detects the optional
-  Codex/Claude CLIs, sends the model a context assembled by top-level `git.rs` with aggregate,
+  Claude/Codex CLIs (preferring Claude), sends the model a context assembled by top-level `git.rs` with aggregate,
   per-file, and file-count caps, and polls/kills the child from a worker thread. A job id connects a
   worker to the commit prompt, so the first edit cancels the exact process and a late response can
   never overwrite user text. The same channel drives empty-field deferred commits and timer-fired

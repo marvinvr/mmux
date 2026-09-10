@@ -449,7 +449,7 @@ impl App {
 fn installed_providers() -> Vec<Provider> {
     // Deterministic when both are installed; an invocation/auth failure falls through
     // to the other CLI. Each provider uses its cheap non-snapshot model name above.
-    [Provider::Codex, Provider::Claude]
+    [Provider::Claude, Provider::Codex]
         .into_iter()
         .filter(|provider| executable_exists(provider.executable()))
         .collect()

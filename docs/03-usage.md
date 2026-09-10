@@ -205,9 +205,9 @@ fetches never overlap pull/push, and local-only directories make no network call
 
 ### Generated Commit Messages
 
-When `codex` or `claude` is on `PATH`, opening the commit prompt with `c` starts a message
-suggestion in the background. mmux prefers Codex with the cost-sensitive `gpt-5.6-luna` model and
-falls back to Claude with its rolling `haiku` alias if Codex cannot run. With neither CLI installed,
+When `claude` or `codex` is on `PATH`, opening the commit prompt with `c` starts a message
+suggestion in the background. mmux prefers Claude with its rolling `haiku` alias and falls back to
+Codex with the cost-sensitive `gpt-5.6-luna` model if Claude cannot run. With neither CLI installed,
 the prompt behaves as an ordinary empty commit field.
 
 The generator receives the recent commit subjects plus the changes that would actually be

@@ -302,8 +302,8 @@ WORKSPACES — several projects in ONE session
     are killed. Ordering applies when the workspace is reopened.
 
 GIT COMMITS — generated now or scheduled
-    In the git panel, `c` opens the commit field and asks an installed Codex
-    (`gpt-5.6-luna`) or Claude (`haiku`) CLI for a one-line message. Typing or
+    In the git panel, `c` opens the commit field and asks an installed Claude
+    (`haiku`) or Codex (`gpt-5.6-luna`) CLI for a one-line message. Typing or
     pasting cancels generation. Submit the empty field to commit when the message
     arrives; ^P also pushes. The CLI gets capped diff context (40 files, 12 KiB
     each, 64 KiB total), runs read-only, and is optional.
