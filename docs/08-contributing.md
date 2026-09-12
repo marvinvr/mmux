@@ -147,11 +147,13 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
   one created in a shell appears on the next reload rather than immediately. There is no cap on projects: past
   what fits, the sidebar column is laid out at full height and scrolled (wheel, or by moving the
   cursor), so every project stays reachable.
-- **The stack swap is checkout-granular, not process-granular.** Whether a process moves is decided
-  by "is it running in a sibling checkout", with no per-process opt-out. A process whose `stop:`
-  teardown outlives its pane (a compose stack) is the case the `Draining` phase exists for; a
-  process that leaks children *without* declaring a `stop:` will keep its port and the new
-  checkout's copy will fail to bind, exactly as a manual stop/start would.
+- **Eviction is by process name within a family, with no opt-out.** Starting a process stops the
+  same-named one in a sibling checkout; there is no way to declare a process port-free and let two
+  checkouts run it. A process whose `stop:` teardown outlives its pane (a compose stack) is the
+  case the drain exists for; a process that leaks children *without* declaring a `stop:` will keep
+  its port and the new checkout's copy will fail to bind, exactly as a manual stop/start would.
+  Every start must keep going through `start_session` — spawning a `Kind::Process` row directly
+  is what would quietly break the invariant.
 - **Reaping can't see gitignored edits.** A finished worktree is removed on the strength of `git
   status` plus merged/pushed state, so changes to gitignored files inside it (a tweaked `.env`)
   are invisible to the check and go with the checkout. `worktrees.reap: off` for repositories where

@@ -228,25 +228,37 @@ panel at the project you're navigating, so staging and committing land in the ri
   the list under the cursor, and a repository that happens to have a checkout hanging off it ranks
   exactly like a plain project would.
 
-### One Dev Stack Per Repository
+### One Checkout At A Time
 
 Sibling checkouts would otherwise fight over ports. Rather than assigning each one its own, mmux
-keeps **one checkout running at a time**: settle in a project for `SWAP_DWELL` and the set of
-*running process names* moves there — stopped in the old checkout, started in the new one. Same
-ports everywhere, nothing to configure, and with nothing running it's a no-op.
+enforces that a repository never runs the same process in **two checkouts at once**, and makes the
+*start* gesture the thing that moves it. Starting `Dev` in a worktree stops `Dev` in whichever
+sibling was holding it, waits for that side's teardown, and brings yours up on the same port.
 
-The state machine is `Swap` (in [`app/mod.rs`](07-module-map.md)), driven from `tick()`:
+The enforcement point is `App::start_session` in [`app/worktrees.rs`](07-module-map.md), and it is
+the **only** way a session row is started — sidebar `s`, ⏎ on a dead row, `r`, the process form's
+"start automatically", and autostart for a project added by a manifest reload all route through
+it. Because there is one door, the invariant is simply true rather than maintained.
 
-- **`Waiting`** — the dwell. `active` follows the *selection cursor*, so without it, arrowing down
-  the sidebar past a worktree would tear a dev server down and stand it back up. This delay is the
-  only reason the feature is usable.
-- **`Draining`** — teardown (`stop:`) commands run in the background, and the new checkout's
-  processes start only once they've exited (or a deadline passes). Starting sooner would hand the
-  new dev server a port the old stack is still holding.
+It evicts by exact `(family, process name)`: siblings are `family_root`-equal projects, and only a
+process of the same name is stopped, so mmux never stops something it has no way to start again
+and never touches a process you didn't ask about. `Kind::Agent`/`Kind::Terminal` rows skip the
+whole path — they don't bind ports and you want several.
 
-Only processes both checkouts define are moved, so mmux never stops something it can't restart.
-Removing a worktree that holds the stack hands it back to the parent through the same `Draining`
-phase — merging a branch shouldn't cost you your dev server.
+`Swap` (in [`app/mod.rs`](07-module-map.md)) is what's left of the old state machine: the
+**drain**. The evicted side is stopped immediately; its teardown (`stop:`) commands run in the
+background, and the claimed copy starts only once they've exited (or `SWAP_DRAIN_WAIT` passes, so
+a wedged `stop:` can't strand the stack). `poll_swap_drain` runs from `tick()`. It holds a *list*
+of pending `(project, name)` starts so a second claim landing mid-drain joins the same wait, and a
+row already queued is ignored rather than started twice.
+
+Removing a worktree that holds processes hands them back to the parent through the same drain —
+merging a branch shouldn't cost you your dev server. That is the one handover you don't ask for,
+because the alternative is losing the stack outright. `remove_projects` remaps the drain's project
+indices instead of dropping it, so that hand-back survives the removal that triggered it.
+
+There is deliberately **no** timer, dwell, or selection-driven move: navigating the sidebar,
+selecting a worktree, or sitting in one changes no running process.
 
 ### Reaping Finished Worktrees
 
@@ -516,7 +528,8 @@ removes it from the snapshot, so it's easy to get a clean slate.
 | One unified `Session` model | Agents, terminals, and processes differ only in presentation; unifying them removed three-way triplication of spawn/stop/collections. |
 | A worktree is a `Project` | A worktree *is* a directory with its own branch, config and git state — the shape `Project` already has. Reusing it means panes land in the right checkout with no code aimed at the problem, and adds one adjective instead of a concept. |
 | Worktrees discovered from `git worktree list` | Git already tracks them, so a state file could only ever disagree with reality. Nothing to repair, and one made or deleted from a shell is picked up. |
-| One dev stack per repository, not a port per worktree | Same ports everywhere means nothing to configure and one bookmark that's always what you're working in. The dwell timer is what keeps it from thrashing; the drain phase is what keeps it correct. |
+| One checkout at a time, not a port per worktree | Same ports everywhere means nothing to configure and one bookmark that's always what you're working in. |
+| Eviction on *start*, not on selection | An earlier build moved the stack after the cursor rested in a checkout. A process restarting because of where you navigated is surprising and unaskable-for; making the start gesture carry the eviction keeps the same ports-invariant with no timer, no thrash, and nothing happening behind your back. The drain phase is what keeps it correct. |
 | Reap only merged-or-pushed checkouts | Deleting a directory automatically is only defensible when its contents provably live somewhere else. `-d` (never `-D`) keeps the branch when git disagrees. |
 | Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |

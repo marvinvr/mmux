@@ -328,18 +328,21 @@ WORKTREES — a branch as its own project box
 
     Checkouts live in ~/.mmux/worktrees/, never inside the repo — nothing to
     gitignore. mmux copies over the gitignored files a checkout needs (.env and
-    friends) and can run a one-time setup command as a terminal you can watch:
+    friends, at every depth — a monorepo gets each package's) and can run a
+    one-time setup command as a terminal you can watch:
 
       worktrees:
         copy: [.env, node_modules]   # files copied, directories symlinked
         setup: pnpm install
         reap: 30m                    # or `off`
 
-    ONE DEV STACK. Only one checkout of a repo runs its processes at a time.
-    Settle in a worktree for a few seconds and the running ones move there —
-    stopped in the old checkout (teardown commands included, and mmux waits for
-    them), started in the new one. Same ports everywhere, so localhost:3000 is
-    always whatever you're working in. Arrowing past a project moves nothing.
+    ONE DEV STACK. Only one checkout of a repo runs a given process at a time,
+    and starting it is what moves it: press `s` on Dev in a worktree and mmux
+    stops Dev in the checkout that had it (teardown command included, and it
+    waits for that), then starts yours. Same ports everywhere, so localhost:3000
+    is always the branch you last started it in. Nothing moves on its own —
+    navigating the sidebar touches no running process, and agents and terminals
+    are never affected.
 
     FINISHING. `M` merges into the branch it came from (mmux remembered which)
     and offers to clear the checkout away too: y merges and removes, m merges
@@ -358,8 +361,9 @@ FIELD REFERENCE
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
                 · stop (shell line run in the dir when stopped/quit, not on restart)
     git-panel   enabled (bool, default true; the panel is automatic for git repos)
-    worktrees   copy[] (paths a new checkout needs; files copied, dirs symlinked —
-                default .env, .env.local, mmux.local.yml/.yaml) · setup (shell line run
+    worktrees   copy[] (paths a new checkout needs; files copied, dirs symlinked, a
+                bare name taken at every depth — default .env, .env.local,
+                mmux.local.yml/.yaml) · setup (shell line run
                 once in a new checkout) · reap (how long a finished worktree idles
                 before it's cleared away: 30m default, 2h, 90s, or `off`)
     auto-update enabled (bool, default true; Homebrew + script-installed binaries —

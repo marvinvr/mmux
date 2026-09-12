@@ -89,29 +89,25 @@ pub(crate) enum UpdateState {
     Unsupported,
 }
 
-/// A dev stack moving from one checkout of a repository to another.
+/// A dev stack handing over from one checkout of a repository to another.
 ///
-/// Only one checkout of a repo runs its processes at a time, so a worktree's dev
+/// Only one checkout of a repo runs a given process at a time, so a worktree's dev
 /// server reuses its parent's ports and you never think about which one is up. The
-/// move has two phases because it must not overlap: teardown commands
+/// handover is *always* something you asked for — starting a process evicts the
+/// sibling checkout holding it — but it can't overlap: teardown commands
 /// ([`stop:`](crate::config::ProcessDef::stop)) run in the background, and starting
-/// the new checkout's processes before they finish would hand the new dev server a
-/// port the old one is still holding.
-pub(crate) enum Swap {
-    /// The selection is resting on `project`; the move fires once it's been held for
-    /// [`SWAP_DWELL`](worktrees::SWAP_DWELL). This delay is the whole reason the
-    /// feature is usable: `active` follows the selection *cursor*, so arrowing past a
-    /// project must never bounce a dev server.
-    Waiting { project: usize, since: Instant },
-    /// The old checkout's processes have been stopped and their teardown commands are
-    /// running; `names` start in `project` once `children` exit (or `deadline` passes,
-    /// so a wedged teardown can't strand the stack).
-    Draining {
-        project: usize,
-        names: Vec<String>,
-        children: Vec<std::process::Child>,
-        deadline: Instant,
-    },
+/// the new checkout's copy before they finish would hand the new dev server a port the
+/// old one is still holding. So the evicted side is stopped immediately and this
+/// records what to start once the teardown has drained.
+pub(crate) struct Swap {
+    /// `(project, process name)` to start once the drain is done. A list rather than
+    /// one entry so a second claim landing mid-drain joins the same wait instead of
+    /// replacing it.
+    pub(super) starts: Vec<(usize, String)>,
+    /// Teardown commands still running for the checkouts that were evicted.
+    pub(super) children: Vec<std::process::Child>,
+    /// When to start anyway. A wedged `stop:` must not strand the stack.
+    pub(super) deadline: Instant,
 }
 
 pub(crate) struct App {
@@ -145,8 +141,8 @@ pub(crate) struct App {
     /// Agents, plain terminals and processes for every project, each tagged with its
     /// project index. Filtered by project + [`Kind`] to build each sidebar group.
     sessions: Vec<Session>,
-    /// The in-flight "dev stack follows the worktree you're in" move, if any. See
-    /// [`Swap`] and [`App::step_stack_swap`](worktrees).
+    /// The in-flight "this checkout takes the process over" handover, if any. See
+    /// [`Swap`] and [`App::start_session`](worktrees).
     swap: Option<Swap>,
     /// When the idle-worktree reaper may next fork `git` to check its candidates.
     /// Its per-worktree idle clocks update every tick regardless; this only paces the
@@ -417,8 +413,8 @@ impl App {
         // own. This must happen **before** the restore below: restored rows are bound to
         // a canonical project directory, so an agent that was working in a worktree only
         // finds its way home if that worktree is already a loaded project. Deliberately
-        // after the autostart loop — a worktree's processes arrive stopped, and start
-        // when the stack follows you there.
+        // after the autostart loop — a worktree's processes arrive stopped, so autostart
+        // can't bring the same process up in two checkouts at once.
         app.sync_worktree_projects();
 
         // Bring the previous agents/terminals back (Claude/Codex/Pi/Grok resumed). This runs
@@ -547,8 +543,8 @@ impl App {
             }
         }
         self.sync_project_priority();
-        // Move the dev stack to the checkout you've settled in (see `Swap`).
-        self.step_stack_swap();
+        // Land a process handover whose teardown commands have drained (see `Swap`).
+        self.poll_swap_drain();
         // Clear away worktrees that are finished and have gone quiet.
         self.step_worktree_reaper();
         // Drop a stale diff preview, or refresh it so an agent's live edits show.

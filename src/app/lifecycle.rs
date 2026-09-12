@@ -190,8 +190,7 @@ impl App {
             // the next open (`reload` adds it stopped). An edit leaves the run state be —
             // reload already restarts it if the command changed.
             if form.edit.is_none() && draft.autostart && !self.sessions[i].is_running() {
-                let (rows, cols) = self.last_inner;
-                self.sessions[i].spawn(rows, cols);
+                self.start_session(i);
             }
         }
         self.focus = Focus::Sidebar;
@@ -324,8 +323,7 @@ impl App {
             Nav::NewProcess(p) => self.open_new_process(p),
             Nav::Session(i) => {
                 if !self.sessions[i].is_running() {
-                    let (rows, cols) = self.last_inner;
-                    self.sessions[i].spawn(rows, cols);
+                    self.start_session(i);
                 }
                 if let Some(p) = self.sessions[i].pane.as_ref() {
                     p.clear_attention();
@@ -341,10 +339,7 @@ impl App {
             Some(Nav::NewAgent(p, t)) => self.spawn_agent(p, t),
             Some(Nav::NewTerminal(p)) => self.spawn_terminal(p),
             Some(Nav::NewProcess(p)) => self.open_new_process(p),
-            Some(Nav::Session(i)) if !self.sessions[i].is_running() => {
-                let (rows, cols) = self.last_inner;
-                self.sessions[i].spawn(rows, cols);
-            }
+            Some(Nav::Session(i)) if !self.sessions[i].is_running() => self.start_session(i),
             _ => {}
         }
     }
@@ -592,10 +587,7 @@ impl App {
 
     pub(crate) fn do_restart(&mut self) {
         match self.current_nav() {
-            Some(Nav::Session(i)) => {
-                let (rows, cols) = self.last_inner;
-                self.sessions[i].spawn(rows, cols);
-            }
+            Some(Nav::Session(i)) => self.start_session(i),
             Some(Nav::NewAgent(p, t)) => self.spawn_agent(p, t),
             Some(Nav::NewTerminal(p)) => self.spawn_terminal(p),
             Some(Nav::NewProcess(p)) => self.open_new_process(p),
@@ -823,7 +815,7 @@ impl App {
             if let Some(i) = self.sessions.iter().position(|s| {
                 s.project == pi && s.kind == Kind::Process && s.name == name && !s.is_running()
             }) {
-                self.sessions[i].spawn(rows, cols);
+                self.start_session(i);
                 autostarted += 1;
             }
         }
@@ -960,8 +952,21 @@ impl App {
         self.sticky_priority_project = None;
         self.reset_project_priority();
         self.last_proj_sel = vec![None; self.projects.len()];
-        // A pending/draining stack swap holds project indices that just moved.
-        self.swap = None;
+        // A draining handover holds project indices that just moved. Remap them rather
+        // than dropping it, so a stack on its way back to the parent still lands.
+        if let Some(swap) = self.swap.as_mut() {
+            swap.starts
+                .retain_mut(|(p, _)| match project_map.get(*p).and_then(|m| *m) {
+                    Some(mapped) => {
+                        *p = mapped;
+                        true
+                    }
+                    None => false,
+                });
+            if swap.starts.is_empty() {
+                self.swap = None;
+            }
+        }
         self.clear_diff();
         removed_names
     }

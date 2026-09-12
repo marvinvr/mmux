@@ -190,34 +190,79 @@ const NOUNS: &[&str] = &[
 /// do it by hand is exactly the chore worktrees are supposed to avoid. Files are
 /// copied (they're small and each checkout may drift); directories are **symlinked**
 /// (a `node_modules` copy would be absurd). Entries that don't exist are skipped
-/// silently — the list is a wish, not a manifest. Returns the entries it brought over,
-/// for the flash.
+/// silently — the list is a wish, not a manifest. Returns the entries it brought over
+/// (project-relative), for the flash.
+///
+/// A bare name (`.env`) is looked for at **every** depth [`search_dirs`] reaches, not
+/// only at the project root: a monorepo keeps one env file per package, and a checkout
+/// that got the root one and nothing else is still broken everywhere that matters. An
+/// entry that spells out a path (`apps/web/.env`) still means exactly that path, which
+/// is the way out when the sweep brings too much.
 pub fn prepare(parent: &Path, new: &Path, cfg: Option<&WorktreeConfig>) -> Vec<String> {
     let mut copied = Vec::new();
+    // Walked at most once, and only if some entry is a bare name that needs it.
+    let mut dirs: Option<Vec<PathBuf>> = None;
     for entry in crate::config::worktree_copy_list(cfg) {
         // Only ever reach *into* the project: a `../` escape here would copy some
         // unrelated part of the filesystem into a throwaway checkout.
         if entry.contains("..") || Path::new(&entry).is_absolute() {
             continue;
         }
-        let (from, to) = (parent.join(&entry), new.join(&entry));
-        if !from.exists() || to.exists() {
+        if Path::new(&entry).components().count() > 1 {
+            if bring_over(&parent.join(&entry), &new.join(&entry)) {
+                copied.push(entry);
+            }
             continue;
         }
-        if let Some(dir) = to.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let ok = if from.is_dir() {
-            symlink(&from, &to)
-        } else {
-            std::fs::copy(&from, &to).is_ok()
-        };
-        if ok {
-            copied.push(entry);
+        for dir in dirs.get_or_insert_with(|| search_dirs(parent)).iter() {
+            let rel = dir.join(&entry);
+            if bring_over(&parent.join(&rel), &new.join(&rel)) {
+                copied.push(rel.to_string_lossy().into_owned());
+            }
         }
     }
     copied
 }
+
+/// Bring one entry across: a file is copied, a directory symlinked, parents created as
+/// needed. `false` when there was nothing to bring (`from` doesn't exist), when the new
+/// checkout already has it, or when the copy failed — all of which are non-events here.
+fn bring_over(from: &Path, to: &Path) -> bool {
+    if !from.exists() || to.exists() {
+        return false;
+    }
+    if let Some(dir) = to.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if from.is_dir() {
+        symlink(from, to)
+    } else {
+        std::fs::copy(from, to).is_ok()
+    }
+}
+
+/// Every directory a bare-name copy entry may be found in: the project root (the empty
+/// relative path) plus each subdirectory the `ignore` walk is willing to enter.
+///
+/// Honouring `.gitignore` is what keeps `node_modules`, `target` and `dist` out of this
+/// without a hand-kept list of them — a project already declares its heavy trees, and
+/// the walk only ever asks about *directories*, so the gitignored files we're actually
+/// after are never filtered by it. Hidden directories (`.git` first of all) are skipped
+/// and symlinks aren't followed, so the walk can't loop or wander out of the project.
+fn search_dirs(parent: &Path) -> Vec<PathBuf> {
+    ignore::WalkBuilder::new(parent)
+        .max_depth(Some(MAX_SEARCH_DEPTH))
+        .build()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_some_and(|t| t.is_dir()))
+        .filter_map(|e| e.path().strip_prefix(parent).ok().map(Path::to_path_buf))
+        .collect()
+}
+
+/// How deep [`search_dirs`] looks. Deep enough for where monorepos actually put things
+/// (`apps/web/.env`, `packages/db/prisma/.env`), shallow enough that cutting a worktree
+/// never waits on a crawl of a big tree.
+const MAX_SEARCH_DEPTH: usize = 6;
 
 #[cfg(unix)]
 fn symlink(from: &Path, to: &Path) -> bool {
@@ -349,6 +394,48 @@ mod tests {
             .is_symlink());
         // The `..` entry is refused outright rather than reaching outside the project.
         assert!(!new.join("outside").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prepare_finds_a_bare_name_at_every_depth() {
+        let root = std::env::temp_dir().join(format!("mmux-wt-nest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (parent, new) = (root.join("parent"), root.join("new"));
+        std::fs::create_dir_all(parent.join("apps/web")).unwrap();
+        std::fs::create_dir_all(parent.join("packages/db")).unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::fs::write(parent.join(".env"), "ROOT").unwrap();
+        std::fs::write(parent.join("apps/web/.env"), "WEB").unwrap();
+        std::fs::write(parent.join("packages/db/.env"), "DB").unwrap();
+        // A path-shaped entry means that path and nothing else — so this one must not
+        // also pick up the `.env.local` two directories down.
+        std::fs::write(parent.join("apps/web/.env.local"), "WEB LOCAL").unwrap();
+
+        let cfg = WorktreeConfig {
+            copy: Some(vec![".env".into(), "apps/web/.env.local".into()]),
+            setup: None,
+            reap: None,
+        };
+        let mut copied = prepare(&parent, &new, Some(&cfg));
+        copied.sort();
+        assert_eq!(
+            copied,
+            vec![
+                ".env".to_string(),
+                "apps/web/.env".to_string(),
+                "apps/web/.env.local".to_string(),
+                "packages/db/.env".to_string(),
+            ]
+        );
+        // Each one lands where it came from, with its own contents.
+        for (path, want) in [
+            (".env", "ROOT"),
+            ("apps/web/.env", "WEB"),
+            ("packages/db/.env", "DB"),
+        ] {
+            assert_eq!(std::fs::read_to_string(new.join(path)).unwrap(), want);
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 }

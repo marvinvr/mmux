@@ -1,5 +1,5 @@
 //! Worktrees as projects: adopting them, cutting them, merging them back, and
-//! taking them away — plus the one-dev-stack-per-repository swap and the reaper
+//! taking them away — plus the one-checkout-per-process handover and the reaper
 //! that clears finished checkouts up.
 //!
 //! A worktree is an ordinary [`Project`](super::Project) whose directory is a linked
@@ -22,14 +22,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-/// How long the selection must rest in a checkout before its dev stack follows you
-/// there. `active` tracks the selection *cursor*, so without a dwell, arrowing down
-/// the sidebar past a worktree would tear a dev server down and stand it back up. Long
-/// enough that browsing is free, short enough that settling in feels immediate.
-pub(super) const SWAP_DWELL: Duration = Duration::from_secs(3);
-
-/// How long a swap waits for the old checkout's teardown commands before starting the
-/// new one anyway. A wedged `stop:` must not strand the stack in limbo.
+/// How long a handover waits for the evicted checkout's teardown commands before
+/// starting the new one anyway. A wedged `stop:` must not strand the stack in limbo.
 const SWAP_DRAIN_WAIT: Duration = Duration::from_secs(20);
 
 /// How often the idle-worktree reaper does its git checks. The idle clocks themselves
@@ -267,10 +261,12 @@ impl App {
             self.select_session(self.sessions.len() - 1);
             self.focus = Focus::Terminal;
         }
-        let extra = if copied.is_empty() {
-            String::new()
-        } else {
-            format!(" · copied {}", copied.join(", "))
+        // A monorepo hands back one env file per package — the flash is one line, so
+        // past a few it says how many rather than listing them all.
+        let extra = match copied.len() {
+            0 => String::new(),
+            n if n <= 3 => format!(" · copied {}", copied.join(", ")),
+            n => format!(" · copied {} +{} more", copied[..3].join(", "), n - 3),
         };
         self.flash(format!("worktree ⑂ {branch}{extra}"));
     }
@@ -468,9 +464,10 @@ impl App {
         let repo = wt.parent.clone();
         let path = self.projects[pi].dir.clone();
 
-        // If this checkout is the one currently holding the family's dev stack, hand
-        // it back to the parent instead of letting it die with the directory —
-        // merging a worktree shouldn't cost you your dev server.
+        // If this checkout is the one holding the family's processes, hand them back to
+        // the parent instead of letting them die with the directory — merging a
+        // worktree shouldn't cost you your dev server. This is the one handover you
+        // don't ask for, because the alternative is losing the stack outright.
         let root = self.family_root(pi);
         let root_dir = self.projects[root].dir.clone();
         let returning: Vec<String> = if root == pi {
@@ -492,7 +489,7 @@ impl App {
                 .collect()
         };
         // Stop them here rather than through the removal, so their teardown commands
-        // can be waited on before the parent's copies start (see `Swap::Draining`).
+        // can be waited on before the parent's copies start (see `Swap`).
         let mut children = Vec::new();
         let stopping: Vec<usize> = self
             .sessions
@@ -516,13 +513,10 @@ impl App {
         // Indices moved with the removal, so re-find the parent by directory.
         if !returning.is_empty() {
             if let Some(root) = self.projects.iter().position(|p| p.dir == root_dir) {
-                self.swap = Some(Swap::Draining {
-                    project: root,
-                    names: returning,
-                    children,
-                    deadline: Instant::now() + SWAP_DRAIN_WAIT,
-                });
-                self.poll_swap_drain();
+                let mut children = children;
+                for name in returning {
+                    self.queue_start(root, name, std::mem::take(&mut children));
+                }
             }
         }
         // Forced: the confirmation already said what would be lost, and the reaper
@@ -624,84 +618,59 @@ impl App {
         }
     }
 
-    // ── The dev stack follows the checkout you're in ──────────────────────────
+    // ── One checkout at a time ────────────────────────────────────────────────
 
-    /// The processes that would move into `to`: ones running in a *sibling* checkout
-    /// of the same repository that `to` also defines. Empty ⇒ nothing to do, which is
-    /// the common case and the reason switching around costs nothing.
+    /// Start (or restart) the session at `i`, taking the process away from a sibling
+    /// checkout first if one is holding it.
     ///
-    /// Only processes both sides define move. Same repo means the same `mmux.yaml`, so
-    /// in practice that's all of them — but it guarantees mmux never stops something it
-    /// has no way to start again.
-    fn stack_movable_to(&self, to: usize) -> Vec<String> {
+    /// Every start of a row goes through here, so the invariant is simply true: a
+    /// repository never runs the same process in two checkouts at once. Agents and
+    /// terminals are unaffected — they don't bind ports and you want several.
+    ///
+    /// Starting your dev server in a worktree is therefore the whole gesture: its copy
+    /// in the main clone (or another worktree) is stopped, its teardown command is
+    /// waited on, and yours comes up on the same port. Nothing moves on its own, so
+    /// browsing the sidebar never touches a running process.
+    pub(crate) fn start_session(&mut self, i: usize) {
+        let (rows, cols) = self.last_inner;
+        if self.sessions[i].kind != Kind::Process {
+            self.sessions[i].spawn(rows, cols);
+            return;
+        }
+        let to = self.sessions[i].project;
+        let name = self.sessions[i].name.clone();
+
+        // Already queued behind a drain of its own — a second press must not end up
+        // spawning it twice (once now, once when the drain lands).
+        if self
+            .swap
+            .as_ref()
+            .is_some_and(|s| s.starts.iter().any(|(p, n)| *p == to && *n == name))
+        {
+            return;
+        }
+
         let root = self.family_root(to);
-        let mut names: Vec<String> = Vec::new();
-        for s in &self.sessions {
-            if s.kind != Kind::Process || !s.is_running() || s.project == to {
-                continue;
-            }
-            if self.family_root(s.project) != root {
-                continue;
-            }
-            if !self.projects[to]
-                .cfg
-                .processes
+
+        // A start of this process queued for a *sibling* checkout is a claim this one
+        // supersedes: drop it, or the drain would land it alongside ours and leave the
+        // repository running the same process twice — the one thing this path exists to
+        // prevent. Its teardown children stay in the drain; they're still worth waiting on.
+        let superseded: Vec<(usize, String)> = match self.swap.as_ref() {
+            Some(swap) => swap
+                .starts
                 .iter()
-                .any(|p| p.name == s.name)
-            {
-                continue;
-            }
-            if !names.contains(&s.name) {
-                names.push(s.name.clone());
-            }
+                .filter(|(p, n)| *n == name && *p != to && self.family_root(*p) == root)
+                .cloned()
+                .collect(),
+            None => Vec::new(),
+        };
+        if let Some(swap) = self.swap.as_mut() {
+            swap.starts.retain(|entry| !superseded.contains(entry));
         }
-        names
-    }
 
-    /// Per-tick driver for the stack swap (see [`Swap`]).
-    ///
-    /// One checkout of a repository runs its processes at a time, so a worktree's dev
-    /// server reuses its parent's ports and there is never a question of which branch
-    /// is on :3000. What moves is the set of *running* process names — with nothing
-    /// running, switching checkouts does nothing at all.
-    pub(crate) fn step_stack_swap(&mut self) {
-        // A move already under way owns the stack until it lands.
-        if matches!(self.swap, Some(Swap::Draining { .. })) {
-            self.poll_swap_drain();
-            return;
-        }
-        if self.stack_movable_to(self.active).is_empty() {
-            self.swap = None;
-            return;
-        }
-        match self.swap {
-            Some(Swap::Waiting { project, since }) if project == self.active => {
-                if since.elapsed() >= SWAP_DWELL {
-                    self.begin_stack_swap(self.active);
-                }
-            }
-            // First tick resting here, or the selection moved on to somewhere else:
-            // restart the dwell against the current project.
-            _ => {
-                self.swap = Some(Swap::Waiting {
-                    project: self.active,
-                    since: Instant::now(),
-                })
-            }
-        }
-    }
-
-    /// Stop the family's copies of the moving processes and hand off to the drain
-    /// phase. Stopping goes through the ordinary teardown path, so a `stop:` (a
-    /// `docker compose down`) runs exactly as it would on a manual stop.
-    fn begin_stack_swap(&mut self, to: usize) {
-        let names = self.stack_movable_to(to);
-        if names.is_empty() {
-            self.swap = None;
-            return;
-        }
-        let root = self.family_root(to);
-        let stopping: Vec<usize> = self
+        // Sibling checkouts of the same repository running this exact process.
+        let holders: Vec<usize> = self
             .sessions
             .iter()
             .enumerate()
@@ -709,64 +678,105 @@ impl App {
                 s.kind == Kind::Process
                     && s.is_running()
                     && s.project != to
-                    && names.contains(&s.name)
+                    && s.name == name
                     && self.family_root(s.project) == root
             })
             .map(|(i, _)| i)
             .collect();
+        if holders.is_empty() {
+            self.sessions[i].spawn(rows, cols);
+            return;
+        }
+
+        // Stop them through the ordinary teardown path, so a `stop:` (a `docker compose
+        // down`) runs exactly as it would on a manual stop.
+        let mut evicted: Vec<String> = Vec::new();
         let mut children = Vec::new();
-        for i in stopping {
-            if let Some(mut cmd) = self.sessions[i].stop_command() {
+        for h in holders {
+            if let Some(mut cmd) = self.sessions[h].stop_command() {
                 if let Ok(child) = cmd.spawn() {
                     children.push(child);
                 }
             }
-            self.sessions[i].stop();
+            self.sessions[h].stop();
+            let label = self.projects[self.sessions[h].project].label();
+            if !evicted.contains(&label) {
+                evicted.push(label);
+            }
         }
-        self.swap = Some(Swap::Draining {
-            project: to,
-            names,
-            children,
-            deadline: Instant::now() + SWAP_DRAIN_WAIT,
-        });
-        // Nothing to wait for (no `stop:` anywhere) — killing the panes freed the
-        // ports already, so land it in the same tick.
+        self.flash(format!("“{name}” stopped in {}", evicted.join(", ")));
+        self.queue_start(to, name, children);
+    }
+
+    /// Record `(project, name)` to start once `children` — the teardown commands of the
+    /// checkout that just gave the process up — have exited, joining any drain already
+    /// in flight rather than replacing it.
+    fn queue_start(&mut self, project: usize, name: String, children: Vec<std::process::Child>) {
+        let deadline = Instant::now() + SWAP_DRAIN_WAIT;
+        match self.swap.as_mut() {
+            Some(swap) => {
+                swap.starts.push((project, name));
+                swap.children.extend(children);
+                swap.deadline = swap.deadline.max(deadline);
+            }
+            None => {
+                self.swap = Some(Swap {
+                    starts: vec![(project, name)],
+                    children,
+                    deadline,
+                })
+            }
+        }
+        // Nothing to wait for (no `stop:` anywhere) — killing the panes freed the ports
+        // already, so land it in the same tick.
         self.poll_swap_drain();
     }
 
-    /// Finish a swap once the old checkout's teardown commands have exited. Starting
-    /// before they do would hand the new dev server a port the old stack is still
-    /// holding — the one ordering that makes same-port worktrees actually work.
-    fn poll_swap_drain(&mut self) {
-        let Some(Swap::Draining {
-            project,
-            names,
-            children,
-            deadline,
-        }) = &mut self.swap
-        else {
+    /// Start the queued processes once the evicted checkout's teardown commands have
+    /// exited. Starting before they do would hand the new dev server a port the old
+    /// stack is still holding — the one ordering that makes same-port checkouts work.
+    pub(crate) fn poll_swap_drain(&mut self) {
+        let Some(swap) = self.swap.as_mut() else {
             return;
         };
-        children.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
-        if !children.is_empty() && Instant::now() < *deadline {
+        swap.children
+            .retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+        if !swap.children.is_empty() && Instant::now() < swap.deadline {
             return;
         }
-        let (to, names) = (*project, std::mem::take(names));
+        let starts = std::mem::take(&mut swap.starts);
         self.swap = None;
+
         let (rows, cols) = self.last_inner;
-        let mut started = 0usize;
-        for name in &names {
-            let found = self.sessions.iter().position(|s| {
-                s.project == to && s.kind == Kind::Process && s.name == *name && !s.is_running()
-            });
+        let mut started: Vec<(usize, String)> = Vec::new();
+        for (to, name) in starts {
+            let found = self
+                .sessions
+                .iter()
+                .position(|s| s.project == to && s.kind == Kind::Process && s.name == name);
             if let Some(i) = found {
                 self.sessions[i].spawn(rows, cols);
-                started += 1;
+                started.push((to, name));
             }
         }
-        if started > 0 {
-            let label = self.projects.get(to).map(|p| p.label()).unwrap_or_default();
-            self.flash(format!("stack → {label} ({started} running)"));
+        // One note per destination: “Dev, API → ⑂ smug-toaster”.
+        let mut notes: Vec<String> = Vec::new();
+        for (to, _) in started.iter() {
+            let Some(label) = self.projects.get(*to).map(|p| p.label()) else {
+                continue;
+            };
+            let names: Vec<&str> = started
+                .iter()
+                .filter(|(p, _)| p == to)
+                .map(|(_, n)| n.as_str())
+                .collect();
+            let note = format!("{} → {label}", names.join(", "));
+            if !notes.contains(&note) {
+                notes.push(note);
+            }
+        }
+        if !notes.is_empty() {
+            self.flash(notes.join(" · "));
         }
     }
 }

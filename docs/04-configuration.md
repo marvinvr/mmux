@@ -203,7 +203,7 @@ git-panel:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `copy` | list of paths | Gitignored things a new checkout needs. Files are copied, directories symlinked, missing entries skipped. Defaults to `.env`, `.env.local`, `mmux.local.yml`, `mmux.local.yaml`. An empty list copies nothing. |
+| `copy` | list of paths | Gitignored things a new checkout needs. Files are copied, directories symlinked, missing entries skipped. A bare name is taken at every depth; a path is taken literally. Defaults to `.env`, `.env.local`, `mmux.local.yml`, `mmux.local.yaml`. An empty list copies nothing. |
 | `setup` | string | Shell line run once in a new worktree. Appears as an ordinary terminal row, so you can watch it. |
 | `reap` | duration | How long a **finished** worktree idles before it's cleared away: `30m` (default), `2h`, `90s`, a bare number of minutes, or `off`. |
 
@@ -221,6 +221,15 @@ Paths in `copy` are relative to the project and may not escape it (a `..` entry 
 directory is symlinked rather than copied, so `node_modules` costs nothing — but note that the two
 checkouts then genuinely share it, which is wrong for a branch that changes dependencies. Copy
 those, or leave them to `setup`.
+
+**Bare names are taken at every depth.** `.env` means *every* `.env` in the project, each landing
+in the same place in the new checkout — so a monorepo's `apps/web/.env` and `packages/db/.env` come
+across along with the root one, which is the difference between a worktree that runs and one that
+only builds at the top level. The search honours `.gitignore` and skips hidden directories, so
+`node_modules`, `target` and `dist` are never crawled, and it stops six levels down. An entry with
+a path in it (`apps/web/.env`) means exactly that path and nothing else — use one when the sweep
+brings more than you want. Note the same rule applies to a bare `node_modules`: it links every
+nested one, so spell out the path if you only meant the root.
 
 `reap` only removes a checkout whose contents already live somewhere else. **All** of these must
 hold: nothing running in the worktree (no agent, terminal, or process), a clean working tree, and

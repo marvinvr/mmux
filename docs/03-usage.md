@@ -271,16 +271,21 @@ rearranges them under you.
 
 New checkouts are created under `~/.mmux/worktrees/`, never inside the repository — nothing to add
 to `.gitignore`, and no second copy of the tree for editors and watchers to crawl. mmux copies
-across the gitignored files a checkout needs to actually run (`.env` and friends) and can run a
-one-time [`setup:`](04-configuration.md#worktrees) command, which appears as an ordinary terminal
-row you can watch.
+across the gitignored files a checkout needs to actually run (`.env` and friends, found at every
+depth — a monorepo gets each package's, not just the one at the root) and can run a one-time
+[`setup:`](04-configuration.md#worktrees) command, which appears as an ordinary terminal row you
+can watch.
 
-**One dev stack, shared.** Only one checkout of a repository runs its processes at a time. Settle
-in a worktree for a few seconds and the set of *running* processes moves there: they stop in the
-old checkout (teardown commands included, and mmux waits for them), then start in the new one. So
-every checkout reuses the same ports, `localhost:3000` is always whatever you're working in, and
-you never think about it. With nothing running, switching costs nothing. Merely arrowing past a
-project never moves anything — it has to be where you've settled.
+**One dev stack, shared.** Only one checkout of a repository runs a given process at a time.
+Starting one is what moves it: press `s` on **Dev** in a worktree while the main clone is running
+it, and mmux stops it there first (teardown command included, and it waits for that to finish)
+before starting yours. The footer says both halves. So every checkout reuses the same ports,
+`localhost:3000` is always the branch you last started it in, and you never think about it.
+
+Nothing moves on its own — navigating the sidebar, selecting a worktree or sitting in one changes
+no running process. The handover happens only when you ask for it, and only for the process you
+asked about: starting **Dev** in a worktree leaves that worktree's **API** alone if you didn't
+start it. Agents and terminals are never affected; you can run those in every checkout at once.
 
 **Finishing up.** `M` merges the worktree into the branch it came from (mmux remembered which one
 when it cut the branch) and offers to clear the checkout away in the same keystroke: `y` merges and

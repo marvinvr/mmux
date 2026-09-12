@@ -73,7 +73,7 @@ pub(crate) const PROJECT_WORKTREES_COMMENT: &str =
 
 /// The commented-out `worktrees:` example.
 pub(crate) const PROJECT_WORKTREES_EXAMPLE: &str = "# worktrees:\n\
-    #   copy: [.env]          # files copied, directories symlinked\n\
+    #   copy: [.env]          # copied at every depth (apps/*/.env too)\n\
     #   setup: npm install    # run once in a new checkout\n\
     #   reap: 30m             # or `off`\n";
 
@@ -715,7 +715,7 @@ processes:
 # only covers what git can't carry across, plus how long a finished worktree
 # (merged or pushed, clean, idle) sticks around before mmux clears it away.
 # worktrees:
-#   copy: [.env]          # files copied, directories symlinked
+#   copy: [.env]          # copied at every depth (apps/*/.env too)
 #   setup: npm install    # run once in a new checkout
 #   reap: 30m             # or `off`
 

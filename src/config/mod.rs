@@ -125,8 +125,10 @@ pub struct AutoUpdateConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorktreeConfig {
     /// Paths to bring over from the project when a worktree is created — files are
-    /// copied, directories symlinked, missing entries skipped. Unset ⇒
-    /// [`DEFAULT_WORKTREE_COPY`]; an explicit empty list copies nothing.
+    /// copied, directories symlinked, missing entries skipped. A bare name (`.env`) is
+    /// taken at every depth; an entry with a path in it (`apps/web/.env`) means exactly
+    /// that path. Unset ⇒ [`DEFAULT_WORKTREE_COPY`]; an explicit empty list copies
+    /// nothing.
     #[serde(default)]
     pub copy: Option<Vec<String>>,
     /// A shell line run once in a new worktree (`pnpm install`, `mix deps.get`, …).
@@ -184,7 +186,9 @@ fn parse_duration(raw: &str) -> Option<Duration> {
 /// What a new worktree copies when `worktrees.copy` is unset: the handful of files
 /// that most reliably decide whether a fresh checkout runs at all, and that git
 /// deliberately never carries across. Kept short on purpose — anything heavier is a
-/// per-project choice, not a default.
+/// per-project choice, not a default. Every one of these is a *bare name*, so
+/// [`crate::worktree::prepare`] brings over each package's copy in a monorepo, not
+/// just the one at the root.
 pub const DEFAULT_WORKTREE_COPY: &[&str] =
     &[".env", ".env.local", "mmux.local.yml", "mmux.local.yaml"];
 
