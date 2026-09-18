@@ -965,7 +965,11 @@ impl App {
                     m.push_filter(c);
                 }
             }
-            _ if self.focus == Focus::Terminal => self.send_focused(s.into_bytes()),
+            _ if self.focus == Focus::Terminal => {
+                if let Some(p) = self.focused_pane() {
+                    p.send(p.paste_input(&s));
+                }
+            }
             _ => {}
         }
         if let Some(id) = cancel_generation {

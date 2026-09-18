@@ -223,7 +223,7 @@ does the same and then pushes.
 
 ### Scheduled Commits
 
-Press `S` in the git panel, choose `15m`, `30m`, `1h`, `2h`, `3h`, `6h`, or `12h` with the arrow
+Press `S` in the git panel, choose `15m`, `30m`, `1h`, `2h`, `3h`, `6h`, `8h`, or `10h` with the arrow
 keys, then submit with:
 
 - `Enter` — stage everything, generate a message, commit, and push (the default)

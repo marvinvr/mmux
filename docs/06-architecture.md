@@ -513,6 +513,11 @@ removes it from the snapshot, so it's easy to get a clean slate.
 - **Wheel:** over the normal screen it drives our own scrollback; over a program on the alternate
   screen (which has none) `Pane::wheel_input` hands the notch to the program — a forwarded
   mouse-wheel event if it tracks the mouse, else synthesized arrow keys ("alternate scroll").
+- **Paste:** mmux enables bracketed paste on the outer terminal, so a paste arrives as one
+  `Event::Paste` with the brackets stripped. `Pane::paste_input` re-encodes it for the program the
+  way a real terminal would: line endings become `\r`, and the text is re-wrapped in
+  `ESC[200~ … ESC[201~` only if the program itself enabled DECSET 2004 (read off the vt100 screen).
+  Forwarding it raw made nano/vim auto-indent every line and shells/agents submit line by line.
 - **Links:** a plain (non-drag) click on a URL opens it in the browser (`open.rs`). In a pane
   `url_under` reads the clicked row off the vt100 screen and `url_at` extracts the link token; on
   mmux's own [About card](03-usage.md#opening-links) the rendered link spans are registered as

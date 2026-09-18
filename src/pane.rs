@@ -532,6 +532,27 @@ impl Pane {
         .flatten()
     }
 
+    /// Translate pasted text into input *for the program*, the way a real
+    /// terminal does. Line endings become `\r` (what Enter sends — a raw `\n` is
+    /// Ctrl-J, which nano reads as "justify"), and if the program negotiated
+    /// bracketed paste (DECSET 2004) the text is wrapped in `ESC[200~ … ESC[201~`
+    /// so it's taken as one literal block: no auto-indent staircase in
+    /// nano/vim, no line-by-line submit in a shell or Claude. An embedded end
+    /// marker is dropped so the pasted text can't break out of the bracket.
+    pub fn paste_input(&self, text: &str) -> Vec<u8> {
+        let text = text.replace("\r\n", "\r").replace('\n', "\r");
+        let bracketed = self.with_screen(|s| s.bracketed_paste()).unwrap_or(false);
+        if !bracketed {
+            return text.into_bytes();
+        }
+        let text = text.replace("\x1b[201~", "");
+        let mut bytes = Vec::with_capacity(text.len() + 12);
+        bytes.extend_from_slice(b"\x1b[200~");
+        bytes.extend_from_slice(text.as_bytes());
+        bytes.extend_from_slice(b"\x1b[201~");
+        bytes
+    }
+
     /// Translate a mouse press/release/drag/move over this pane into input *for
     /// the program*, or `None` when it isn't tracking the mouse (or this event
     /// isn't reportable under the mode it negotiated) — the caller then does its

@@ -18,14 +18,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const GENERATION_TIMEOUT: Duration = Duration::from_secs(2 * 60);
-const SCHEDULE_DELAYS: [(&str, Duration); 7] = [
+const SCHEDULE_DELAYS: [(&str, Duration); 8] = [
     ("15m", Duration::from_secs(15 * 60)),
     ("30m", Duration::from_secs(30 * 60)),
     ("1h", Duration::from_secs(60 * 60)),
     ("2h", Duration::from_secs(2 * 60 * 60)),
     ("3h", Duration::from_secs(3 * 60 * 60)),
     ("6h", Duration::from_secs(6 * 60 * 60)),
-    ("12h", Duration::from_secs(12 * 60 * 60)),
+    ("8h", Duration::from_secs(8 * 60 * 60)),
+    ("10h", Duration::from_secs(10 * 60 * 60)),
 ];
 
 #[derive(Clone, Copy)]

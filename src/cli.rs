@@ -308,7 +308,7 @@ GIT COMMITS — generated now or scheduled
     arrives; ^P also pushes. The CLI gets capped diff context (40 files, 12 KiB
     each, 64 KiB total), runs read-only, and is optional.
 
-    `S` schedules 15m / 30m / 1h / 2h / 3h / 6h / 12h ahead. Arrows select;
+    `S` schedules 15m / 30m / 1h / 2h / 3h / 6h / 8h / 10h ahead. Arrows select;
     Enter stages all, commits and pushes; c commits only; m in a worktree commits
     and merges into its remembered base. Reopen `S` and press x to cancel. Timers
     keep running while detached and clear when mmux quits or restarts.
