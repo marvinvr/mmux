@@ -38,31 +38,48 @@ impl App {
     }
 
     pub(crate) fn spawn_agent(&mut self, pi: usize, t: usize) {
+        let s = self.new_agent_session(pi, t);
+        self.launch_session(s);
+        self.select_session(self.sessions.len() - 1);
+    }
+
+    pub(crate) fn spawn_terminal(&mut self, pi: usize) {
+        let s = self.new_terminal_session(pi);
+        self.launch_session(s);
+        self.select_session(self.sessions.len() - 1);
+    }
+
+    /// A fresh, not-yet-spawned instance of project `pi`'s agent template `t`, named
+    /// with the next `#N`. Split from the spawn so the control socket can set its
+    /// depth first and add it without moving the user's cursor.
+    pub(super) fn new_agent_session(&mut self, pi: usize, t: usize) -> Session {
         let def = self.projects[pi].cfg.agents[t].clone();
         let recipe = Recipe::agent(&def, &self.projects[pi].cfg.dir);
         self.projects[pi].counts[t] += 1;
         let name = format!("{} #{}", def.name, self.projects[pi].counts[t]);
-        let (rows, cols) = self.last_inner;
-        let mut s = Session::new(name, Kind::Agent, recipe, pi);
+        let mut s = Session::new(name, Kind::Agent, recipe, pi, &self.projects[pi].dir);
         // Claude/Codex/Pi/Grok agents get resume bookkeeping so a restart reattaches to the
         // same conversation; any other agent command just spawns plainly.
         if let Some(tool) = crate::agent::Tool::detect(&s.recipe.cmd) {
             s.agent = Some(crate::agent::Resume::new(tool));
         }
-        s.spawn(rows, cols);
-        self.sessions.push(s);
-        self.select_session(self.sessions.len() - 1);
+        s
     }
 
-    pub(crate) fn spawn_terminal(&mut self, pi: usize) {
+    /// A fresh, not-yet-spawned `Terminal #N` shell in project `pi`.
+    pub(super) fn new_terminal_session(&mut self, pi: usize) -> Session {
         let recipe = Recipe::shell(&self.projects[pi].cfg.dir);
         self.projects[pi].term_count += 1;
         let name = format!("Terminal #{}", self.projects[pi].term_count);
+        Session::new(name, Kind::Terminal, recipe, pi, &self.projects[pi].dir)
+    }
+
+    /// Spawn `s` at the main pane's size and append it to the session list. Selection
+    /// is the caller's business.
+    pub(super) fn launch_session(&mut self, mut s: Session) {
         let (rows, cols) = self.last_inner;
-        let mut s = Session::new(name, Kind::Terminal, recipe, pi);
         s.spawn(rows, cols);
         self.sessions.push(s);
-        self.select_session(self.sessions.len() - 1);
     }
 
     /// Raise the "+ New Process" form over project `pi`. The modal eats keys until
@@ -292,7 +309,7 @@ impl App {
             .unwrap_or_else(|| rel.clone());
         let name = format!("✎ {base}");
         let (rows, cols) = self.last_inner;
-        let mut s = Session::new(name, Kind::Terminal, recipe, pi);
+        let mut s = Session::new(name, Kind::Terminal, recipe, pi, &self.projects[pi].dir);
         s.spawn(rows, cols); // a terminal — it vanishes when the editor quits (see prune_exited)
         self.sessions.push(s);
         self.select_session(self.sessions.len() - 1);
@@ -403,7 +420,7 @@ impl App {
     /// `docker compose down` can take a moment. The quit path
     /// ([`run_stop_commands_on_quit`](Self::run_stop_commands_on_quit)) waits instead, so
     /// the teardown finishes before mmux (and its tmux session) goes away.
-    fn run_stop_command(&mut self, i: usize) {
+    pub(super) fn run_stop_command(&mut self, i: usize) {
         let Some(mut cmd) = self.sessions[i].stop_command() else {
             return;
         };
@@ -723,7 +740,9 @@ impl App {
                         next_procs.push(item);
                     }
                     None => {
-                        let mut item = Session::new(p.name.clone(), Kind::Process, recipe, pi);
+                        let canon = &self.projects[pi].dir;
+                        let mut item =
+                            Session::new(p.name.clone(), Kind::Process, recipe, pi, canon);
                         item.stop = p.stop.clone();
                         next_procs.push(item);
                         added += 1;

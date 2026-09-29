@@ -144,7 +144,7 @@ impl App {
             if !r.discovery_due() {
                 continue;
             }
-            let ranked = crate::agent::sessions_for(r.tool, &s.recipe.cwd);
+            let ranked = crate::agent::sessions_for(r.tool, &s.recipe.cwd, &s.recipe.env);
             let started_at = r.started_at.unwrap_or(SystemTime::now());
             let found = ranked
                 .into_iter()
@@ -198,7 +198,8 @@ impl App {
                 SnapKind::Agent => Kind::Agent,
                 SnapKind::Terminal => Kind::Terminal,
             };
-            let mut s = Session::new(snap.name, kind, recipe, project);
+            let dir = self.projects[project].dir.clone();
+            let mut s = Session::new(snap.name, kind, recipe, project, &dir);
             if let Some(tool) = snap.tool {
                 s.agent = Some(Resume::restored(tool, snap.session_id));
             }

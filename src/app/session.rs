@@ -10,7 +10,12 @@ use crate::pane::{Notify, Pane};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+/// Source of [`Session::id`]. There is one `App` per process, so a process-wide
+/// counter is the app's counter — ids are never reused within a run.
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// How long after an agent's terminal title last changed we still count it as
 /// "working" when it does not emit explicit OSC 9;4 progress state. This is the
@@ -124,10 +129,43 @@ pub struct Session {
     /// from a config-defined process's [`stop:`](crate::config::ProcessDef::stop); `None`
     /// for agents, terminals, and processes without one. See [`Session::stop_command`].
     pub stop: Option<String>,
+    /// Stable runtime identity, shown as `s<N>`. Unlike the session's index into
+    /// `App.sessions` — which shifts whenever a row comes or goes — it names the same
+    /// row for the life of the process, which is what the
+    /// [control socket](crate::control) addresses. Not persisted: a reopen assigns
+    /// fresh ids.
+    pub id: u64,
+    /// The owning project's canonical directory, exported to the pane as
+    /// `MMUX_PROJECT` so a program inside knows which project it runs in.
+    pub project_dir: PathBuf,
+    /// How many control hops deep this session was created: 1 for anything the user or
+    /// the config started, the caller's depth + 1 for a `mmux new` issued from inside a
+    /// pane. Exported as `MMUX_DEPTH` — the brake on agents spawning agents unboundedly.
+    pub depth: u32,
+    /// When input last arrived through the control socket (`mmux send`, `mmux keys`
+    /// with a submitting key, or a first prompt). Lets a caller tell "working on what I sent" from "was already
+    /// working before".
+    pub last_input_at: Option<Instant>,
+    /// When this agent was last seen [`busy`](Self::busy), sampled every tick. Against
+    /// `last_input_at` it answers "has it worked on my input yet?" — what `mmux wait`
+    /// and `mmux ask` need to tell "done" from "not started".
+    pub last_working_at: Option<Instant>,
+    /// When the pane was last spawned — the start of its idle clock before it ever works.
+    pub launched_at: Option<Instant>,
+    /// A first prompt to hand over as a launch argument on the next spawn, then drop:
+    /// consumed there, so a restart (which resumes the conversation) never repeats it.
+    /// Never persisted. See [`crate::agent::Tool::prompt_args`].
+    pub first_prompt: Option<String>,
 }
 
 impl Session {
-    pub fn new(name: String, kind: Kind, recipe: Recipe, project: usize) -> Session {
+    pub fn new(
+        name: String,
+        kind: Kind,
+        recipe: Recipe,
+        project: usize,
+        project_dir: &Path,
+    ) -> Session {
         Session {
             name,
             kind,
@@ -137,7 +175,40 @@ impl Session {
             project,
             agent: None,
             stop: None,
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            project_dir: project_dir.to_path_buf(),
+            depth: 1,
+            last_input_at: None,
+            last_working_at: None,
+            launched_at: None,
+            first_prompt: None,
         }
+    }
+
+    /// The control-socket handle for this row: `s<N>`.
+    pub fn handle(&self) -> String {
+        format!("s{}", self.id)
+    }
+
+    /// The recipe's environment plus mmux's identity variables, so a program in the
+    /// pane can find this mmux (`MMUX_SOCKET`) and address itself and its project
+    /// (`MMUX_SESSION`, `MMUX_PROJECT`). Recipe values win — they are explicit config.
+    fn pane_env(&self) -> BTreeMap<String, String> {
+        let mut env = BTreeMap::new();
+        env.insert("MMUX_SESSION".to_string(), self.handle());
+        env.insert(
+            "MMUX_PROJECT".to_string(),
+            self.project_dir.to_string_lossy().into_owned(),
+        );
+        env.insert("MMUX_DEPTH".to_string(), self.depth.to_string());
+        if let Some(socket) = crate::control::advertised_socket() {
+            env.insert(
+                "MMUX_SOCKET".to_string(),
+                socket.to_string_lossy().into_owned(),
+            );
+        }
+        env.extend(self.recipe.env.clone());
+        env
     }
 
     /// The teardown command for this session, if it declares a [`stop`](Self::stop) — a
@@ -199,17 +270,30 @@ impl Session {
         if let Some(r) = self.agent.as_ref() {
             args.extend(r.launch_args());
         }
+        // A control-supplied first prompt rides this launch only. `take` rather than
+        // clone: whether or not the spawn succeeds, it is never sent twice.
+        if let Some(prompt) = self.first_prompt.take() {
+            if let Some(extra) = self
+                .agent
+                .as_ref()
+                .and_then(|r| r.tool.prompt_args(&prompt))
+            {
+                args.extend(extra);
+                self.last_input_at = Some(Instant::now());
+            }
+        }
         match Pane::spawn(
             &self.recipe.cmd,
             &args,
             &self.recipe.cwd,
-            &self.recipe.env,
+            &self.pane_env(),
             rows,
             cols,
         ) {
             Ok(p) => {
                 self.pane = Some(p);
                 self.error = None;
+                self.launched_at = Some(Instant::now());
                 // Subsequent (re)starts of this agent should resume the session
                 // this launch just created.
                 if let Some(r) = self.agent.as_mut() {

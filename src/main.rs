@@ -4,6 +4,8 @@ mod app;
 mod cli;
 mod clipboard;
 mod config;
+mod control;
+mod ctl;
 mod git;
 mod notify;
 mod open;

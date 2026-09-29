@@ -266,6 +266,12 @@ impl Pane {
         // animation/update path.
         builder.env_remove("TMUX");
         builder.env_remove("TMUX_PANE");
+        // The inner process's own role markers must not reach its children: with
+        // `MMUX_INNER` set, a bare `mmux` typed in a pane would start a nested TUI there
+        // instead of attaching. The caller passes the pane's real identity in `env`.
+        builder.env_remove("MMUX_INNER");
+        builder.env_remove("MMUX_DIR");
+        builder.env_remove("MMUX_SOCKET");
         for (k, v) in env {
             builder.env(k, v);
         }
@@ -674,6 +680,59 @@ impl Pane {
         }
         p.screen_mut().set_scrollback(saved);
         Some(out)
+    }
+
+    /// The last `max` lines of the whole buffer — scrollback, then the live screen —
+    /// as plain text, soft-wrapped rows joined and trailing blank lines dropped (`0`
+    /// means everything). What `mmux read` returns; independent of where the user has
+    /// scrolled the view.
+    ///
+    /// vt100 only exposes the visible window, so this pages the offset from the oldest
+    /// history it needs to the live view, taking each buffer line once, then restores it.
+    pub fn text_tail(&self, max: usize) -> Option<String> {
+        let mut p = self.parser.lock().ok()?;
+        let saved = p.screen().scrollback();
+        p.screen_mut().set_scrollback(usize::MAX);
+        let history = p.screen().scrollback();
+        let (rows, cols) = p.screen().size();
+        let mut lines: Vec<String> = vec![String::new()];
+        // Buffer line numbering as in `contents_block`: history is negative.
+        let mut next = -(history as i64);
+        // With a limit, start only as far back as could still reach it (twice over,
+        // for soft-wrapped rows that join), so a bounded read skips the history walk.
+        let mut off = match max {
+            0 => history,
+            n => history.min(n.saturating_mul(2)),
+        };
+        loop {
+            p.screen_mut().set_scrollback(off);
+            let screen = p.screen();
+            for (row, text) in screen.rows(0, cols).enumerate() {
+                let line = row as i64 - off as i64;
+                if line < next {
+                    continue;
+                }
+                lines.last_mut().unwrap().push_str(&text);
+                if !screen.row_wrapped(row as u16) {
+                    lines.push(String::new());
+                }
+            }
+            next = rows as i64 - off as i64;
+            if off == 0 {
+                break;
+            }
+            off = off.saturating_sub(rows as usize);
+        }
+        p.screen_mut().set_scrollback(saved);
+        drop(p);
+        while lines.last().is_some_and(|l| l.trim().is_empty()) {
+            lines.pop();
+        }
+        let skip = match max {
+            0 => 0,
+            n => lines.len().saturating_sub(n),
+        };
+        Some(lines[skip..].join("\n"))
     }
 }
 

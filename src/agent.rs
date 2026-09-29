@@ -22,6 +22,7 @@
 //! reopen (see [`crate::restore`]).
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
@@ -57,6 +58,20 @@ impl Tool {
     /// to discover it afterwards (Codex).
     pub fn owns_id(self) -> bool {
         matches!(self, Tool::Claude | Tool::Pi | Tool::Grok)
+    }
+
+    /// The launch args that hand this agent its first prompt, or `None` when it can't
+    /// take one on the command line (the caller then types it in). Claude and Codex
+    /// both start an interactive session already working on a trailing positional
+    /// prompt. A prompt that looks like a flag goes after `--` so it stays a prompt.
+    pub fn prompt_args(self, prompt: &str) -> Option<Vec<String>> {
+        if !matches!(self, Tool::Claude | Tool::Codex) {
+            return None;
+        }
+        Some(match prompt.starts_with('-') {
+            true => vec!["--".into(), prompt.into()],
+            false => vec![prompt.into()],
+        })
     }
 }
 
@@ -182,22 +197,37 @@ pub fn mint_uuid() -> String {
 /// is recorded in the opening lines), Codex under `~/.codex/sessions/YYYY/MM/DD/`
 /// (id and `cwd` in the first `session_meta` line). Best-effort: an unreadable
 /// home or tree yields an empty list.
-pub fn sessions_for(tool: Tool, cwd: &Path) -> Vec<(String, SystemTime)> {
-    match session_root(tool) {
+pub fn sessions_for(
+    tool: Tool,
+    cwd: &Path,
+    env: &BTreeMap<String, String>,
+) -> Vec<(String, SystemTime)> {
+    match session_root(tool, env) {
         Some(root) => scan_sessions(tool, &root, cwd),
         None => Vec::new(),
     }
 }
 
-/// Where `tool` keeps its per-conversation transcripts under `$HOME`.
-fn session_root(tool: Tool) -> Option<PathBuf> {
-    let home = home()?;
-    Some(match tool {
-        Tool::Claude => home.join(".claude").join("projects"),
-        Tool::Codex => home.join(".codex").join("sessions"),
+/// Where `tool` keeps its per-conversation transcripts: `$CLAUDE_CONFIG_DIR/projects` /
+/// `$CODEX_HOME/sessions`, else under `$HOME`. The variable is looked up in the agent's
+/// own recipe `env` first, then in ours (which its pane inherits) — so both discovery
+/// and `mmux last` look where the agent actually writes.
+pub fn session_root(tool: Tool, env: &BTreeMap<String, String>) -> Option<PathBuf> {
+    let (var, dir, sub) = match tool {
+        Tool::Claude => ("CLAUDE_CONFIG_DIR", ".claude", "projects"),
+        Tool::Codex => ("CODEX_HOME", ".codex", "sessions"),
         // Pi/Grok ids are minted before launch, so their on-disk session trees never
         // need to be scanned to discover which conversation belongs to a pane.
         Tool::Pi | Tool::Grok => return None,
+    };
+    let base = env
+        .get(var)
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os(var).map(PathBuf::from))
+        .filter(|p| !p.as_os_str().is_empty());
+    Some(match base {
+        Some(base) => base.join(sub),
+        None => home()?.join(dir).join(sub),
     })
 }
 
@@ -303,6 +333,306 @@ fn codex_id_time(id: &str) -> Option<SystemTime> {
     SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(millis))
 }
 
+/// The last reply agent `tool` wrote to conversation `id`, read from its own
+/// transcript — the words it answered with, free of TUI chrome. Claude: the text
+/// blocks of the latest assistant message in `~/.claude/projects/<dir>/<id>.jsonl`.
+/// Codex: the latest agent message in its `rollout-…-<id>.jsonl`. `None` for Pi/Grok,
+/// or when the transcript is missing or holds no reply yet. Reads only the file's
+/// tail unless the reply sits further back.
+pub fn last_reply(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<String> {
+    let path = transcript_path(tool, id, cwd, root)?;
+    // Most replies are in the last few hundred KiB; widen only when they aren't.
+    for window in [256 * 1024, 4 * 1024 * 1024, u64::MAX] {
+        let (text, whole) = read_tail(&path, window)?;
+        let lines: Vec<&str> = text.lines().collect();
+        let found = match tool {
+            Tool::Claude => claude_reply(&lines),
+            Tool::Codex => codex_reply(&lines),
+            Tool::Pi | Tool::Grok => None,
+        };
+        if found.is_some() || whole {
+            return found;
+        }
+    }
+    None
+}
+
+/// Where conversation `id` is recorded under `root` (its tool's [`session_root`]).
+/// Claude files it under its launch directory with every non-alphanumeric character
+/// turned into `-`; that guess is checked, then every project directory is (Claude's
+/// own naming has shifted before). Codex dates its rollouts, so the tree is walked for
+/// the file ending in the id.
+fn transcript_path(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<PathBuf> {
+    let file = format!("{id}.jsonl");
+    match tool {
+        Tool::Claude => {
+            let slug: String = cwd
+                .to_string_lossy()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                .collect();
+            let guess = root.join(slug).join(&file);
+            if guess.is_file() {
+                return Some(guess);
+            }
+            std::fs::read_dir(root)
+                .ok()?
+                .flatten()
+                .map(|e| e.path().join(&file))
+                .find(|p| p.is_file())
+        }
+        Tool::Codex => {
+            let mut files = Vec::new();
+            collect_jsonl(root, &mut files, 0);
+            let suffix = format!("-{file}");
+            files
+                .into_iter()
+                .map(|(_, p)| p)
+                .find(|p| p.to_string_lossy().ends_with(&suffix))
+        }
+        Tool::Pi | Tool::Grok => None,
+    }
+}
+
+/// The last `window` bytes of `path` as text, starting on a line boundary, and
+/// whether that is the whole file.
+fn read_tail(path: &Path, window: u64) -> Option<(String, bool)> {
+    use std::io::{Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    let start = len.saturating_sub(window);
+    // Start one byte early: through the first newline is then exactly the partial
+    // record to drop — just that newline when the window already began on a line.
+    let from = start.saturating_sub(1);
+    f.seek(SeekFrom::Start(from)).ok()?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).ok()?;
+    if start > 0 {
+        let cut = buf
+            .iter()
+            .position(|&b| b == b'\n')
+            .map_or(buf.len(), |n| n + 1);
+        buf.drain(..cut);
+    }
+    // Cut on a byte boundary first, so a character split by the seek never survives.
+    Some((String::from_utf8_lossy(&buf).into_owned(), start == 0))
+}
+
+/// The text of the latest assistant message among Claude transcript `lines`. Claude
+/// writes one record per content block, all sharing the message's `id`, so the
+/// message's text blocks are gathered back together; thinking and tool calls are
+/// skipped, as are subagent (sidechain) records.
+fn claude_reply(lines: &[&str]) -> Option<String> {
+    let records: Vec<serde_json::Value> = lines
+        .iter()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .filter(|v: &serde_json::Value| {
+            v["type"] == "assistant" && v["isSidechain"].as_bool() != Some(true)
+        })
+        .collect();
+    let texts = |v: &serde_json::Value| -> Vec<String> {
+        v["message"]["content"]
+            .as_array()
+            .map(|blocks| {
+                blocks
+                    .iter()
+                    .filter(|b| b["type"] == "text")
+                    .filter_map(|b| b["text"].as_str())
+                    .filter(|t| !t.trim().is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let last = records.iter().rev().find(|v| !texts(v).is_empty())?;
+    let parts: Vec<String> = match last["message"]["id"].as_str() {
+        Some(mid) => records
+            .iter()
+            .filter(|v| v["message"]["id"].as_str() == Some(mid))
+            .flat_map(texts)
+            .collect(),
+        None => texts(last),
+    };
+    Some(parts.join("\n\n").trim().to_string())
+}
+
+/// Where a Claude agent stands on input it was sent at some instant, judged from its
+/// transcript — the gate `mmux wait`/`ask` add on top of the working signal, which an
+/// agent's boot-time title flash can satisfy before it has touched the prompt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Turn {
+    /// Nothing to judge by (no transcript tree, no dated records): trust the screen.
+    Unknown,
+    /// Nothing recorded since the input: it hasn't registered it (yet), or the input
+    /// was never a prompt (`--no-enter` text, a bare key).
+    Pending,
+    /// Mid-turn: a prompt or tool result still waiting for the model's next step.
+    Open,
+    /// At rest: a final answer, an interruption, a local command's output — or a tool
+    /// call, running or held at a permission prompt, which the working signal tells
+    /// apart.
+    Settled,
+}
+
+/// [`Turn`] for Claude conversation `id` (filed under `cwd` in transcript tree `root`)
+/// with input sent at `since`. A transcript not written yet while its tree exists is
+/// [`Turn::Pending`]: a new agent only creates it when its first prompt lands.
+pub fn claude_turn(id: &str, cwd: &Path, root: &Path, since: SystemTime) -> Turn {
+    let Some(path) = transcript_path(Tool::Claude, id, cwd, root) else {
+        return match root.is_dir() {
+            true => Turn::Pending,
+            false => Turn::Unknown,
+        };
+    };
+    match read_tail(&path, 256 * 1024) {
+        Some((text, _)) => claude_turn_in(&text.lines().collect::<Vec<_>>(), since),
+        None => Turn::Unknown,
+    }
+}
+
+/// [`claude_turn`] over transcript `lines`. Subagent (sidechain) and meta records are
+/// skipped; "since" allows a little slack, as the input's instant is reconstructed
+/// from an age.
+fn claude_turn_in(lines: &[&str], since: SystemTime) -> Turn {
+    let since = since
+        .checked_sub(Duration::from_millis(200))
+        .unwrap_or(since);
+    let (mut dated, mut reacted, mut last) = (false, false, None);
+    for line in lines {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v["isSidechain"].as_bool() == Some(true) || v["isMeta"].as_bool() == Some(true) {
+            continue;
+        }
+        let step = match v["type"].as_str() {
+            Some("user") => claude_user_step(&v["message"]["content"]),
+            Some("assistant") => claude_assistant_step(&v["message"]),
+            _ => None,
+        };
+        let Some(step) = step else { continue };
+        if let Some(at) = v["timestamp"].as_str().and_then(parse_timestamp) {
+            dated = true;
+            reacted |= at >= since;
+        }
+        last = Some(step);
+    }
+    match (dated, reacted, last) {
+        (false, _, _) | (_, _, None) => Turn::Unknown,
+        (true, false, _) => Turn::Pending,
+        (true, true, Some(step)) => step,
+    }
+}
+
+/// A user record's place in the turn: a tool result or a prompt keeps it open; an
+/// interruption or a local command's output (`/clear`, …) ends it.
+fn claude_user_step(content: &serde_json::Value) -> Option<Turn> {
+    let text = match content {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(blocks) => {
+            if blocks.iter().any(|b| b["type"] == "tool_result") {
+                return Some(Turn::Open);
+            }
+            let texts: Vec<&str> = blocks
+                .iter()
+                .filter(|b| b["type"] == "text")
+                .filter_map(|b| b["text"].as_str())
+                .collect();
+            if texts.is_empty() {
+                return None;
+            }
+            texts.join("\n")
+        }
+        _ => return None,
+    };
+    let text = text.trim_start();
+    let ends = [
+        "[Request interrupted",
+        "<local-command-stdout>",
+        "<local-command-stderr>",
+    ];
+    Some(match ends.iter().any(|e| text.starts_with(e)) {
+        true => Turn::Settled,
+        false => Turn::Open,
+    })
+}
+
+/// An assistant record's place in the turn. An explicit `stop_reason` settles it
+/// (`end_turn`, or `tool_use` — a tool step, running or awaiting permission). Records
+/// written mid-stream carry none; then a text or tool block counts as settled (the
+/// working signal covers what follows) and a lone thinking block does not.
+fn claude_assistant_step(message: &serde_json::Value) -> Option<Turn> {
+    if message["stop_reason"].as_str().is_some() {
+        return Some(Turn::Settled);
+    }
+    let blocks = message["content"].as_array()?;
+    Some(
+        match blocks
+            .iter()
+            .any(|b| b["type"] == "text" || b["type"] == "tool_use")
+        {
+            true => Turn::Settled,
+            false => Turn::Open,
+        },
+    )
+}
+
+/// An RFC 3339 UTC timestamp as Claude writes them (`2025-06-01T12:34:56.789Z`).
+fn parse_timestamp(s: &str) -> Option<SystemTime> {
+    let b = s.as_bytes();
+    if b.len() < 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+    {
+        return None;
+    }
+    let num = |r: std::ops::Range<usize>| -> Option<i64> { s.get(r)?.parse().ok() };
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (h, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    let rest = s.get(19..)?;
+    let (frac, zone) = match rest.strip_prefix('.') {
+        Some(r) => r.split_at(r.find(|c: char| !c.is_ascii_digit()).unwrap_or(r.len())),
+        None => ("", rest),
+    };
+    if zone != "Z" && zone != "+00:00" {
+        return None;
+    }
+    let millis: u64 = format!("{frac:0<3}").get(..3)?.parse().ok()?;
+    // Days since the epoch for a proleptic Gregorian date (Howard Hinnant's algorithm).
+    let y = if mo <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * ((mo + 9) % 12) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    let secs = u64::try_from(days * 86_400 + h * 3_600 + mi * 60 + sec).ok()?;
+    SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(secs) + Duration::from_millis(millis))
+}
+
+/// The latest agent message among Codex rollout `lines`: an `agent_message` event,
+/// or an assistant `message` item's `output_text` parts.
+fn codex_reply(lines: &[&str]) -> Option<String> {
+    lines.iter().rev().find_map(|l| {
+        let v: serde_json::Value = serde_json::from_str(l).ok()?;
+        let p = &v["payload"];
+        let text = match v["type"].as_str()? {
+            "event_msg" if p["type"] == "agent_message" => p["message"].as_str()?.to_string(),
+            "response_item" if p["type"] == "message" && p["role"] == "assistant" => p["content"]
+                .as_array()?
+                .iter()
+                .filter(|c| c["type"] == "output_text")
+                .filter_map(|c| c["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => return None,
+        };
+        let text = text.trim().to_string();
+        (!text.is_empty()).then_some(text)
+    })
+}
+
 /// Extract the value of a `"field":"value"` string entry from a flat JSON line.
 fn json_str_field(line: &str, field: &str) -> Option<String> {
     let key = format!("\"{field}\":\"");
@@ -319,6 +649,116 @@ fn home() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_claude_and_codex_take_a_prompt_argument() {
+        assert_eq!(Tool::Claude.prompt_args("hi"), Some(vec!["hi".to_string()]));
+        assert_eq!(
+            Tool::Codex.prompt_args("-x"),
+            Some(vec!["--".to_string(), "-x".to_string()])
+        );
+        assert_eq!(Tool::Pi.prompt_args("hi"), None);
+        assert_eq!(Tool::Grok.prompt_args("hi"), None);
+    }
+
+    #[test]
+    fn claude_reply_gathers_the_last_messages_text_blocks() {
+        let lines = [
+            r#"{"type":"user","message":{"role":"user","content":"do it"}}"#,
+            r#"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Looking."}]}}"#,
+            r#"{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","name":"Bash"}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}"#,
+            r#"{"type":"assistant","message":{"id":"m2","content":[{"type":"thinking","thinking":"hmm"}]}}"#,
+            r#"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Done: 3 tests fixed."}]}}"#,
+            r#"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"All green."}]}}"#,
+            r#"{"type":"assistant","isSidechain":true,"message":{"id":"m3","content":[{"type":"text","text":"subagent"}]}}"#,
+            r#"{"type":"system","subtype":"x"}"#,
+            "not json",
+        ];
+        assert_eq!(
+            claude_reply(&lines).as_deref(),
+            Some("Done: 3 tests fixed.\n\nAll green.")
+        );
+        assert_eq!(claude_reply(&lines[..1]), None);
+    }
+
+    #[test]
+    fn codex_reply_takes_the_latest_agent_message() {
+        let lines = [
+            r#"{"type":"session_meta","payload":{"id":"x"}}"#,
+            r#"{"type":"event_msg","payload":{"type":"agent_message","message":"first"}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second"}]}}"#,
+            r#"{"type":"event_msg","payload":{"type":"token_count"}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"q"}]}}"#,
+        ];
+        assert_eq!(codex_reply(&lines).as_deref(), Some("second"));
+        assert_eq!(codex_reply(&lines[..2]).as_deref(), Some("first"));
+        assert_eq!(codex_reply(&lines[..1]), None);
+    }
+
+    #[test]
+    fn parses_claude_timestamps() {
+        let at =
+            |s: &str| parse_timestamp(s).map(|t| t.duration_since(SystemTime::UNIX_EPOCH).unwrap());
+        assert_eq!(at("1970-01-01T00:00:00Z"), Some(Duration::ZERO));
+        assert_eq!(
+            at("2000-03-01T00:00:00.5Z"),
+            Some(Duration::from_millis(951_868_800_500))
+        );
+        assert_eq!(
+            at("2025-06-01T12:34:56.789Z"),
+            Some(Duration::from_millis(1_748_781_296_789))
+        );
+        assert_eq!(at("2025-06-01T12:34:56+02:00"), None);
+        assert_eq!(at("yesterday"), None);
+    }
+
+    #[test]
+    fn claude_turn_waits_for_the_turn_on_the_input_to_settle() {
+        let since = parse_timestamp("2025-06-01T12:00:00Z").unwrap();
+        let old = r#"{"type":"assistant","timestamp":"2025-06-01T11:59:00.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"earlier"}]}}"#;
+        let prompt = r#"{"type":"user","timestamp":"2025-06-01T12:00:01.000Z","message":{"role":"user","content":"fix it"}}"#;
+        let think = r#"{"type":"assistant","timestamp":"2025-06-01T12:00:02.000Z","message":{"stop_reason":null,"content":[{"type":"thinking","thinking":"hmm"}]}}"#;
+        let tool = r#"{"type":"assistant","timestamp":"2025-06-01T12:00:03.000Z","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash"}]}}"#;
+        let result = r#"{"type":"user","timestamp":"2025-06-01T12:00:04.000Z","message":{"role":"user","content":[{"type":"tool_result"}]}}"#;
+        let done = r#"{"type":"assistant","timestamp":"2025-06-01T12:00:05.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Fixed."}]}}"#;
+        let side = r#"{"type":"user","isSidechain":true,"timestamp":"2025-06-01T12:00:06.000Z","message":{"role":"user","content":"subagent task"}}"#;
+        let stop = r#"{"type":"user","timestamp":"2025-06-01T12:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#;
+        let turn = |lines: &[&str]| claude_turn_in(lines, since);
+        // An earlier turn's answer is not an answer to this input.
+        assert_eq!(turn(&[old]), Turn::Pending);
+        assert_eq!(turn(&[old, prompt]), Turn::Open);
+        assert_eq!(turn(&[old, prompt, think]), Turn::Open);
+        assert_eq!(turn(&[prompt, think, tool]), Turn::Settled);
+        assert_eq!(turn(&[prompt, think, tool, result]), Turn::Open);
+        assert_eq!(turn(&[prompt, think, tool, result, done]), Turn::Settled);
+        assert_eq!(turn(&[prompt, tool, result, done, side]), Turn::Settled);
+        assert_eq!(turn(&[prompt, think, stop]), Turn::Settled);
+        // Undated or unreadable transcripts can't gate anything.
+        assert_eq!(
+            turn(&[r#"{"type":"user","message":{"content":"x"}}"#]),
+            Turn::Unknown
+        );
+        assert_eq!(turn(&["not json"]), Turn::Unknown);
+    }
+
+    #[test]
+    fn read_tail_starts_on_a_line_boundary() {
+        let dir = std::env::temp_dir().join(format!("mmux-tail-{}", mint_uuid()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.jsonl");
+        std::fs::write(&path, "aaaa\nbbbb\ncccc\n").unwrap();
+        let (text, whole) = read_tail(&path, 7).unwrap();
+        assert_eq!(text, "cccc\n");
+        assert!(!whole);
+        // A window that begins exactly on a line keeps that line.
+        let (text, _) = read_tail(&path, 5).unwrap();
+        assert_eq!(text, "cccc\n");
+        let (text, whole) = read_tail(&path, 1024).unwrap();
+        assert_eq!(text, "aaaa\nbbbb\ncccc\n");
+        assert!(whole);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn detects_by_basename() {

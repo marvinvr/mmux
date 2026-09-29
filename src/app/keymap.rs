@@ -79,6 +79,58 @@ pub fn encode_key(k: &KeyEvent, kitty_flags: u8) -> Vec<u8> {
     out
 }
 
+/// Parse a tmux-style key name — `Enter`, `Escape`, `Tab`, `BSpace`, `Up`, `PageDown`,
+/// `F5`, `Space`, a single character, optionally prefixed by `C-` (Ctrl), `M-` (Alt)
+/// and `S-` (Shift): `C-c`, `M-x`, `S-Enter` — into the key event [`encode_key`] turns
+/// into bytes. `None` for anything else, which the control socket types as literal text.
+pub fn parse_key_name(name: &str) -> Option<KeyEvent> {
+    let mut mods = KeyModifiers::NONE;
+    let mut rest = name;
+    // A modifier prefix only counts when something follows it: a bare `C-` is text.
+    while rest.len() > 2 {
+        let modifier = match rest.get(..2) {
+            Some("C-" | "c-") => KeyModifiers::CONTROL,
+            Some("M-" | "m-" | "A-" | "a-") => KeyModifiers::ALT,
+            Some("S-" | "s-") => KeyModifiers::SHIFT,
+            _ => break,
+        };
+        mods |= modifier;
+        rest = &rest[2..];
+    }
+    let mut chars = rest.chars();
+    if let (Some(c), None) = (chars.next(), chars.next()) {
+        return Some(KeyEvent::new(KeyCode::Char(c), mods));
+    }
+    let code = match rest.to_ascii_lowercase().as_str() {
+        "enter" | "return" | "cr" => KeyCode::Enter,
+        "escape" | "esc" => KeyCode::Esc,
+        "tab" if mods.contains(KeyModifiers::SHIFT) => {
+            mods.remove(KeyModifiers::SHIFT);
+            KeyCode::BackTab
+        }
+        "tab" => KeyCode::Tab,
+        "btab" | "backtab" => KeyCode::BackTab,
+        "bspace" | "backspace" | "bs" => KeyCode::Backspace,
+        "space" => KeyCode::Char(' '),
+        "up" => KeyCode::Up,
+        "down" => KeyCode::Down,
+        "left" => KeyCode::Left,
+        "right" => KeyCode::Right,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "pageup" | "pgup" | "ppage" => KeyCode::PageUp,
+        "pagedown" | "pgdn" | "npage" => KeyCode::PageDown,
+        "delete" | "del" | "dc" => KeyCode::Delete,
+        "insert" | "ins" | "ic" => KeyCode::Insert,
+        f if f.len() > 1 && f.starts_with('f') => match f[1..].parse::<u8>() {
+            Ok(n @ 1..=12) => KeyCode::F(n),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(KeyEvent::new(code, mods))
+}
+
 /// Kitty numbers modifiers as one plus a bitset: Shift, Alt, Ctrl, Super,
 /// Hyper, Meta. Keep this local to the protocol-specific path above.
 fn kitty_modifier(modifiers: KeyModifiers) -> u8 {
@@ -180,6 +232,32 @@ mod tests {
             encode_key(&key(KeyCode::Char('x'), KeyModifiers::ALT), 0),
             vec![27, b'x']
         );
+    }
+
+    #[test]
+    fn parses_tmux_style_key_names() {
+        let enc = |n: &str| encode_key(&parse_key_name(n).unwrap(), 0);
+        assert_eq!(enc("Enter"), b"\r");
+        assert_eq!(enc("C-c"), vec![0x03]);
+        assert_eq!(enc("Escape"), vec![27]);
+        assert_eq!(enc("Up"), vec![27, 91, 65]);
+        assert_eq!(enc("M-x"), vec![27, b'x']);
+        assert_eq!(enc("S-Tab"), vec![27, 91, 90]);
+        assert_eq!(enc("Space"), b" ");
+        assert_eq!(enc("y"), b"y");
+        assert_eq!(enc("F5"), vec![27, 91, 49, 53, 126]);
+        assert_eq!(
+            parse_key_name("S-Enter").unwrap().modifiers,
+            KeyModifiers::SHIFT
+        );
+    }
+
+    #[test]
+    fn unknown_key_names_are_not_keys() {
+        assert!(parse_key_name("hello").is_none());
+        assert!(parse_key_name("F99").is_none());
+        assert!(parse_key_name("C-").is_none());
+        assert!(parse_key_name("✳ok").is_none());
     }
 
     #[test]

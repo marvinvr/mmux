@@ -122,6 +122,32 @@ See [Configuration](docs/04-configuration.md) for the full schema, the merge rul
 [workspace manifests](docs/04-configuration.md#workspace-manifests) (several projects in one
 sidebar).
 
+## Let Agents Drive mmux
+
+Every running mmux can be driven from the command line, so an agent (inside mmux or anywhere else)
+can check on its siblings, read a dev server's logs, restart a process, or hand a prompt to another
+agent and read the reply, all visible in your sidebar:
+
+```sh
+mmux ls                          # projects + sessions: id, kind, name, state
+mmux read "Dev server" -n 80     # the last 80 lines of its output
+mmux ask "why is CI red?"        # new agent → wait → print its reply
+```
+
+To teach your agent the whole CLI, paste this to it:
+
+```text
+Install the mmux skill: fetch https://raw.githubusercontent.com/marvinvr/mmux/main/skills/mmux/SKILL.md and save it to ~/.claude/skills/mmux/SKILL.md
+```
+
+Or from a shell:
+
+```sh
+mkdir -p ~/.claude/skills/mmux && curl -fsSL -o ~/.claude/skills/mmux/SKILL.md https://raw.githubusercontent.com/marvinvr/mmux/main/skills/mmux/SKILL.md
+```
+
+See [Controlling mmux from Scripts & Agents](docs/03-usage.md#controlling-mmux-from-scripts--agents).
+
 ## Documentation
 
 The canonical docs live in **[`docs/`](docs/)**:

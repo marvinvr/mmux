@@ -57,6 +57,10 @@ pub struct Config {
     /// before it can run. `None`/unset ⇒ the defaults; see [`WorktreeConfig`].
     #[serde(default)]
     pub worktrees: Option<WorktreeConfig>,
+    /// The control socket that `mmux ls`/`send`/`new`/… talk to. `None`/unset ⇒ enabled;
+    /// see [`ControlConfig`] and [`crate::control`].
+    #[serde(default)]
+    pub control: Option<ControlConfig>,
     /// The directory the config was loaded from. Relative `cwd`s resolve against this.
     #[serde(skip)]
     pub dir: PathBuf,
@@ -116,6 +120,24 @@ pub struct AutoUpdateConfig {
     /// single run with `MMUX_NO_UPDATE`.
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+/// Settings for the control socket (see [`crate::control`]): scripts and agents driving a
+/// running session through `mmux ls`/`read`/`send`/`new`/…. Read from the launch
+/// directory's config: `enabled` when the session opens, `from-panes` per request.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ControlConfig {
+    /// Serve the socket at all (default: true). Off ⇒ every control command fails with
+    /// "no running mmux found".
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Accept requests from programs running *inside* this session's panes (default:
+    /// true). Off refuses any request that names its pane (`MMUX_SESSION`) — a guard
+    /// against agents driving mmux by habit, not a security boundary: a program that
+    /// scrubs its environment gets past it. An agent sandbox that must not reach mmux
+    /// (which can start unsandboxed agents) should deny `~/.mmux/run` itself.
+    #[serde(default = "default_true", rename = "from-panes")]
+    pub from_panes: bool,
 }
 
 /// Settings for git worktrees created from the git panel (`W`). A worktree opens as
@@ -527,6 +549,16 @@ impl Config {
     pub fn auto_update_enabled(&self) -> bool {
         self.auto_update.as_ref().map(|a| a.enabled).unwrap_or(true)
     }
+
+    /// Whether to serve the control socket (default: true).
+    pub fn control_enabled(&self) -> bool {
+        self.control.as_ref().map(|c| c.enabled).unwrap_or(true)
+    }
+
+    /// Whether programs inside the session's own panes may use the socket (default: true).
+    pub fn control_from_panes(&self) -> bool {
+        self.control.as_ref().map(|c| c.from_panes).unwrap_or(true)
+    }
 }
 
 /// The directory's basename, or `"mmux"` if it has none (e.g. the filesystem root).
@@ -665,6 +697,7 @@ fn merge(base: Option<Config>, project: Config) -> Config {
         notifications: project.notifications.or(base.notifications),
         auto_update: project.auto_update.or(base.auto_update),
         worktrees: project.worktrees.or(base.worktrees),
+        control: project.control.or(base.control),
         // A manifest is a per-directory fact: only the project file can declare one
         // (a global `workspace:` must not turn every directory into that workspace).
         workspace: project.workspace,

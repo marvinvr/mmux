@@ -122,6 +122,7 @@ session goes away.
 | `notifications` | map | [Notification](05-notifications.md) settings. |
 | `auto-update` | map | [Self-update](#auto-update) settings (Homebrew + script-installed binaries). |
 | `workspace` | map | Turn this file into a [workspace manifest](#workspace-manifests). Project-layer only; ignored in the global config. |
+| `control` | map | [Control socket](#control) settings — scripts and agents driving the session. |
 
 ### Workspace
 
@@ -258,6 +259,26 @@ See [Auto-Update](#auto-update) for how it behaves. The block only exists to tur
 ```yaml
 auto-update:
   enabled: false
+```
+
+### Control
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `enabled` | bool | Defaults to `true`. `false` stops the session serving its control socket, so [`mmux ls`/`send`/`new`/…](03-usage.md#controlling-mmux-from-scripts--agents) can't reach it. |
+| `from-panes` | bool | Defaults to `true`. `false` refuses requests from programs running inside this session's own panes (they identify themselves via `MMUX_SESSION`); callers outside still work. |
+
+Read from the launch directory's config (the manifest's, for a workspace). `enabled` is read when
+the session opens, so turning the socket on or off applies on the next open, not on `R`;
+`from-panes` is checked per request and follows `R`. `from-panes: false` keeps agents from driving mmux by
+habit; it is not a security boundary, since a program that clears its environment gets past it. The
+socket itself (`~/.mmux/run/`, owner-only) is reachable by anything running as you — an agent
+sandbox that must not start unsandboxed agents through mmux should deny that directory.
+
+```yaml
+control:
+  enabled: true
+  from-panes: false
 ```
 
 ## Auto-Update

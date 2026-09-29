@@ -7,11 +7,13 @@
 //! - [`input`] — keyboard, mouse and paste handling.
 //! - [`keymap`] — pure key-event → PTY-byte translation.
 //! - [`commit`] — cancellable generated messages and scheduled commit actions.
+//! - [`control`] — serving the control socket (`mmux ls`/`send`/`new`/…).
 //! - [`worktrees`] — worktrees-as-projects: adoption, create/merge/remove, the
 //!   one-dev-stack-per-repository swap, and the idle reaper.
 //! - [`view`] — all rendering (layout, sidebar, panes, footer).
 
 mod commit;
+mod control;
 mod diff;
 mod git;
 mod highlight;
@@ -236,6 +238,16 @@ pub(crate) struct App {
     /// state file is only rewritten when the set of agents/terminals changes.
     /// See [`persist`].
     restore_sig: Option<u64>,
+
+    /// The control socket this session serves (`None` when `control.enabled` is off or
+    /// it couldn't bind), drained each tick. See [`crate::control`] and [`control`].
+    control: Option<crate::control::Server>,
+    /// Control-socket input waiting for its moment — the Enter that follows a pasted
+    /// prompt, spaced-out named keys. See [`control`].
+    deferred: Vec<control::Deferred>,
+    /// First prompts waiting for a just-started agent's screen to settle before they
+    /// are typed in (agents that can't take one as a launch argument). See [`control`].
+    prompts: Vec<control::PendingPrompt>,
 }
 
 /// One project in the workspace: its config plus the runtime state scoped to it
@@ -310,9 +322,21 @@ impl App {
             config,
             manifest,
             projects,
-            warnings,
+            mut warnings,
         } = ws;
         let root = crate::config::canonical(&dir);
+        // Bind the control socket before anything spawns, so every pane — autostarted
+        // processes included — is born knowing its `MMUX_SOCKET`.
+        let control = match config.control_enabled() {
+            true => match crate::control::Server::start(&root) {
+                Ok(server) => Some(server),
+                Err(e) => {
+                    warnings.push(format!("control socket off — {e}"));
+                    None
+                }
+            },
+            false => None,
+        };
         let projects: Vec<Project> = projects.into_iter().map(Project::new).collect();
 
         // One flat session list across every project; each process becomes a row
@@ -330,6 +354,7 @@ impl App {
                     Kind::Process,
                     Recipe::process(p, &proj.cfg.dir),
                     pi,
+                    &proj.dir,
                 );
                 s.stop = p.stop.clone();
                 sessions.push(s);
@@ -390,6 +415,9 @@ impl App {
             last_update_check: Instant::now(),
             restart: false,
             restore_sig: None,
+            control,
+            deferred: Vec::new(),
+            prompts: Vec::new(),
         };
 
         // Surface any non-fatal workspace-load problems (missing folders, etc.).
@@ -547,6 +575,8 @@ impl App {
         self.poll_swap_drain();
         // Clear away worktrees that are finished and have gone quiet.
         self.step_worktree_reaper();
+        // Answer scripted callers on the control socket and release paced input.
+        self.serve_control();
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
         // Advance the background self-update (drain workers, run the periodic re-check).
@@ -820,6 +850,9 @@ pub fn run(ws: Workspace) -> Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
 
     let res = run_loop(&mut terminal, &mut app);
+    // Stop answering the control socket (and remove its file) before teardown — and
+    // before a self-update's exec, which would otherwise never run the drop.
+    app.control = None;
 
     // An input/read error can escape while native-copy mode has tmux's mouse option
     // disabled. Restore it before any other teardown so a surviving session never

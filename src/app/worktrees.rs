@@ -153,8 +153,10 @@ impl App {
     /// follows you into it, so opening one never races its parent for a port.
     fn push_project_processes(&mut self, pi: usize) {
         let dir = self.projects[pi].cfg.dir.clone();
+        let canon = self.projects[pi].dir.clone();
         for p in self.projects[pi].cfg.processes.clone() {
-            let mut s = Session::new(p.name.clone(), Kind::Process, Recipe::process(&p, &dir), pi);
+            let recipe = Recipe::process(&p, &dir);
+            let mut s = Session::new(p.name.clone(), Kind::Process, recipe, pi, &canon);
             s.stop = p.stop.clone();
             self.sessions.push(s);
         }
@@ -255,7 +257,8 @@ impl App {
         if let Some(setup) = setup {
             let (rows, cols) = self.last_inner;
             let recipe = Recipe::shell_line(&canon, &setup);
-            let mut s = Session::new("⚙ setup".into(), Kind::Terminal, recipe, pi);
+            let dir = self.projects[pi].dir.clone();
+            let mut s = Session::new("⚙ setup".into(), Kind::Terminal, recipe, pi, &dir);
             s.spawn(rows, cols);
             self.sessions.push(s);
             self.select_session(self.sessions.len() - 1);

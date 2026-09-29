@@ -943,6 +943,7 @@ dependencies = [
  "portable-pty",
  "ratatui",
  "serde",
+ "serde_json",
  "serde_yaml",
  "syntect",
  "tui-term",

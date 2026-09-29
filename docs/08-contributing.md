@@ -130,8 +130,10 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
   terminal or dropping SSH, but a crash of the TUI process or a reboot still loses live panes. The
   planned v2 is a **daemon + thin client** split.
 - **Stable selection (the natural next refactor).** Replace the positional `sel`/`build_nav()`
-  with a selection-by-identity model (e.g. a `SessionId`) in `nav.rs`. It removes the
-  rebuild-and-clamp dance; `nav.rs` is intentionally the single file that would change.
+  with a selection-by-identity model in `nav.rs`. Sessions already carry a stable `Session::id`
+  (the control socket addresses them by it, and its `keep_selection` re-finds the cursor by it);
+  keying `Nav` on it would remove the rebuild-and-clamp dance. `nav.rs` is intentionally the
+  single file that would change.
 - **Copy is drag-select only.** A keyboard copy-mode is still future. (Note: over a program that
   tracks the mouse, the drag goes to *it* — hold Shift to drag-select for the clipboard instead.)
 - **Agent activity is protocol-first.** `OSC 9;4` progress state is authoritative when present,

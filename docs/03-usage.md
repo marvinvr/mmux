@@ -525,3 +525,93 @@ rather than consuming drawer height.
   the selected running target; mmux saves its restorable sessions and runs process teardown
   commands, then leaves it in history so it can be reopened or forgotten with `Delete`. Choosing
   any non-running target opens (or creates) its session.
+
+## Controlling mmux from Scripts & Agents
+
+Every running mmux serves a private control socket, so a script — or an AI agent, inside mmux or
+anywhere else on the machine — can see what's running and drive it from the command line. Nothing
+needs turning on.
+
+```sh
+mmux ls                            # projects + sessions: id, kind, name, state, title
+mmux status s12                    # state, title, and the last lines of its screen
+mmux read "Dev server" -n 80       # the last 80 lines of a process's output
+mmux new agent claude              # start an agent; prints its id (s14 Claude #3 — started …)
+mmux send s14 "fix the failing test"   # type a prompt and press Enter
+mmux keys s14 Escape               # press keys: Enter, C-c, Up, Tab, F5, M-x, S-Tab …
+mmux restart "Dev server"          # start / stop / restart work on any session
+mmux close s14 --force             # close an agent even while it's working
+mmux wait s14                      # block until the agent has finished working
+mmux last s14                      # its last reply, from its own transcript
+mmux ask "why is the build red?"   # `claude -p`, but visible: new agent → wait → reply
+```
+
+| Command | What it does |
+| --- | --- |
+| `mmux ls` | Every project (sidebar order, with the agent templates `new agent` accepts) and every session: id, kind, name, state, title. |
+| `mmux status <t>` | One session's state and title plus its **status line** — the last few non-empty lines of its screen, where an agent keeps its own status and input box. |
+| `mmux read <t> [-n N]` | The last `N` lines (default 200, `0` = all) of its scrollback + screen as plain text. The way to read a dev server's errors. |
+| `mmux send <t> <text…>` | Types the text (as one bracketed paste when the program supports it), then presses Enter as a separate keystroke ~150 ms later so agent TUIs submit it. `--no-enter` skips the Enter; `-` as the text reads it from stdin (multi-line prompts). |
+| `mmux keys <t> <key>…` | Presses keys, tmux-style: `Enter` `Escape` `Tab` `BTab` `BSpace` `Space` `Up`/`Down`/`Left`/`Right` `Home`/`End` `PageUp`/`PageDown` `Delete` `Insert` `F1`–`F12`, a single character, with `C-` (Ctrl), `M-` (Alt) and `S-` (Shift) prefixes (aliases like `Esc`, `Return`, `PgUp`, `Del` work too). Any other word is typed as text. |
+| `mmux new agent [template] [-p project] [--prompt "…"]` | Starts an agent from a template (by name or command, e.g. `claude`; default: the first), optionally with a first prompt (`-` reads it from stdin). |
+| `mmux new terminal [-p project] [--cmd "…"]` | Starts a terminal, optionally typing a command into it (the terminal stays open afterwards). `--cmd` is for terminals only, `--prompt` for agents only. |
+| `mmux start <t>` / `restart <t>` | Starts a session that isn't running (stopped, exited, or failed); restarts one regardless. Processes keep the [one-dev-stack](#worktrees) rule. |
+| `mmux stop <t> [--force]` | Stops a process in place (running its `stop:` teardown, like `x`); on an agent or terminal it is `close` — refused while busy unless `--force`. |
+| `mmux close <t> [--force]` | Closes an agent or terminal. Refused while an agent is working or a terminal is running, unless `--force`. |
+| `mmux last <t>` | The agent's last reply. Claude and Codex answers come from the agent's own transcript (just the words, no TUI chrome); anything else falls back to the last ~40 lines of its screen. `--json` says which (`"source": "transcript"` or `"screen"`). |
+| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest — which keeps a just-started agent from reading as done before it has begun. `--exit` waits for the session to end instead. Exits `2` on timeout. |
+| `mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>` | [Ask an agent](#asking-an-agent) and print its answer. |
+
+### Asking an Agent
+
+`mmux ask` is `claude -p` that you can watch. It starts a new agent (or, with `--to`, sends to an
+existing one), hands it the prompt, waits for it to finish, and prints its reply — while the agent
+works as an ordinary sidebar row you can open, follow, and take over:
+
+```sh
+mmux ask "summarize what changed on this branch"            # new agent in this project
+mmux ask --agent codex -p api "why does /health 500?"       # a specific template + project
+mmux ask --to s14 "now write the fix"                       # a follow-up in the same conversation
+git diff | mmux ask -                                       # the prompt from stdin
+mmux ask --json "…"                                         # {"id","name","reply","source"}
+```
+
+The new agent's id is printed to stderr (`mmux: asked s14 Claude #3 …`), so a script can follow up
+with `--to`. The agent stays open afterwards unless `--close`. On timeout (`-t`, default 10 minutes)
+it exits `2` and leaves the agent working — `mmux wait` and `mmux last` pick it up from there.
+
+Claude and Codex receive a first prompt on their command line, exactly as if you had typed
+`claude "…"`; it is used for that first launch only, so restarting the agent resumes the conversation
+without repeating it. Other agents have it typed in once their screen has settled (at most ~10 s
+after starting).
+
+"Done" means the agent's sidebar spinner has stopped: the same working signal the sidebar uses. An
+agent that stops to ask you something — a permission prompt, a question — is done too; `mmux status`
+shows what's on its screen, and `mmux send`/`mmux keys` answer it.
+
+**Which mmux.** A command talks to the session for the current directory — the project itself, a
+workspace it belongs to, or the project a worktree was cut from. Inside an mmux pane it talks to
+that mmux. `-C <dir>` picks another, and then also stands in for the current directory when a bare
+name or `new` picks a project. With none running it says so.
+
+**Which session (`<t>`).** An id (`s12`, stable for the life of the session), a name (`"Claude #2"`
+— case and spaces don't matter, so `claude#2` works, as does a unique prefix), `project/name` when
+the same name exists in several projects, or `self` for the pane you run in. An ambiguous name lists
+the candidates.
+
+**Working or idle.** An agent's state is `working` exactly when its sidebar row spins and `idle`
+otherwise (with how long: `idle 42s`); `!` marks one asking for attention. Other sessions read
+`running`, `stopped`, `exited` or `failed`. The JSON adds `idle_for_ms`, `input_age_ms`,
+`worked_since_input` and `input_pending` — the pieces `mmux wait` decides with.
+
+**For scripts and agents.** Every command takes `--json` and then prints the raw response
+(`{"ok": true, "data": …}` or `{"ok": false, "error": "…"}`); failures exit non-zero either way.
+`wait` and `ask` exit `2` when they time out. Programs in mmux panes get `MMUX_SOCKET`,
+`MMUX_SESSION` (their own id), `MMUX_PROJECT` (their project's directory) and `MMUX_DEPTH` in their
+environment. `mmux new` refuses callers three levels deep, so agents can start helpers, but helpers
+can't start helpers without end.
+
+**You stay in charge.** Scripted actions never move your cursor or take focus; each shows a brief
+`ctl:` note in the footer instead, and everything started this way is an ordinary sidebar row you can
+open and take over. To turn the socket off, or keep it from programs inside the session, see
+[`control:`](04-configuration.md#control).

@@ -1,6 +1,7 @@
 //! Command-line surface: argument dispatch and the non-TUI subcommands
-//! (`init`, `agents`, `check`, `--help`, `--version`). The actual work lives elsewhere —
-//! this module just decides which entry point to run.
+//! (`init`, `agents`, `check`, `--help`, `--version`, and the control verbs in
+//! [`crate::ctl`]). The actual work lives elsewhere — this module just decides which
+//! entry point to run.
 
 use crate::config::Config;
 use anyhow::Result;
@@ -11,6 +12,11 @@ use std::path::PathBuf;
 pub fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
+    // Control verbs come first: their free-form text (`mmux send s3 -- --version`) must
+    // never be mistaken for mmux's own flags. `ctl` parses its own, `--` included.
+    if args.first().is_some_and(|a| crate::ctl::is_verb(a)) {
+        return crate::ctl::run(&args);
+    }
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print_help();
         return Ok(());
@@ -70,6 +76,16 @@ pub fn run() -> Result<()> {
             .unwrap_or_else(std::env::current_dir)?;
         let ws = Config::load_workspace(&dir)?;
         return crate::app::run(ws);
+    }
+
+    // Typed in one of this session's own panes (which no longer inherit `MMUX_INNER`),
+    // a bare `mmux` would attach tmux to the very session it is drawn in — an endless
+    // mirror. The pane's `MMUX_SOCKET` is named after that session, so compare.
+    if let Some(own) = std::env::var_os("MMUX_SOCKET") {
+        let here = crate::control::socket_path(&std::env::current_dir()?);
+        if here.is_some_and(|h| h.as_os_str() == own) {
+            anyhow::bail!("you are already inside this directory's mmux session");
+        }
     }
 
     crate::tmux::launch()
@@ -164,6 +180,17 @@ USAGE:
     mmux docs       Explain what mmux is + how to write the config. If you (or an
                     AI agent) need setup instructions, run this — it prints them.
     mmux --help     Show this help
+
+CONTROL (drive a running session from scripts/agents; add --json for JSON):
+    mmux ls                     Projects and sessions with ids (s3), state, title
+    mmux status|read <t>        A session's state + status line / its output
+    mmux send <t> <text>        Type a prompt and press Enter  ·  mmux keys <t> C-c …
+    mmux new agent|terminal     Start one (-p project, template, --prompt, --cmd)
+    mmux start|stop|restart|close <t>
+    mmux wait|last <t>          Wait until an agent is done · print its last reply
+    mmux ask "<prompt>"         New agent (or --to <t>), wait, print its reply
+                    <t> = s12 · "Claude #2" · project/name · self.
+                    `mmux ls --help` explains every control command.
 
 Each directory gets exactly one mmux session, kept alive inside tmux. Run `mmux`
 again in the same directory to reattach to whatever was already running.
@@ -353,9 +380,43 @@ WORKTREES — a branch as its own project box
     contents already live somewhere else; a branch with unpushed, unmerged work
     is never touched.
 
+CONTROL — drive a running session from scripts and agents
+    Every running mmux serves a private socket (~/.mmux/run/), so any program —
+    an agent inside mmux or a script anywhere — can see and drive it. Commands
+    find the session for the current directory (project, workspace member, or
+    worktree) or the one they run inside; -C <dir> picks another; --json prints
+    JSON. Sessions are addressed by id (s12), name ("Claude #2"), project/name,
+    or `self`:
+
+      mmux ls                        # projects + sessions: id, kind, name, state
+      mmux status s12                # state, title, last lines of its screen
+      mmux read "Dev server" -n 80   # the last 80 lines of its output
+      mmux new agent claude          # start an agent (-p project) -> prints its id
+      mmux send s12 "fix the failing test"   # type a prompt + Enter (`-` = stdin)
+      mmux keys s12 Escape           # press keys: Enter C-c Up Tab …
+      mmux start|stop|restart "Dev server"   # stop on an agent/terminal = close
+      mmux close s12 [--force]       # close an agent/terminal (busy ⇒ --force)
+      mmux wait s12                  # block until the agent has finished working
+      mmux last s12                  # its last reply (from its transcript)
+      mmux ask "why is CI red?"      # new agent -> wait -> print its reply; the
+                                     #   agent stays in the sidebar (--close drops it,
+                                     #   --to s12 asks an existing one, -t timeout)
+
+    An agent's state is `working` exactly when its sidebar row spins, `idle`
+    otherwise; `wait`/`ask` treat an agent as done once it stops working on
+    what it was sent. `new agent --prompt "…"` starts one with a first prompt.
+    Programs in mmux panes get MMUX_SOCKET, MMUX_SESSION (their own id),
+    MMUX_PROJECT and MMUX_DEPTH; `mmux new` refuses at depth 3. Actions never
+    move your cursor — each shows a `ctl:` note in the footer. Opt out:
+
+      control:
+        enabled: true      # serve the socket at all
+        from-panes: true   # false: only callers OUTSIDE this session's panes
+
 FIELD REFERENCE
     top level   name (str, optional) · agents[] · processes[] · git-panel (optional)
                 · notifications (optional) · auto-update (optional) · worktrees (optional)
+                · control (optional — see CONTROL)
                 · workspace (optional manifest with folders[] — see WORKSPACES)
     agent       name* · cmd* · args[] · cwd · env{{}}
     process     name* · cmd* · args[] · cwd · env{{}} · autostart (bool)
@@ -366,6 +427,7 @@ FIELD REFERENCE
                 mmux.local.yml/.yaml) · setup (shell line run
                 once in a new checkout) · reap (how long a finished worktree idles
                 before it's cleared away: 30m default, 2h, 90s, or `off`)
+    control     enabled (bool, default true) · from-panes (bool, default true)
     auto-update enabled (bool, default true; Homebrew + script-installed binaries —
                 checks on start and every 6 hours. A script install downloads it in the
                 background and shows "restart to update"; a brew install shows "update

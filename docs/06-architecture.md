@@ -20,6 +20,9 @@ The same binary plays two roles, distinguished by the `MMUX_INNER` environment v
 ```text
 mmux                      cli::run() dispatch
   │
+  ├─ ls/status/read/send/  → ctl.rs: one request to a running session's
+  │  keys/new/start/…        control socket (see The Control Socket)
+  │
   ├─ init/check/docs/      → wizard / config validation / printed guide
   │  attach
   │
@@ -56,7 +59,11 @@ and singleton-per-directory:
   the invisible tmux layer, so terminal-specific rendering (including Claude's activity animation)
   matches a direct launch. It also removes the jail's `TMUX`/`TMUX_PANE`; the program is attached
   to mmux's vt100 PTY and cannot negotiate directly with that tmux pane. Each attach refreshes the
-  terminal values used by panes spawned afterward.
+  terminal values used by panes spawned afterward. The inner process's own `MMUX_INNER`/`MMUX_DIR`
+  are stripped too (a bare `mmux` typed in a pane would otherwise start a nested TUI there); panes
+  get their [control-socket identity](#the-control-socket) instead. A bare `mmux` for the very
+  directory whose session it runs in (its `MMUX_SOCKET` names that session) is refused rather than
+  attaching the session to itself.
 
 `mmux attach` is a separate path: it lists running `mmux-*` sessions plus recent directories
 (from `~/.mmux/history`) in a small picker. Workspace manifests form the first section regardless
@@ -454,6 +461,82 @@ This is a convenience, never load-bearing: a missing or unparsable state file ju
 start, so every read/write swallows its errors. Closing a session (or all of them) before quitting
 removes it from the snapshot, so it's easy to get a clean slate.
 
+## The Control Socket
+
+Scripts and agents drive a running session through `mmux ls`/`status`/`read`/`last`/`send`/`keys`/
+`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`
+([usage](03-usage.md#controlling-mmux-from-scripts--agents)). The
+panes are PTYs the inner process owns — tmux sees only the rendered TUI — so neither
+`tmux capture-pane` nor `send-keys` can reach an individual agent. The channel goes into the inner
+process itself.
+
+- **Transport.** `control.rs` binds a Unix socket at `~/.mmux/run/<tmux session name>.sock` (the same
+  canonical-dir hash as the tmux session and the restore file) in a `0700` directory, at the top of
+  `App::new` so every pane — autostarted processes included — is spawned knowing it. One JSON request
+  line in, one JSON response line out, then the connection closes. A stale file from a crash
+  (nothing answers) is replaced; the file is removed when the loop exits, before a self-update's
+  `exec`.
+- **Threading.** A listener thread (plus one per connection, so a half-sent request can't block the
+  next) parses requests and hands each over an `mpsc` channel with a reply sender; `tick()` drains a
+  bounded batch (`app/control.rs`) and runs it against the live `App` — the same worker-channel
+  shape as git jobs and the updater. The loop polls every 50 ms even while detached, so answers are
+  prompt; only native-copy mode (which blocks on a key) stalls them, and the listener then answers
+  with a timeout error — a request still queued past that is dropped, never acted on late.
+- **Identity.** Positional indices shift, so each `Session` carries a stable runtime `id` (`s<N>`,
+  from a process-wide counter, not persisted). Targets resolve by id, name (case/space-insensitive,
+  then prefix), `project/name`, or `self`; several matches narrow to the caller's project (its pane's,
+  else the deepest project containing its cwd).
+- **Panes know where they are.** `Session::spawn` exports `MMUX_SOCKET`, `MMUX_SESSION`,
+  `MMUX_PROJECT` and `MMUX_DEPTH` (recipe env still wins, and never carries them — a reload compares
+  recipes). The client (`ctl.rs`) finds its session by `-C`, else `$MMUX_SOCKET`, else by hashing the
+  cwd and each ancestor (a project or its workspace), else by asking every live socket for its
+  project dirs and taking the deepest match (worktrees live under `~/.mmux/worktrees`). It sends
+  `MMUX_SESSION` only to its *own* socket, where the id means something.
+- **The user keeps the cursor.** Control actions reuse the same building blocks as the keys —
+  `new_agent_session`/`new_terminal_session` + `launch_session`, `start_session` (so a process start
+  still evicts a sibling checkout), the `stop:` teardown — but run inside `keep_selection`, which
+  re-finds the selected row by identity afterwards and never takes focus. Each flashes a `ctl:` note.
+- **Input is paced, not slept.** `send` pastes (bracketed when the program enabled it) and queues
+  the Enter ~150 ms later; `keys` spaces named keys 30 ms apart so `Escape` + `i` isn't read as
+  `Alt+i`. The `deferred` queue keeps per-session order and is flushed each tick.
+- **Status is what the sidebar shows.** `working` is `Session::busy()` — the spinner's predicate —
+  and `status` adds the program's title plus the last few non-empty screen lines, where agents draw
+  their own status line. `read` pages through vt100's scrollback (`Pane::text_tail`).
+- **Done is the spinner stopping.** Each tick `track_activity` stamps `Session::last_working_at`
+  for every agent that is `busy()`; with `last_input_at` (set by `send`, by `keys` only when they
+  include a submitting `Enter`/`C-m`/`C-j`, or at launch for a first prompt) and `launched_at`, `SessionInfo` reports `idle_for_ms`, `input_age_ms`,
+  `worked_since_input` and `input_pending`. `wait` and `ask` are **client-side** loops polling
+  `status` every 250 ms (`ctl.rs`): done = not working, nothing queued, quiet for the settle time,
+  and it worked since the input (or never got any, or ignored it for 20 s — a reply too fast to be
+  seen working). For a Claude agent that was sent input, the transcript is a second gate
+  (`agent::claude_turn`, read only once the screen says done): a record dated after the input must
+  exist and the turn must be at rest — a final answer, an interruption, a local command's output, or
+  a tool call (running or at a permission prompt, which `busy()` tells apart), not a bare prompt, a
+  tool result or a lone thinking block. The working signal alone is fooled by a boot-time title
+  flash before a launch-argument prompt is underway. A missing transcript (a new agent writes it
+  when its prompt lands) counts as "not yet", within the 20 s grace; an unreadable one, or an agent
+  quiet for 30 s, falls back to the screen. Keeping the loop in the client means no server-side waiters to expire and nothing
+  blocking the UI thread. The status line walks only the buffer's tail (`text_tail(n)` starts `2n`
+  rows back), so polling it stays cheap.
+- **Replies come from transcripts, read by the client.** `last` answers with the agent's tool,
+  conversation id (what [restore](#session-restore) already tracks), launch cwd and transcript root,
+  plus a screen tail; `ctl.rs` then reads the transcript itself via `agent::last_reply` — Claude's
+  `~/.claude/projects/<dir>/<id>.jsonl` (the latest assistant message's text blocks, regathered
+  by message id), Codex's `rollout-…-<id>.jsonl` (the latest agent message) — reading only the
+  file's tail, widening if needed. The root is `agent::session_root`, the same lookup Codex id
+  discovery uses: `CLAUDE_CONFIG_DIR`/`CODEX_HOME` from the agent's recipe env, then the inner
+  process's env, then `$HOME` — resolved by the server, since the client's env may differ. File IO stays off the UI thread, and the reply is the agent's own
+  words rather than a scrape of its TUI; other agents fall back to the screen tail.
+- **First prompts ride the command line.** `new agent --prompt` sets `Session::first_prompt`,
+  which `spawn` *takes* and appends via `Tool::prompt_args` (Claude and Codex accept a trailing
+  positional prompt) — so it is used by the first launch only and a restart, which resumes the
+  conversation, can't repeat it; it is never persisted. Agents that can't take one get it typed
+  in instead: a `PendingPrompt` waits until the pane has drawn something and held still for
+  800 ms (at most 10 s), then goes through the same paste + delayed Enter as `send`.
+- **Guards.** `control.enabled`/`from-panes` ([config](04-configuration.md#control)); `new` refuses
+  callers at `MMUX_DEPTH` ≥ 3; closing a working agent or running terminal needs `force`. The socket
+  is owner-only, which is the real boundary.
+
 ## Navigation, Focus, and Regions
 
 - **Navigation is positional.** `App.sel` is an index into the `Vec<Nav>` returned by
@@ -537,9 +620,11 @@ removes it from the snapshot, so it's easy to get a clean slate.
 | Eviction on *start*, not on selection | An earlier build moved the stack after the cursor rested in a checkout. A process restarting because of where you navigated is surprising and unaskable-for; making the start gesture carry the eviction keeps the same ports-invariant with no timer, no thrash, and nothing happening behind your back. The drain phase is what keeps it correct. |
 | Reap only merged-or-pushed checkouts | Deleting a directory automatically is only defensible when its contents provably live somewhere else. `-d` (never `-D`) keeps the branch when git disagrees. |
 | Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
+| `wait`/`ask`/`last` do their work in the client | Polling `status` and reading transcript files client-side keeps the server stateless and the UI thread free of blocking waits and file IO; the working signal is the sidebar's own, so "done" means what the user sees. |
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |
 | Self-update: auto install, user-gated restart | The on-disk swap is safe mid-run, but applying it ends the panes — so the disruptive step waits for you, behind a quiet badge, while a long task runs undisturbed. |
+| A control socket into the inner process, not tmux | The panes are mmux's own PTYs, invisible to tmux, so only the inner process can read or type into one. One JSON line each way over a same-user Unix socket needs no new runtime, and draining it in `tick()` means every request sees exactly the state the user sees, without locks. |
 | Restore agents/terminals on every reopen | Snapshot the live sessions and rebuild on start — resuming Claude/Codex/Pi/Grok by session id and shells at their live cwd — so quitting, a crash, or a "restart to update" all bring your work back. Unconditional because the tmux singleton guarantees a fresh inner process means no live panes to clobber. A throwaway state file, never load-bearing. |
 
 ## Planned
