@@ -464,7 +464,7 @@ removes it from the snapshot, so it's easy to get a clean slate.
 ## The Control Socket
 
 Scripts and agents drive a running session through `mmux ls`/`status`/`read`/`last`/`send`/`keys`/
-`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`
+`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`/`worktree new|rm`
 ([usage](03-usage.md#controlling-mmux-from-scripts--agents)). The
 panes are PTYs the inner process owns — tmux sees only the rendered TUI — so neither
 `tmux capture-pane` nor `send-keys` can reach an individual agent. The channel goes into the inner
@@ -494,8 +494,10 @@ process itself.
   `MMUX_SESSION` only to its *own* socket, where the id means something.
 - **The user keeps the cursor.** Control actions reuse the same building blocks as the keys —
   `new_agent_session`/`new_terminal_session` + `launch_session`, `start_session` (so a process start
-  still evicts a sibling checkout), the `stop:` teardown — but run inside `keep_selection`, which
-  re-finds the selected row by identity afterwards and never takes focus. Each flashes a `ctl:` note.
+  still evicts a sibling checkout), the `stop:` teardown, `cut_worktree`/`take_worktree` (the halves
+  of `w` and `X` that don't touch the view) — but run inside `keep_selection`, which re-finds the
+  selected row by identity afterwards (a launcher row by its project's directory, since removing a
+  worktree shifts project indices) and never takes focus. Each flashes a `ctl:` note.
 - **Input is paced, not slept.** `send` pastes (bracketed when the program enabled it) and queues
   the Enter ~150 ms later; `keys` spaces named keys 30 ms apart so `Escape` + `i` isn't read as
   `Alt+i`. The `deferred` queue keeps per-session order and is flushed each tick.
@@ -533,8 +535,10 @@ process itself.
   conversation, can't repeat it; it is never persisted. Agents that can't take one get it typed
   in instead: a `PendingPrompt` waits until the pane has drawn something and held still for
   800 ms (at most 10 s), then goes through the same paste + delayed Enter as `send`.
-- **Guards.** `control.enabled`/`from-panes` ([config](04-configuration.md#control)); `new` refuses
-  callers at `MMUX_DEPTH` ≥ 3; closing a working agent or running terminal needs `force`. The socket
+- **Guards.** `control.enabled`/`from-panes` ([config](04-configuration.md#control)); `new` and
+  `worktree new` refuse callers at `MMUX_DEPTH` ≥ 3; closing a working agent or running terminal
+  needs `force`, as does removing a worktree with uncommitted changes, an agent at work, or in view
+  (the caller's own worktree is never removed — it would close the pane asking). The socket
   is owner-only, which is the real boundary.
 
 ## Navigation, Focus, and Regions

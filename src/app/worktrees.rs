@@ -49,6 +49,30 @@ fn human_duration(d: Duration) -> String {
     }
 }
 
+/// A worktree just cut by [`App::cut_worktree`].
+pub(crate) struct Cut {
+    /// Its project.
+    pub pi: usize,
+    pub branch: String,
+    /// The gitignored files copied in from the parent (see `worktree::prepare`).
+    pub copied: Vec<String>,
+    /// The session running its `worktrees.setup` command, if one is configured.
+    pub setup: Option<usize>,
+}
+
+impl Cut {
+    /// The copied files as a footer suffix. A monorepo hands back one env file per
+    /// package — the flash is one line, so past a few it says how many rather than
+    /// listing them all.
+    pub fn copied_note(&self) -> String {
+        match self.copied.len() {
+            0 => String::new(),
+            n if n <= 3 => format!(" · copied {}", self.copied.join(", ")),
+            n => format!(" · copied {} +{} more", self.copied[..3].join(", "), n - 3),
+        }
+    }
+}
+
 impl App {
     pub(crate) fn family_root(&self, pi: usize) -> usize {
         match self.projects[pi].worktree.as_ref() {
@@ -185,34 +209,48 @@ impl App {
         crate::worktree::generate_name(&taken)
     }
 
-    /// Cut a worktree for `branch` off the active project's repository and open it as
-    /// a project. An existing branch is checked out; a new one is created from
-    /// whatever the main checkout has out, and that base is remembered for `M`.
+    /// `w`: cut a worktree for `branch` off the active project's repository and bring
+    /// it into view — its setup terminal focused when it has one.
     pub(crate) fn create_worktree(&mut self, branch: &str) {
+        if branch.trim().is_empty() {
+            return;
+        }
+        match self.cut_worktree(self.family_root(self.active), branch) {
+            Ok(cut) => {
+                self.focus_project(cut.pi);
+                if let Some(i) = cut.setup {
+                    self.select_session(i);
+                    self.focus = Focus::Terminal;
+                }
+                self.flash(format!("worktree ⑂ {}{}", cut.branch, cut.copied_note()));
+            }
+            Err(e) => self.flash(e),
+        }
+    }
+
+    /// Cut a worktree for `branch` off project `root`'s repository and open it as a
+    /// project, without touching the view — shared by `w` and `mmux worktree new`. An
+    /// existing branch is checked out; a new one is created from whatever the main
+    /// checkout has out, and that base is remembered for `M`.
+    pub(crate) fn cut_worktree(&mut self, root: usize, branch: &str) -> Result<Cut, String> {
         let branch = branch.trim().to_string();
         if branch.is_empty() {
-            return;
+            return Err("the branch name is empty".into());
         }
         // Always act on the repository's main checkout: `git worktree` bookkeeping,
         // the base branch and parentage all belong there, not to a linked worktree.
-        let dir = self.projects[self.family_root(self.active)].dir.clone();
-        let Some(repo) = crate::git::main_worktree(&dir).map(|p| config::canonical(&p)) else {
-            self.flash("not a git repository");
-            return;
-        };
-        let Some(path) = crate::worktree::path_for(&repo, &branch) else {
-            self.flash("can't locate ~/.mmux (is HOME set?)");
-            return;
-        };
+        let dir = self.projects[root].dir.clone();
+        let repo = crate::git::main_worktree(&dir)
+            .map(|p| config::canonical(&p))
+            .ok_or("not a git repository")?;
+        let path = crate::worktree::path_for(&repo, &branch)
+            .ok_or("can't locate ~/.mmux (is HOME set?)")?;
         if path.exists() {
-            self.flash(format!("a worktree for “{branch}” already exists"));
-            return;
+            return Err(format!("a worktree for “{branch}” already exists"));
         }
         if let Some(parent) = path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                self.flash(format!("couldn't create the worktree directory — {e}"));
-                return;
-            }
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("couldn't create the worktree directory — {e}"))?;
         }
         // A directory deleted behind git's back leaves an entry that would otherwise
         // block re-creating the same branch's worktree here.
@@ -221,57 +259,47 @@ impl App {
         let existing = crate::git::branch_exists(&repo, &branch);
         let base = crate::git::status(&repo).branch;
         if !existing && base.is_empty() {
-            self.flash("main checkout is on a detached HEAD — check out a branch first");
-            return;
+            return Err("main checkout is on a detached HEAD — check out a branch first".into());
         }
         let from = (!existing).then_some(base.as_str());
-        if let Err(e) = crate::git::worktree_add(&repo, &path, &branch, from) {
-            self.flash(first_line(&e));
-            return;
-        }
+        crate::git::worktree_add(&repo, &path, &branch, from).map_err(|e| first_line(&e))?;
         if !existing {
             let _ = crate::git::config_set(&repo, &base_key(&branch), &base);
         }
 
         // The gitignored files a checkout needs to actually run (see `worktree::prepare`).
-        let wcfg = self.projects[self.family_root(self.active)]
-            .cfg
-            .worktrees
-            .clone();
+        let wcfg = self.projects[root].cfg.worktrees.clone();
         let copied = crate::worktree::prepare(&repo, &path, wcfg.as_ref());
 
         self.sync_worktree_projects();
         let canon = config::canonical(&path);
-        let Some(pi) = self.projects.iter().position(|p| p.dir == canon) else {
-            self.flash(format!("created “{branch}”, but the workspace is full"));
-            return;
-        };
-        self.focus_project(pi);
+        let pi = self
+            .projects
+            .iter()
+            .position(|p| p.dir == canon)
+            .ok_or_else(|| format!("created “{branch}”, but the workspace is full"))?;
 
         // The one-time setup command runs as an ordinary terminal in the new project:
         // you watch it work, and the row prunes itself when it finishes.
         let setup = wcfg
             .as_ref()
             .and_then(|w| w.setup.clone())
-            .filter(|s| !s.trim().is_empty());
-        if let Some(setup) = setup {
-            let (rows, cols) = self.last_inner;
-            let recipe = Recipe::shell_line(&canon, &setup);
-            let dir = self.projects[pi].dir.clone();
-            let mut s = Session::new("⚙ setup".into(), Kind::Terminal, recipe, pi, &dir);
-            s.spawn(rows, cols);
-            self.sessions.push(s);
-            self.select_session(self.sessions.len() - 1);
-            self.focus = Focus::Terminal;
-        }
-        // A monorepo hands back one env file per package — the flash is one line, so
-        // past a few it says how many rather than listing them all.
-        let extra = match copied.len() {
-            0 => String::new(),
-            n if n <= 3 => format!(" · copied {}", copied.join(", ")),
-            n => format!(" · copied {} +{} more", copied[..3].join(", "), n - 3),
-        };
-        self.flash(format!("worktree ⑂ {branch}{extra}"));
+            .filter(|s| !s.trim().is_empty())
+            .map(|setup| {
+                let (rows, cols) = self.last_inner;
+                let recipe = Recipe::shell_line(&canon, &setup);
+                let dir = self.projects[pi].dir.clone();
+                let mut s = Session::new("⚙ setup".into(), Kind::Terminal, recipe, pi, &dir);
+                s.spawn(rows, cols);
+                self.sessions.push(s);
+                self.sessions.len() - 1
+            });
+        Ok(Cut {
+            pi,
+            branch,
+            copied,
+            setup,
+        })
     }
 
     /// Where worktree `pi` merges back to: what mmux recorded when it cut the branch,
@@ -451,13 +479,18 @@ impl App {
     /// deliberately kept and said so — the checkout is disposable, the commits aren't.
     pub(crate) fn remove_worktree(&mut self, pi: usize, branch: &str) {
         if let Some(note) = self.take_worktree(pi, branch) {
-            self.flash(note);
+            self.flash(note.unwrap_or_else(|e| e));
         }
     }
 
-    /// The removal itself, shared by the `X` confirmation and the idle reaper.
-    /// Returns the note to show, or `None` when it wasn't a worktree to begin with.
-    fn take_worktree(&mut self, pi: usize, branch: &str) -> Option<String> {
+    /// The removal itself, shared by the `X` confirmation, `mmux worktree rm` and the
+    /// idle reaper. Returns the note to show (`Err` when git refused), or `None` when
+    /// it wasn't that worktree to begin with.
+    pub(super) fn take_worktree(
+        &mut self,
+        pi: usize,
+        branch: &str,
+    ) -> Option<Result<String, String>> {
         let wt = self.projects.get(pi).and_then(|p| p.worktree.as_ref())?;
         // The modal (or the reaper's scan) can outlive the project it targeted, so
         // re-check identity rather than trusting the stashed index.
@@ -527,7 +560,10 @@ impl App {
         if let Err(e) = crate::git::worktree_remove(&repo, &path, true) {
             // Still on disk, so put its project back rather than losing sight of it.
             self.sync_worktree_projects();
-            return Some(format!("couldn't remove worktree — {}", first_line(&e)));
+            return Some(Err(format!(
+                "couldn't remove worktree — {}",
+                first_line(&e)
+            )));
         }
         let note = match crate::git::delete_branch(&repo, branch) {
             Ok(()) => format!("removed ⑂ {branch}"),
@@ -535,7 +571,7 @@ impl App {
         };
         crate::git::config_unset(&repo, &base_key(branch));
         self.refresh_repo_panels(&repo);
-        Some(note)
+        Some(Ok(note))
     }
 
     /// Clear away worktrees that are **finished**: nothing running in them, a clean
@@ -612,11 +648,13 @@ impl App {
         // Back to front, so the earlier indices stay valid as projects are removed.
         ripe.sort_by(|a, b| b.0.cmp(&a.0));
         for (pi, branch, idle) in ripe {
-            if self.take_worktree(pi, &branch).is_some() {
-                self.flash(format!(
+            match self.take_worktree(pi, &branch) {
+                Some(Ok(_)) => self.flash(format!(
                     "cleared ⑂ {branch} — finished and idle {}",
                     human_duration(idle)
-                ));
+                )),
+                Some(Err(e)) => self.flash(e),
+                None => {}
             }
         }
     }

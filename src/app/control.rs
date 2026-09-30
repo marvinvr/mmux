@@ -23,11 +23,11 @@ use super::session::{Kind, Session, Status};
 use super::{App, Focus};
 use crate::control::{
     Cmd, Done, Hello, LastInfo, Listing, NewKind, ProjectInfo, ReadOut, Request, Response,
-    SessionInfo, StatusInfo,
+    SessionInfo, StatusInfo, WorktreeDone,
 };
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// Requests run per tick, so a burst of callers can't stall a frame.
@@ -75,6 +75,8 @@ pub(crate) struct PendingPrompt {
 /// Where the cursor was before a control action, by identity rather than position.
 enum Anchor {
     Session(u64),
+    /// A launcher row, by its project's directory: removing a worktree shifts indices.
+    Launcher(PathBuf, Nav),
     Row(Nav),
 }
 
@@ -272,6 +274,19 @@ impl App {
                 let i = self.resolve_target(req, target)?;
                 self.control_close(i, *force)
             }
+            Cmd::WorktreeNew {
+                branch,
+                project,
+                agent,
+                prompt,
+            } => self.control_worktree_new(
+                req,
+                branch.as_deref(),
+                project.as_deref(),
+                agent.as_deref(),
+                prompt.as_deref(),
+            ),
+            Cmd::WorktreeRm { target, force } => self.control_worktree_rm(req, target, *force),
         }
     }
 
@@ -288,27 +303,26 @@ impl App {
                 }
             }
         }
-        let projects = order
-            .iter()
-            .map(|&pi| {
-                let p = &self.projects[pi];
-                ProjectInfo {
-                    name: p.label(),
-                    dir: p.dir.to_string_lossy().into_owned(),
-                    active: pi == self.active,
-                    agents: p.cfg.agents.iter().map(|a| a.name.clone()).collect(),
-                    worktree_of: p
-                        .worktree
-                        .as_ref()
-                        .map(|w| w.parent.to_string_lossy().into_owned()),
-                }
-            })
-            .collect();
+        let projects = order.iter().map(|&pi| self.project_info(pi)).collect();
         Listing {
             name: self.root_cfg().display_name(),
             root: self.root.to_string_lossy().into_owned(),
             projects,
             sessions,
+        }
+    }
+
+    fn project_info(&self, pi: usize) -> ProjectInfo {
+        let p = &self.projects[pi];
+        ProjectInfo {
+            name: p.label(),
+            dir: p.dir.to_string_lossy().into_owned(),
+            active: pi == self.active,
+            agents: p.cfg.agents.iter().map(|a| a.name.clone()).collect(),
+            worktree_of: p
+                .worktree
+                .as_ref()
+                .map(|w| w.parent.to_string_lossy().into_owned()),
         }
     }
 
@@ -445,12 +459,7 @@ impl App {
         command: Option<&str>,
         prompt: Option<&str>,
     ) -> Reply {
-        if req.depth >= DEPTH_LIMIT {
-            return Err(format!(
-                "refusing to start a session {} levels deep (MMUX_DEPTH) — agents spawning agents stops here",
-                req.depth + 1
-            ));
-        }
+        check_depth(req)?;
         let prompt = prompt.filter(|p| !p.trim().is_empty());
         if prompt.is_some() && kind != NewKind::Agent {
             return Err("--prompt is for agents — use --cmd for a terminal".into());
@@ -461,6 +470,21 @@ impl App {
             return Err("--cmd is for terminals — use --prompt for an agent".into());
         }
         let pi = self.target_project(req, project)?;
+        let i = self.spawn_new(req, pi, kind, template, command, prompt)?;
+        self.control_done(i, "started")
+    }
+
+    /// Start a new agent or terminal in project `pi` for a control caller, returning
+    /// its index — shared by `new` and `worktree new`.
+    fn spawn_new(
+        &mut self,
+        req: &Request,
+        pi: usize,
+        kind: NewKind,
+        template: Option<&str>,
+        command: Option<&str>,
+        prompt: Option<&str>,
+    ) -> Result<usize, String> {
         let mut s = match kind {
             NewKind::Agent => {
                 let t = self.agent_template(pi, template)?;
@@ -505,7 +529,142 @@ impl App {
         if let Some(e) = self.sessions[i].error.clone() {
             return Err(format!("“{}” failed to start: {e}", self.sessions[i].name));
         }
-        self.control_done(i, "started")
+        Ok(i)
+    }
+
+    /// `worktree new`: cut a worktree (the `w` gesture, minus bringing it into view)
+    /// and optionally start an agent in it.
+    fn control_worktree_new(
+        &mut self,
+        req: &Request,
+        branch: Option<&str>,
+        project: Option<&str>,
+        agent: Option<&str>,
+        prompt: Option<&str>,
+    ) -> Reply {
+        check_depth(req)?;
+        let prompt = prompt.filter(|p| !p.trim().is_empty());
+        let root = self.family_root(self.target_project(req, project)?);
+        let with_agent = agent.is_some() || prompt.is_some();
+        // A bad template is refused before anything is cut, so it leaves no checkout
+        // behind. (It's resolved again in the worktree, whose config is its own.)
+        if with_agent {
+            self.agent_template(root, agent)?;
+        }
+        let branch = match branch.map(str::trim).filter(|b| !b.is_empty()) {
+            Some(b) => b.to_string(),
+            None => {
+                let taken: Vec<String> = crate::git::branches(&self.projects[root].dir)
+                    .into_iter()
+                    .map(|b| b.name)
+                    .collect();
+                crate::worktree::generate_name(&taken)
+            }
+        };
+        let cut = self.keep_selection(|app| app.cut_worktree(root, &branch))?;
+        let mut message = format!("created ⑂ {}{}", cut.branch, cut.copied_note());
+        if cut.setup.is_some() {
+            message.push_str(" · running its setup");
+        }
+        let started = match with_agent {
+            true => match self.spawn_new(req, cut.pi, NewKind::Agent, agent, None, prompt) {
+                Ok(i) => Some(i),
+                Err(e) => {
+                    self.flash(format!("ctl: {message}"));
+                    return Err(format!("{message}, but its agent didn't start: {e}"));
+                }
+            },
+            false => None,
+        };
+        if let Some(i) = started {
+            message.push_str(&format!(" · started {}", self.sessions[i].name));
+        }
+        self.flash(format!("ctl: {message}"));
+        to_value(WorktreeDone {
+            project: self.project_info(cut.pi),
+            branch: cut.branch,
+            message,
+            agent: started.map(|i| self.session_info(i)),
+        })
+    }
+
+    /// `worktree rm`: the `X` gesture. Without `force` it refuses whatever the modal
+    /// would have warned about — uncommitted changes, an agent still at work — and
+    /// the worktree the human is looking at. Never the caller's own worktree: that
+    /// would close the pane asking.
+    fn control_worktree_rm(&mut self, req: &Request, target: &str, force: bool) -> Reply {
+        let (pi, branch) = self.target_worktree(target)?;
+        let own = req
+            .caller
+            .as_deref()
+            .and_then(parse_handle)
+            .and_then(|id| self.sessions.iter().find(|s| s.id == id))
+            .is_some_and(|s| s.project == pi);
+        if own {
+            return Err(format!(
+                "you are running inside ⑂ {branch} — removing it would close your own pane; ask from outside it"
+            ));
+        }
+        if !force {
+            if !crate::git::is_clean(&self.projects[pi].dir) {
+                return Err(format!(
+                    "⑂ {branch} has uncommitted changes — commit them, or pass --force to discard them"
+                ));
+            }
+            let working: Vec<String> = self
+                .sessions
+                .iter()
+                .filter(|s| s.project == pi && s.kind == Kind::Agent && s.busy())
+                .map(|s| format!("{} {}", s.handle(), s.name))
+                .collect();
+            if !working.is_empty() {
+                return Err(format!(
+                    "⑂ {branch} has agents at work ({}) — wait for them, or pass --force",
+                    working.join(", ")
+                ));
+            }
+            if pi == self.active {
+                return Err(format!(
+                    "⑂ {branch} is the project in view — pass --force to remove it anyway"
+                ));
+            }
+        }
+        let project = self.project_info(pi);
+        let message = self
+            .keep_selection(|app| app.take_worktree(pi, &branch))
+            .ok_or_else(|| format!("⑂ {branch} is gone"))??;
+        self.flash(format!("ctl: {message}"));
+        to_value(WorktreeDone {
+            project,
+            branch,
+            message,
+            agent: None,
+        })
+    }
+
+    /// The worktree a user-typed name refers to (its branch, directory or path),
+    /// with its branch.
+    fn target_worktree(&self, spec: &str) -> Result<(usize, String), String> {
+        let found: Vec<(usize, String)> = self
+            .projects_matching(spec)
+            .into_iter()
+            .filter_map(|pi| Some((pi, self.projects[pi].worktree.as_ref()?.branch.clone())))
+            .collect();
+        match found.as_slice() {
+            [one] => Ok(one.clone()),
+            [] => {
+                let all: Vec<String> = self
+                    .projects
+                    .iter()
+                    .filter_map(|p| p.worktree.as_ref().map(|w| w.branch.clone()))
+                    .collect();
+                Err(match all.is_empty() {
+                    true => format!("no worktree “{spec}” — there are none open"),
+                    false => format!("no worktree “{spec}” — one of: {}", all.join(", ")),
+                })
+            }
+            _ => Err(format!("worktree “{spec}” is ambiguous — pass its path")),
+        }
     }
 
     /// `stop`/`close`: a process stops in place (running its `stop:` teardown, like
@@ -555,6 +714,9 @@ impl App {
     pub(super) fn keep_selection<R>(&mut self, f: impl FnOnce(&mut App) -> R) -> R {
         let anchor = self.current_nav().map(|n| match n {
             Nav::Session(i) => Anchor::Session(self.sessions[i].id),
+            Nav::NewAgent(p, _) | Nav::NewTerminal(p) | Nav::NewProcess(p) => {
+                Anchor::Launcher(self.projects[p].dir.clone(), n)
+            }
             other => Anchor::Row(other),
         });
         let out = f(self);
@@ -564,6 +726,15 @@ impl App {
                 .iter()
                 .position(|s| s.id == id)
                 .map(Nav::Session),
+            Anchor::Launcher(dir, n) => {
+                let p = self.projects.iter().position(|p| p.dir == dir)?;
+                Some(match n {
+                    Nav::NewAgent(_, t) => Nav::NewAgent(p, t),
+                    Nav::NewTerminal(_) => Nav::NewTerminal(p),
+                    Nav::NewProcess(_) => Nav::NewProcess(p),
+                    other => other,
+                })
+            }
             Anchor::Row(n) => Some(n),
         });
         let nav = self.build_nav();
@@ -810,6 +981,17 @@ impl App {
                         .join(", ")
                 )
             })
+    }
+}
+
+/// `new` and `worktree new` refuse callers [`DEPTH_LIMIT`] deep.
+fn check_depth(req: &Request) -> Result<(), String> {
+    match req.depth >= DEPTH_LIMIT {
+        true => Err(format!(
+            "refusing to start a session {} levels deep (MMUX_DEPTH) — agents spawning agents stops here",
+            req.depth + 1
+        )),
+        false => Ok(()),
     }
 }
 

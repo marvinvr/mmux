@@ -134,6 +134,31 @@ pub enum Cmd {
         #[serde(default)]
         force: bool,
     },
+    /// Cut a git worktree off a project's repository and open it as a project — the
+    /// `w` gesture. With `agent` or `prompt`, an agent is started in it too.
+    WorktreeNew {
+        /// The branch to check out (created from the main checkout's branch when new);
+        /// absent: a generated name, like `w` offers.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+        /// The project whose repository to cut from (default: the caller's).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project: Option<String>,
+        /// The agent template to start in it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent: Option<String>,
+        /// That agent's first prompt (starts the default template if `agent` is absent).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
+    },
+    /// Remove a worktree — the `X` gesture: its sessions close, the checkout goes, and
+    /// the branch is deleted only if merged. Refused while it has uncommitted changes,
+    /// an agent at work, or is the project in view, unless `force`.
+    WorktreeRm {
+        target: String,
+        #[serde(default)]
+        force: bool,
+    },
 }
 
 fn yes() -> bool {
@@ -293,6 +318,18 @@ pub struct Done {
     #[serde(flatten)]
     pub session: SessionInfo,
     pub message: String,
+}
+
+/// `worktree new` / `worktree rm`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WorktreeDone {
+    /// The worktree's project (for `rm`, as it was).
+    pub project: ProjectInfo,
+    pub branch: String,
+    pub message: String,
+    /// The agent `worktree new` started in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<SessionInfo>,
 }
 
 /// `hello`.

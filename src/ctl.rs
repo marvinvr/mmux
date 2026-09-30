@@ -1,6 +1,6 @@
 //! The command side of the [control socket](crate::control): `mmux ls`, `status`,
 //! `read`, `last`, `send`, `keys`, `new`, `start`, `stop`, `restart`, `close`, `wait`,
-//! `ask`. Each parses its arguments, finds the right running session
+//! `ask`, `worktree new|rm`. Each parses its arguments, finds the right running session
 //! ([`crate::control::locate`]), sends its request(s) and prints the answer — as
 //! text for people, or JSON with `--json` for scripts and agents.
 //!
@@ -12,7 +12,7 @@
 use crate::agent::Turn;
 use crate::control::{
     self, Cmd, Done, LastInfo, Listing, NewKind, ReadOut, Reply, Request, Response, SessionInfo,
-    StatusInfo,
+    StatusInfo, WorktreeDone,
 };
 use anyhow::{bail, Result};
 use serde_json::Value;
@@ -39,7 +39,7 @@ const EXIT_TIMEOUT: i32 = 2;
 /// The verbs this module owns — checked by [`crate::cli`] before anything else.
 pub const VERBS: &[&str] = &[
     "ls", "status", "read", "last", "send", "keys", "new", "start", "stop", "restart", "close",
-    "wait", "ask",
+    "wait", "ask", "worktree",
 ];
 
 /// Whether `arg` is a control verb.
@@ -67,7 +67,7 @@ struct Args {
     settle: Option<Duration>,
     /// `ask --to <t>`: an existing agent instead of a new one.
     to: Option<String>,
-    /// `ask --agent <template>`.
+    /// `ask`/`worktree new --agent <template>`.
     agent: Option<String>,
     /// `ask --close`: close the agent once it has answered.
     close: bool,
@@ -248,6 +248,31 @@ fn build(a: &Args) -> Result<Cmd> {
         "close" => Cmd::Close {
             target: target()?,
             force: a.force,
+        },
+        "worktree" => match a.pos.first().map(String::as_str) {
+            Some("new" | "add") => {
+                if a.command.is_some() {
+                    bail!("--cmd is for terminals — start an agent in the worktree with --agent/--prompt");
+                }
+                let prompt = match a.prompt.as_deref() {
+                    Some("-") => Some(stdin_text()?),
+                    other => other.map(str::to_string),
+                };
+                Cmd::WorktreeNew {
+                    branch: a.pos.get(1).cloned(),
+                    project: a.project.clone(),
+                    agent: a.agent.clone(),
+                    prompt,
+                }
+            }
+            Some("rm" | "remove") => match a.pos.get(1) {
+                Some(t) => Cmd::WorktreeRm {
+                    target: t.clone(),
+                    force: a.force,
+                },
+                None => bail!("`mmux worktree rm` needs the worktree's branch (see `mmux ls`)"),
+            },
+            _ => bail!("use `mmux worktree new [branch]` or `mmux worktree rm <branch>`"),
         },
         other => bail!("unknown command `{other}`"),
     })
@@ -673,6 +698,16 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
             let r: ReadOut = serde_json::from_value(resp.data)?;
             println!("{}", r.text);
         }
+        "worktree" => {
+            let d: WorktreeDone = serde_json::from_value(resp.data)?;
+            println!("{}", d.message);
+            if matches!(a.pos.first().map(String::as_str), Some("new" | "add")) {
+                println!("project: {}  {}", d.project.name, d.project.dir);
+            }
+            if let Some(s) = &d.agent {
+                println!("agent: {} {}", s.id, s.name);
+            }
+        }
         _ => {
             let d: Done = serde_json::from_value(resp.data)?;
             println!("{} {} — {}", d.session.id, d.session.name, d.message);
@@ -760,6 +795,17 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     Start an agent (or use --to), give it the
                                     prompt, wait, print its reply. The agent stays
                                     in the sidebar unless --close. `-` = stdin.
+    mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
+                                    Cut a git worktree (a generated branch name if
+                                    none) and open it as a project; with --agent or
+                                    --prompt, start an agent in it. Address it later
+                                    by its branch: -p <branch>, <branch>/<name>.
+    mmux worktree rm <branch> [--force]
+                                    Remove a worktree: its sessions close, the
+                                    checkout goes, the branch is deleted only if
+                                    merged. Refused while it has uncommitted changes,
+                                    an agent at work, or is in view, unless --force
+                                    (which discards uncommitted changes).
 
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get
@@ -914,5 +960,34 @@ mod tests {
         assert!(build(&parse(&args(&["status"])).unwrap()).is_err());
         assert!(build(&parse(&args(&["keys", "s1"])).unwrap()).is_err());
         assert!(build(&parse(&args(&["ls"])).unwrap()).is_ok());
+        assert!(build(&parse(&args(&["worktree", "rm"])).unwrap()).is_err());
+        assert!(build(&parse(&args(&["worktree"])).unwrap()).is_err());
+    }
+
+    #[test]
+    fn worktree_new_takes_branch_project_and_agent() {
+        let a = parse(&args(&[
+            "worktree", "new", "fix-auth", "-p", "api", "--agent", "codex", "--prompt", "go",
+        ]))
+        .unwrap();
+        assert_eq!(
+            build(&a).unwrap(),
+            Cmd::WorktreeNew {
+                branch: Some("fix-auth".into()),
+                project: Some("api".into()),
+                agent: Some("codex".into()),
+                prompt: Some("go".into()),
+            }
+        );
+        let a = parse(&args(&["worktree", "new", "--cmd", "ls"])).unwrap();
+        assert!(build(&a).is_err());
+        let a = parse(&args(&["worktree", "rm", "fix-auth", "--force"])).unwrap();
+        assert_eq!(
+            build(&a).unwrap(),
+            Cmd::WorktreeRm {
+                target: "fix-auth".into(),
+                force: true,
+            }
+        );
     }
 }

@@ -1,6 +1,6 @@
 ---
 name: mmux
-description: Drive a running mmux (terminal multiplexer for AI agents, terminals and dev processes) from the command line. Use when running inside an mmux pane (MMUX_SESSION / MMUX_SOCKET is set), or when asked to check on, list, spawn, prompt, wait for, or close other coding agents in mmux; to read a dev server's or process's logs/errors; to start, stop or restart a process; to delegate a prompt to another agent (Claude, Codex, …) and read its reply; or to type text/keys into another terminal session.
+description: Drive a running mmux (terminal multiplexer for AI agents, terminals and dev processes) from the command line. Use when running inside an mmux pane (MMUX_SESSION / MMUX_SOCKET is set), or when asked to check on, list, spawn, prompt, wait for, or close other coding agents in mmux; to read a dev server's or process's logs/errors; to start, stop or restart a process; to delegate a prompt to another agent (Claude, Codex, …) and read its reply; to cut or remove a git worktree with its own agent for parallel work; or to type text/keys into another terminal session.
 ---
 
 # mmux control CLI
@@ -41,6 +41,9 @@ mmux stop "Dev server" [--force]     # process: stop in place (runs its stop: te
 mmux close s12 [--force]             # agent/terminal: close for good (busy => refused without --force)
 mmux wait s12 [-t 10m] [--settle 1.5s] [--idle|--exit]   # until the agent is done (default) / ended
 mmux ask "why is CI red?"            # new agent -> wait -> print its reply
+mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
+                                     # cut a git worktree (+ an agent in it)
+mmux worktree rm <branch> [--force]  # remove it: sessions close, checkout goes
 ```
 
 - States: an agent is `working` (its sidebar row spins) or `idle` (`idle 42s`); others are
@@ -85,6 +88,20 @@ mmux wait s14 -t 20m
 mmux last s14
 ```
 
+**Parallel work in an isolated checkout**
+```sh
+mmux worktree new fix-auth --prompt "fix the login redirect bug, commit when done"
+# prints: created ⑂ fix-auth … / project: fix-auth <checkout dir> / agent: s15 Claude #1
+mmux wait s15 -t 30m && mmux last s15
+mmux worktree rm fix-auth            # after it's merged or pushed
+```
+The `project:` line (`--json`: `data.project.dir`) is the checkout, for your own `git -C`. A
+worktree is its own project named after its branch: `-p fix-auth`, `fix-auth/Claude #1`. Omit
+the branch for a generated name. The branch is deleted on `rm` only if it's merged; unmerged
+commits stay on the kept branch. `rm` refuses uncommitted changes, an agent at work, or the
+worktree the human is looking at, unless `--force` (which discards uncommitted changes), and never
+removes the worktree you run in. Merging is up to you (`git merge`/`gh pr create`).
+
 **Check on sibling agents**
 ```sh
 mmux ls                              # who is working / idle / wants attention
@@ -101,6 +118,8 @@ with `send`/`keys` if needed.
 Every verb takes `--json` and prints `{"ok": true, "data": …}` or `{"ok": false, "error": "…"}` —
 usage errors (missing target or prompt, bad `--cmd`/`--prompt` use) included.
 - `ls` → `data.projects[]` (`name`, `dir`, `active`, `agents`, `worktree_of`) and `data.sessions[]`.
+- `worktree new`/`rm` → `project` (as in `ls`), `branch`, `message`, and `agent` (a session) if one
+  was started.
 - A session: `id`, `kind`, `name`, `project`, `project_dir`, `status`, `working`, `attention`,
   `title`, `error`, `idle_for_ms`, `input_age_ms`, `worked_since_input`, `input_pending`.
 - `status` adds `status_line[]`; `read` → `id`, `name`, `text`; `last`/`ask` → `id`, `name`,
@@ -113,7 +132,7 @@ Exit codes: `0` success · `1` error or refusal (bad target, not running, busy, 
 
 - **The human sees everything.** Actions never move their cursor or focus, but each one flashes a
   `ctl:` note in their footer and new sessions appear in their sidebar. Act like a guest.
-- **Only close, stop or `--force` what you started** (or were asked to). Never `--force` close an
+- **Only close, stop, remove or `--force` what you started** (or were asked to). Never `--force` close an
   agent that is working for someone else. Don't `stop` agents or terminals: it closes them.
 - **Don't type into sessions you don't own** (especially the one the human is working in) without
   a reason. Prefer read-only verbs: `ls`, `status`, `read`, `last`.

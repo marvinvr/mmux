@@ -125,8 +125,8 @@ sidebar).
 ## Let Agents Drive mmux
 
 Every running mmux can be driven from the command line, so an agent (inside mmux or anywhere else)
-can check on its siblings, read a dev server's logs, restart a process, or hand a prompt to another
-agent and read the reply, all visible in your sidebar:
+can check on its siblings, read a dev server's logs, restart a process, hand a prompt to another
+agent and read the reply, or cut a worktree with its own agent — all visible in your sidebar:
 
 ```sh
 mmux ls                          # projects + sessions: id, kind, name, state
