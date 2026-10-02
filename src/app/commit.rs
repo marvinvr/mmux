@@ -6,6 +6,7 @@
 use super::git::first_line;
 use super::overlay::{Overlay, PromptKind};
 use super::App;
+use crate::control::{CommitThen, ScheduledInfo};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use std::env;
 use std::io::Write;
@@ -37,11 +38,31 @@ pub(crate) enum ScheduleAction {
 }
 
 impl ScheduleAction {
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ScheduleAction::Commit => "commit",
             ScheduleAction::Push => "commit & push",
             ScheduleAction::Merge => "commit & merge",
+        }
+    }
+}
+
+impl From<CommitThen> for ScheduleAction {
+    fn from(then: CommitThen) -> Self {
+        match then {
+            CommitThen::Nothing => ScheduleAction::Commit,
+            CommitThen::Push => ScheduleAction::Push,
+            CommitThen::Merge => ScheduleAction::Merge,
+        }
+    }
+}
+
+impl From<ScheduleAction> for CommitThen {
+    fn from(action: ScheduleAction) -> Self {
+        match action {
+            ScheduleAction::Commit => CommitThen::Nothing,
+            ScheduleAction::Push => CommitThen::Push,
+            ScheduleAction::Merge => CommitThen::Merge,
         }
     }
 }
@@ -68,6 +89,8 @@ pub(crate) struct ScheduledCommit {
     due: Instant,
     action: ScheduleAction,
     generation: Option<u64>,
+    /// Given up front (`mmux commit -m`): used as-is, so no generator runs.
+    message: Option<String>,
 }
 
 pub(crate) struct MessageJob {
@@ -82,7 +105,7 @@ enum MessagePurpose {
     },
     Submitted {
         dir: PathBuf,
-        push: bool,
+        action: ScheduleAction,
     },
     Scheduled {
         dir: PathBuf,
@@ -184,7 +207,11 @@ impl App {
             MessagePurpose::Prompt { dir } => dir.clone(),
             _ => return,
         };
-        job.purpose = MessagePurpose::Submitted { dir, push };
+        let action = match push {
+            true => ScheduleAction::Push,
+            false => ScheduleAction::Commit,
+        };
+        job.purpose = MessagePurpose::Submitted { dir, action };
         self.flash(if push {
             "generating message, then committing & pushing…"
         } else {
@@ -251,14 +278,28 @@ impl App {
             return;
         };
         let dir = self.projects[self.active].dir.clone();
-        self.cancel_schedule_for(&dir);
+        self.schedule_commit(dir, delay, action, None);
+        self.flash(format!("{} scheduled in {label}", action.label()));
+    }
+
+    /// Arm `dir`'s timer, replacing any it had (a project has at most one). Returns
+    /// whether one was replaced.
+    pub(crate) fn schedule_commit(
+        &mut self,
+        dir: PathBuf,
+        delay: Duration,
+        action: ScheduleAction,
+        message: Option<String>,
+    ) -> bool {
+        let replaced = self.cancel_schedule_for(&dir);
         self.scheduled_commits.push(ScheduledCommit {
             dir,
             due: Instant::now() + delay,
             action,
             generation: None,
+            message,
         });
-        self.flash(format!("{} scheduled in {label}", action.label()));
+        replaced
     }
 
     fn cancel_active_schedule(&mut self) {
@@ -268,7 +309,7 @@ impl App {
         }
     }
 
-    fn cancel_schedule_for(&mut self, dir: &Path) -> bool {
+    pub(crate) fn cancel_schedule_for(&mut self, dir: &Path) -> bool {
         let Some(pos) = self.scheduled_commits.iter().position(|s| s.dir == dir) else {
             return false;
         };
@@ -277,6 +318,34 @@ impl App {
         }
         self.scheduled_commits.remove(pos);
         true
+    }
+
+    /// `dir`'s scheduled commit, for `mmux ls`.
+    pub(crate) fn scheduled_info(&self, dir: &Path) -> Option<ScheduledInfo> {
+        let s = self.scheduled_commits.iter().find(|s| s.dir == dir)?;
+        Some(ScheduledInfo {
+            then: s.action.into(),
+            due_in_ms: s.due.saturating_duration_since(Instant::now()).as_millis() as u64,
+            generating: s.generation.is_some(),
+            message: s.message.clone(),
+        })
+    }
+
+    /// `mmux commit` without `-m` or `--in`: generate a message, then commit right
+    /// away — the empty-submit path of `c`, with no prompt open. The result lands in
+    /// the footer, since generation outlasts the control reply.
+    pub(crate) fn generate_and_commit(
+        &mut self,
+        dir: PathBuf,
+        action: ScheduleAction,
+    ) -> Result<(), String> {
+        let purpose = MessagePurpose::Submitted {
+            dir: dir.clone(),
+            action,
+        };
+        self.start_message_job(dir, purpose)
+            .map(drop)
+            .ok_or_else(|| "no Claude or Codex CLI installed to write the message — pass -m".into())
     }
 
     pub(crate) fn active_schedule_label(&self) -> Option<String> {
@@ -327,16 +396,8 @@ impl App {
                         self.flash(format!("message generation failed — {}", first_line(&e)));
                     }
                 }
-                MessagePurpose::Submitted { dir, push } => match done.result {
-                    Ok(msg) => self.finish_generated_commit(
-                        &dir,
-                        &msg,
-                        if push {
-                            ScheduleAction::Push
-                        } else {
-                            ScheduleAction::Commit
-                        },
-                    ),
+                MessagePurpose::Submitted { dir, action } => match done.result {
+                    Ok(msg) => self.finish_generated_commit(&dir, &msg, action),
                     Err(e) => self.flash(format!("message generation failed — {}", first_line(&e))),
                 },
                 MessagePurpose::Scheduled { dir, action } => {
@@ -355,14 +416,14 @@ impl App {
 
     fn start_due_schedules(&mut self) {
         let now = Instant::now();
-        let due: Vec<(PathBuf, ScheduleAction)> = self
+        let due: Vec<(PathBuf, ScheduleAction, Option<String>)> = self
             .scheduled_commits
             .iter()
             .filter(|s| s.generation.is_none() && now >= s.due)
-            .map(|s| (s.dir.clone(), s.action))
+            .map(|s| (s.dir.clone(), s.action, s.message.clone()))
             .collect();
-        for (dir, action) in due {
-            if installed_providers().is_empty() {
+        for (dir, action, message) in due {
+            if message.is_none() && installed_providers().is_empty() {
                 self.cancel_schedule_for(&dir);
                 self.flash(
                     "scheduled commit skipped — install Codex or Claude to generate a message",
@@ -377,6 +438,11 @@ impl App {
             if let Err(e) = crate::git::stage_all(&dir) {
                 self.cancel_schedule_for(&dir);
                 self.flash(format!("scheduled commit failed — {}", first_line(&e)));
+                continue;
+            }
+            if let Some(msg) = message {
+                self.cancel_schedule_for(&dir);
+                self.finish_generated_commit(&dir, &msg, action);
                 continue;
             }
             let purpose = MessagePurpose::Scheduled {
@@ -397,36 +463,47 @@ impl App {
     }
 
     fn finish_generated_commit(&mut self, dir: &Path, msg: &str, action: ScheduleAction) {
-        let Some(pi) = self.projects.iter().position(|p| p.dir == dir) else {
-            return;
-        };
+        if let Err(e) = self.commit_and_follow(dir, msg, action) {
+            self.flash(e);
+        }
+    }
+
+    /// Commit `dir` with `msg` — the staged changes, else everything — then push or
+    /// merge as `action` says. What happened is flashed, and returned for `mmux commit`.
+    pub(crate) fn commit_and_follow(
+        &mut self,
+        dir: &Path,
+        msg: &str,
+        action: ScheduleAction,
+    ) -> Result<String, String> {
+        let pi = self
+            .projects
+            .iter()
+            .position(|p| p.dir == dir)
+            .ok_or("the project is gone")?;
         let st = crate::git::status(dir);
         if !st.files.iter().any(|f| f.staged) {
-            if let Err(e) = crate::git::stage_all(dir) {
-                self.flash(first_line(&e));
-                return;
-            }
+            crate::git::stage_all(dir).map_err(|e| first_line(&e))?;
         }
-        let committed = match crate::git::commit(dir, msg) {
-            Ok(s) => s,
-            Err(e) => {
-                self.flash(first_line(&e));
-                return;
-            }
-        };
+        let committed = first_line(&crate::git::commit(dir, msg).map_err(|e| first_line(&e))?);
         if let Some(g) = self.projects[pi].git.as_mut() {
             g.refresh();
         }
-        match action {
-            ScheduleAction::Commit => self.flash(first_line(&committed)),
+        let done = match action {
+            ScheduleAction::Commit => committed,
             ScheduleAction::Push => {
                 if let Some(g) = self.projects[pi].git.as_mut() {
                     g.start_or_queue_push();
                 }
-                self.flash(format!("{} · pushing…", first_line(&committed)));
+                format!("{committed} · pushing…")
             }
-            ScheduleAction::Merge => self.merge_worktree_scheduled(pi),
-        }
+            ScheduleAction::Merge => match self.merge_worktree_scheduled(pi) {
+                Ok(merged) => format!("{committed} · {merged}"),
+                Err(e) => return Err(format!("{committed}, but {e}")),
+            },
+        };
+        self.flash(done.clone());
+        Ok(done)
     }
 
     fn start_message_job(&mut self, dir: PathBuf, purpose: MessagePurpose) -> Option<u64> {

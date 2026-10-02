@@ -22,17 +22,23 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Terminal;
 use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::io::stdout;
+use std::io::{stdout, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-const OUTER_TERMINAL_ENV: [(&str, &str); 4] = [
+const OUTER_TERMINAL_ENV: [(&str, &str); 6] = [
     ("TERM", "MMUX_OUTER_TERM"),
     ("COLORTERM", "MMUX_OUTER_COLORTERM"),
     ("TERM_PROGRAM", "MMUX_OUTER_TERM_PROGRAM"),
     ("TERM_PROGRAM_VERSION", "MMUX_OUTER_TERM_PROGRAM_VERSION"),
+    ("NO_COLOR", "MMUX_OUTER_NO_COLOR"),
+    ("FORCE_COLOR", "MMUX_OUTER_FORCE_COLOR"),
 ];
+
+/// The colour opt-outs taken from the attaching client rather than the tmux server
+/// (see [`adopt_outer_colour_env`]).
+pub(crate) const OUTER_COLOUR_ENV: [&str; 2] = ["NO_COLOR", "FORCE_COLOR"];
 
 pub fn launch() -> Result<()> {
     launch_in(std::env::current_dir()?)
@@ -42,6 +48,15 @@ pub fn launch() -> Result<()> {
 /// current dir) and by the attach picker when opening a *recent* directory that has no
 /// running session yet — in both cases it attaches-or-creates that directory's session.
 pub fn launch_in(dir: PathBuf) -> Result<()> {
+    // The tmux server keeps the environment of whoever starts it as the global one
+    // every later session inherits. Started from an agent's tool shell it bakes in
+    // NO_COLOR=1 / TERM=dumb and an 80x24 size, and every mmux on the machine comes
+    // up colourless — while the attach itself fails without a terminal anyway.
+    if !std::io::stdin().is_terminal() || !stdout().is_terminal() {
+        anyhow::bail!(
+            "mmux needs an interactive terminal; to drive a running mmux, use the control verbs (`mmux ls --help`)"
+        );
+    }
     if crate::config::global_config_path().is_none()
         && crate::config::config_path(&dir).is_none()
         && crate::config::local_config_path(&dir).is_none()
@@ -246,6 +261,9 @@ fn configure_session(name: &str, title: &str) {
 /// takes effect for newly spawned panes without restarting the persistent TUI.
 pub(crate) fn outer_terminal_env() -> HashMap<String, String> {
     let mut env = HashMap::new();
+    // `-NAME`: the latest client lacked it. That must win over the value this process
+    // was started with, or a variable set at creation could never go away.
+    let mut unset = HashSet::new();
     if std::env::var_os("TMUX").is_some() {
         if let Ok(out) = Command::new("tmux").arg("show-environment").output() {
             if out.status.success() {
@@ -253,6 +271,8 @@ pub(crate) fn outer_terminal_env() -> HashMap<String, String> {
                     for (name, stored) in OUTER_TERMINAL_ENV {
                         if let Some(value) = line.strip_prefix(&format!("{stored}=")) {
                             env.insert(name.to_string(), value.to_string());
+                        } else if line.strip_prefix('-') == Some(stored) {
+                            unset.insert(name);
                         }
                     }
                 }
@@ -260,13 +280,28 @@ pub(crate) fn outer_terminal_env() -> HashMap<String, String> {
         }
     }
     for (name, stored) in OUTER_TERMINAL_ENV {
-        if !env.contains_key(name) {
+        if !env.contains_key(name) && !unset.contains(name) {
             if let Ok(value) = std::env::var(stored) {
                 env.insert(name.to_string(), value);
             }
         }
     }
     env
+}
+
+/// Give the inner TUI the attaching client's colour opt-outs instead of the tmux
+/// server's. The server's global environment comes from whatever started it, and an
+/// agent's tool shell sets NO_COLOR=1 / FORCE_COLOR=0; inherited, crossterm (which
+/// honours NO_COLOR) drew every mmux on that server colourless. Called first thing in
+/// the inner process, before any thread starts or anything renders.
+pub(crate) fn adopt_outer_colour_env() {
+    let outer = outer_terminal_env();
+    for name in OUTER_COLOUR_ENV {
+        match outer.get(name) {
+            Some(value) => std::env::set_var(name, value),
+            None => std::env::remove_var(name),
+        }
+    }
 }
 
 fn current_outer_terminal() -> HashMap<String, String> {

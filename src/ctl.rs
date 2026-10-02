@@ -1,6 +1,6 @@
 //! The command side of the [control socket](crate::control): `mmux ls`, `status`,
 //! `read`, `last`, `send`, `keys`, `new`, `start`, `stop`, `restart`, `close`, `wait`,
-//! `ask`, `worktree new|rm`. Each parses its arguments, finds the right running session
+//! `ask`, `worktree new|rm`, `commit [cancel]`. Each parses its arguments, finds the right running session
 //! ([`crate::control::locate`]), sends its request(s) and prints the answer — as
 //! text for people, or JSON with `--json` for scripts and agents.
 //!
@@ -11,8 +11,8 @@
 
 use crate::agent::Turn;
 use crate::control::{
-    self, Cmd, Done, LastInfo, Listing, NewKind, ReadOut, Reply, Request, Response, SessionInfo,
-    StatusInfo, WorktreeDone,
+    self, Cmd, CommitDone, CommitThen, Done, LastInfo, Listing, NewKind, ReadOut, Reply, Request,
+    Response, SessionInfo, StatusInfo, WorktreeDone,
 };
 use anyhow::{bail, Result};
 use serde_json::Value;
@@ -39,12 +39,22 @@ const EXIT_TIMEOUT: i32 = 2;
 /// The verbs this module owns — checked by [`crate::cli`] before anything else.
 pub const VERBS: &[&str] = &[
     "ls", "status", "read", "last", "send", "keys", "new", "start", "stop", "restart", "close",
-    "wait", "ask", "worktree",
+    "wait", "ask", "worktree", "commit",
 ];
 
 /// Whether `arg` is a control verb.
-pub fn is_verb(arg: &str) -> bool {
+fn is_verb(arg: &str) -> bool {
     VERBS.contains(&arg)
+}
+
+/// Whether this command line is a control call: its first positional is a verb, so
+/// `mmux --json ls` and `mmux -C dir status` route here just like `mmux ls --json`.
+pub fn is_call(args: &[String]) -> bool {
+    match parse(args) {
+        Ok(a) => is_verb(&a.verb),
+        // Malformed (`mmux send s3 -C`), but aimed at a verb: let `run` report it.
+        Err(_) => args.iter().any(|a| is_verb(a)),
+    }
 }
 
 /// Parsed command line: positionals plus the flags any verb may take.
@@ -71,14 +81,18 @@ struct Args {
     agent: Option<String>,
     /// `ask --close`: close the agent once it has answered.
     close: bool,
+    /// `commit -m`.
+    message: Option<String>,
+    /// `commit --push` / `--merge`.
+    push: bool,
+    merge: bool,
+    /// `commit --in`: schedule rather than commit now.
+    delay: Option<Duration>,
 }
 
 fn parse(args: &[String]) -> Result<Args> {
-    let mut out = Args {
-        verb: args.first().cloned().unwrap_or_default(),
-        ..Args::default()
-    };
-    let mut it = args.iter().skip(1);
+    let mut out = Args::default();
+    let mut it = args.iter();
     let mut flags = true;
     while let Some(a) = it.next() {
         let mut value = |flag: &str| {
@@ -109,14 +123,25 @@ fn parse(args: &[String]) -> Result<Args> {
             "--to" if flags => out.to = Some(value(a)?),
             "--agent" if flags => out.agent = Some(value(a)?),
             "--close" if flags => out.close = true,
+            "-m" | "--message" if flags => out.message = Some(value(a)?),
+            "--push" if flags => out.push = true,
+            "--merge" if flags => out.merge = true,
+            "--in" if flags => out.delay = Some(duration(&value(a)?)?),
             "-h" | "--help" if flags => out.help = true,
+            // The first positional is the verb, wherever the flags put it.
+            _ if out.verb.is_empty() => {
+                if flags && a.starts_with('-') {
+                    anyhow::bail!("unknown flag `{a}`");
+                }
+                out.verb = a.clone();
+            }
             _ => out.pos.push(a.clone()),
         }
     }
     Ok(out)
 }
 
-/// Run a control verb (`args[0]`) and exit non-zero on failure.
+/// Run a control verb (the first positional) and exit non-zero on failure.
 pub fn run(args: &[String]) -> Result<()> {
     let a = parse(args).unwrap_or_else(|e| {
         // A flag short of its value: still answer in JSON when it was asked for.
@@ -273,6 +298,35 @@ fn build(a: &Args) -> Result<Cmd> {
                 None => bail!("`mmux worktree rm` needs the worktree's branch (see `mmux ls`)"),
             },
             _ => bail!("use `mmux worktree new [branch]` or `mmux worktree rm <branch>`"),
+        },
+        "commit" => match a.pos.first().map(String::as_str) {
+            Some("cancel") => Cmd::CommitCancel {
+                project: a.project.clone(),
+            },
+            Some(other) => bail!(
+                "unexpected `{other}` — the message goes in -m: `mmux commit -m \"…\"`, or `mmux commit cancel`"
+            ),
+            None => {
+                let then = match (a.push, a.merge) {
+                    (true, true) => bail!("--push or --merge, not both"),
+                    (true, false) => CommitThen::Push,
+                    (false, true) => CommitThen::Merge,
+                    (false, false) => CommitThen::Nothing,
+                };
+                let message = match a.message.as_deref() {
+                    Some("-") => Some(stdin_text()?),
+                    other => other.map(str::to_string),
+                };
+                if message.as_deref().is_some_and(|m| m.trim().is_empty()) {
+                    bail!("the message is empty — leave out -m to have one generated");
+                }
+                Cmd::Commit {
+                    project: a.project.clone(),
+                    message,
+                    then,
+                    delay_ms: a.delay.map(|d| d.as_millis() as u64),
+                }
+            }
         },
         other => bail!("unknown command `{other}`"),
     })
@@ -645,7 +699,7 @@ fn duration(raw: &str) -> Result<Duration> {
 }
 
 /// A duration the way a person would say it: `90s`, `10m`, `1h30m`.
-fn human(d: Duration) -> String {
+pub(crate) fn human(d: Duration) -> String {
     let s = d.as_secs();
     match s {
         s if s < 90 => format!("{s}s"),
@@ -666,6 +720,20 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
                 let mut head = format!("\n{}  {}", p.name, p.dir);
                 if p.active {
                     head.push_str("  (in view)");
+                }
+                if let Some(c) = &p.scheduled_commit {
+                    let then = match c.then {
+                        CommitThen::Nothing => "commit",
+                        CommitThen::Push => "commit & push",
+                        CommitThen::Merge => "commit & merge",
+                    };
+                    head.push_str(&match c.generating {
+                        true => format!("  ({then}: generating its message)"),
+                        false => format!(
+                            "  ({then} in {})",
+                            human(Duration::from_millis(c.due_in_ms))
+                        ),
+                    });
                 }
                 println!("{head}");
                 if !p.agents.is_empty() {
@@ -707,6 +775,10 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
             if let Some(s) = &d.agent {
                 println!("agent: {} {}", s.id, s.name);
             }
+        }
+        "commit" => {
+            let d: CommitDone = serde_json::from_value(resp.data)?;
+            println!("{}", d.message);
         }
         _ => {
             let d: Done = serde_json::from_value(resp.data)?;
@@ -806,6 +878,17 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     merged. Refused while it has uncommitted changes,
                                     an agent at work, or is in view, unless --force
                                     (which discards uncommitted changes).
+    mmux commit [-p project] [-m "<message>"] [--push|--merge] [--in 1h]
+                                    Commit the staged changes (else everything) —
+                                    the git panel's `c`. Without -m a Claude/Codex
+                                    CLI writes the message and the result shows in
+                                    mmux's footer; with -m it prints the commit.
+                                    --push pushes after; --merge (in a worktree)
+                                    merges into its base. --in schedules it
+                                    instead, like `S`: everything is staged when it
+                                    fires, and it replaces the project's previous
+                                    schedule. `ls` shows what's pending.
+    mmux commit cancel [-p project] Cancel the project's scheduled commit
 
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get
@@ -837,6 +920,20 @@ mod tests {
         assert_eq!(a.pos, vec!["Claude #1"]);
         assert_eq!(a.lines, Some(50));
         assert_eq!(a.dir, Some(PathBuf::from("/tmp")));
+    }
+
+    #[test]
+    fn the_verb_may_follow_leading_flags() {
+        let a = parse(&args(&["--json", "-C", "/tmp", "status", "s3"])).unwrap();
+        assert_eq!(a.verb, "status");
+        assert_eq!(a.pos, vec!["s3"]);
+        assert!(is_call(&args(&["--json", "ls"])));
+        assert!(is_call(&args(&["send", "s3", "-C"])));
+        // Not control calls: these fall to mmux's own dispatch (or its unknown-command error).
+        assert!(!is_call(&args(&["--inner"])));
+        assert!(!is_call(&args(&["--help"])));
+        assert!(!is_call(&args(&["list"])));
+        assert!(!is_call(&args(&[])));
     }
 
     #[test]
@@ -962,6 +1059,41 @@ mod tests {
         assert!(build(&parse(&args(&["ls"])).unwrap()).is_ok());
         assert!(build(&parse(&args(&["worktree", "rm"])).unwrap()).is_err());
         assert!(build(&parse(&args(&["worktree"])).unwrap()).is_err());
+    }
+
+    #[test]
+    fn commit_takes_message_follow_up_and_delay() {
+        let a = parse(&args(&[
+            "commit", "-m", "fix it", "--push", "--in", "1h", "-p", "api",
+        ]))
+        .unwrap();
+        assert_eq!(
+            build(&a).unwrap(),
+            Cmd::Commit {
+                project: Some("api".into()),
+                message: Some("fix it".into()),
+                then: CommitThen::Push,
+                delay_ms: Some(3_600_000),
+            }
+        );
+        let a = parse(&args(&["commit"])).unwrap();
+        assert!(matches!(
+            build(&a).unwrap(),
+            Cmd::Commit {
+                message: None,
+                then: CommitThen::Nothing,
+                delay_ms: None,
+                ..
+            }
+        ));
+        assert_eq!(
+            build(&parse(&args(&["commit", "cancel"])).unwrap()).unwrap(),
+            Cmd::CommitCancel { project: None }
+        );
+        // A bare word is a forgotten -m, not a message.
+        assert!(build(&parse(&args(&["commit", "fix", "it"])).unwrap()).is_err());
+        assert!(build(&parse(&args(&["commit", "--push", "--merge"])).unwrap()).is_err());
+        assert!(build(&parse(&args(&["commit", "-m", " "])).unwrap()).is_err());
     }
 
     #[test]

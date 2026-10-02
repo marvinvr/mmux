@@ -363,57 +363,73 @@ impl App {
         ));
     }
 
-    /// Scheduled counterpart to `M`: merge without removing the worktree, after
-    /// re-checking the remembered base and main checkout at execution time.
-    pub(crate) fn merge_worktree_scheduled(&mut self, pi: usize) {
-        let Some(wt) = self.projects.get(pi).and_then(|p| p.worktree.as_ref()) else {
-            self.flash("scheduled merge failed — project is no longer a worktree");
-            return;
-        };
+    /// What merging worktree `pi` would merge — its branch and base — or why it can't
+    /// right now. Checked when a scheduled merge runs, and up front by `mmux commit`.
+    pub(crate) fn merge_target(&self, pi: usize) -> Result<(String, String), String> {
+        let wt = self
+            .projects
+            .get(pi)
+            .and_then(|p| p.worktree.as_ref())
+            .ok_or("the project is not a worktree")?;
         let (branch, repo) = (wt.branch.clone(), wt.parent.clone());
-        let Some(base) = self.worktree_base(pi) else {
-            self.flash("scheduled merge failed — can't tell what this branched from");
-            return;
-        };
+        let base = self
+            .worktree_base(pi)
+            .ok_or("can't tell what this branched from")?;
         let on = crate::git::status(&repo).branch;
         if on != base {
-            self.flash(format!(
-                "scheduled merge failed — main checkout is on {on}, not {base}"
-            ));
-            return;
+            return Err(format!("main checkout is on {on}, not {base}"));
         }
         if !crate::git::is_clean(&repo) {
-            self.flash(format!(
-                "scheduled merge failed — {base} has uncommitted changes"
-            ));
-            return;
+            return Err(format!("{base} has uncommitted changes"));
         }
-        self.merge_worktree(pi, &branch, &base, false);
+        Ok((branch, base))
+    }
+
+    /// Scheduled counterpart to `M`: merge without removing the worktree, after
+    /// re-checking the remembered base and main checkout at execution time.
+    pub(crate) fn merge_worktree_scheduled(&mut self, pi: usize) -> Result<String, String> {
+        let (branch, base) = self
+            .merge_target(pi)
+            .map_err(|e| format!("the merge failed — {e}"))?;
+        self.merge_worktree(pi, &branch, &base, false)
     }
 
     /// Run the confirmed merge. `remove` folds the usual follow-up — the branch is
-    /// merged, so the checkout has done its job — into the same keystroke.
-    pub(crate) fn merge_worktree(&mut self, pi: usize, branch: &str, base: &str, remove: bool) {
+    /// merged, so the checkout has done its job — into the same keystroke. The outcome
+    /// is flashed, and returned for the scheduled path.
+    pub(crate) fn merge_worktree(
+        &mut self,
+        pi: usize,
+        branch: &str,
+        base: &str,
+        remove: bool,
+    ) -> Result<String, String> {
         // The modal can outlive the project it was opened on (a reload, another
         // removal), so re-check identity rather than trusting the stashed index.
-        let Some(wt) = self.projects.get(pi).and_then(|p| p.worktree.as_ref()) else {
-            return;
-        };
+        let gone = || format!("⑂ {branch} is gone");
+        let wt = self
+            .projects
+            .get(pi)
+            .and_then(|p| p.worktree.as_ref())
+            .ok_or_else(gone)?;
         if wt.branch != branch {
-            return;
+            return Err(gone());
         }
         let repo = wt.parent.clone();
-        match crate::git::merge(&repo, branch) {
-            Ok(msg) => self.flash(format!("{} → {base}", first_line(&msg))),
+        let merged = match crate::git::merge(&repo, branch) {
+            Ok(msg) => format!("{} → {base}", first_line(&msg)),
             Err(e) => {
-                self.flash(first_line(&e));
-                return;
+                let e = first_line(&e);
+                self.flash(e.clone());
+                return Err(e);
             }
-        }
+        };
+        self.flash(merged.clone());
         if remove {
             self.remove_worktree(pi, branch);
         }
         self.refresh_repo_panels(&repo);
+        Ok(merged)
     }
 
     /// `X`: ask before taking a worktree away. A checkout with uncommitted changes

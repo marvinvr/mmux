@@ -451,7 +451,10 @@ impl App {
                 branch,
                 base,
                 remove,
-            } => self.merge_worktree(project, &branch, &base, remove),
+            } => {
+                // Already flashed; only the scheduled path wants the outcome back.
+                let _ = self.merge_worktree(project, &branch, &base, remove);
+            }
             Confirmed::RemoveWorktree { project, branch } => self.remove_worktree(project, &branch),
         }
     }

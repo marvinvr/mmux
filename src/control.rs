@@ -159,10 +159,39 @@ pub enum Cmd {
         #[serde(default)]
         force: bool,
     },
+    /// Commit a project's changes — the git panel's `c`, or with `delay_ms` its `S`.
+    /// Now: the staged changes, else everything. Scheduled: everything, staged when the
+    /// timer fires, replacing any schedule the project already had. Without `message`,
+    /// an installed Claude/Codex CLI writes one.
+    Commit {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+        #[serde(default)]
+        then: CommitThen,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        delay_ms: Option<u64>,
+    },
+    /// Cancel a project's scheduled commit — `S` then `x`.
+    CommitCancel {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project: Option<String>,
+    },
 }
 
 fn yes() -> bool {
     true
+}
+
+/// What follows a commit: nothing, a push, or (in a worktree) a merge into its base.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CommitThen {
+    #[default]
+    Nothing,
+    Push,
+    Merge,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,6 +282,22 @@ pub struct ProjectInfo {
     /// For a worktree: the directory of the checkout it was cut from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_of: Option<String>,
+    /// Its pending scheduled commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduled_commit: Option<ScheduledInfo>,
+}
+
+/// A scheduled commit, as `ls` reports it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ScheduledInfo {
+    pub then: CommitThen,
+    /// Time left on the timer; `0` once it has fired.
+    pub due_in_ms: u64,
+    /// It fired and is waiting for its generated message.
+    pub generating: bool,
+    /// The message it will use, when one was given rather than left to be generated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 /// `ls`.
@@ -330,6 +375,14 @@ pub struct WorktreeDone {
     /// The agent `worktree new` started in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<SessionInfo>,
+}
+
+/// `commit` / `commit cancel`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CommitDone {
+    /// The project, as it is after the action (its `scheduled_commit` included).
+    pub project: ProjectInfo,
+    pub message: String,
 }
 
 /// `hello`.

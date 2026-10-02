@@ -17,13 +17,14 @@
 //! `last_working_at`, which is what lets `mmux wait`/`mmux ask` (client-side polling of
 //! `status`) tell "finished what I sent" from "hasn't started on it yet".
 
+use super::commit::ScheduleAction;
 use super::keymap::{encode_key, parse_key_name};
 use super::nav::Nav;
 use super::session::{Kind, Session, Status};
 use super::{App, Focus};
 use crate::control::{
-    Cmd, Done, Hello, LastInfo, Listing, NewKind, ProjectInfo, ReadOut, Request, Response,
-    SessionInfo, StatusInfo, WorktreeDone,
+    Cmd, CommitDone, CommitThen, Done, Hello, LastInfo, Listing, NewKind, ProjectInfo, ReadOut,
+    Request, Response, SessionInfo, StatusInfo, WorktreeDone,
 };
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde_json::Value;
@@ -53,6 +54,9 @@ const PROMPT_SETTLE: Duration = Duration::from_millis(800);
 const PROMPT_MAX_WAIT: Duration = Duration::from_secs(10);
 /// `read`'s default tail length.
 const READ_LINES: usize = 200;
+/// How far ahead `commit --in` may schedule. The timer dies with mmux anyway; this
+/// mostly keeps a typo (`--in 30h` for `30m`) from passing silently.
+const MAX_COMMIT_DELAY: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// Input waiting for its turn: the bytes go to session `id` once `due` has passed.
 pub(crate) struct Deferred {
@@ -287,6 +291,31 @@ impl App {
                 prompt.as_deref(),
             ),
             Cmd::WorktreeRm { target, force } => self.control_worktree_rm(req, target, *force),
+            Cmd::Commit {
+                project,
+                message,
+                then,
+                delay_ms,
+            } => self.control_commit(
+                req,
+                project.as_deref(),
+                message.as_deref(),
+                *then,
+                *delay_ms,
+            ),
+            Cmd::CommitCancel { project } => {
+                let pi = self.target_project(req, project.as_deref())?;
+                let name = self.projects[pi].label();
+                if !self.cancel_schedule_for(&self.projects[pi].dir.clone()) {
+                    return Err(format!("no commit is scheduled in {name}"));
+                }
+                let message = format!("cancelled the scheduled commit in {name}");
+                self.flash(format!("ctl: {message}"));
+                to_value(CommitDone {
+                    project: self.project_info(pi),
+                    message,
+                })
+            }
         }
     }
 
@@ -323,6 +352,7 @@ impl App {
                 .worktree
                 .as_ref()
                 .map(|w| w.parent.to_string_lossy().into_owned()),
+            scheduled_commit: self.scheduled_info(&p.dir),
         }
     }
 
@@ -639,6 +669,89 @@ impl App {
             branch,
             message,
             agent: None,
+        })
+    }
+
+    /// `commit`: the git panel's `c` — with the caller's message, or a generated one —
+    /// or, given a delay, its `S`. Whatever can be known to fail is refused before
+    /// anything is staged.
+    fn control_commit(
+        &mut self,
+        req: &Request,
+        project: Option<&str>,
+        message: Option<&str>,
+        then: CommitThen,
+        delay_ms: Option<u64>,
+    ) -> Reply {
+        let pi = self.target_project(req, project)?;
+        let dir = self.projects[pi].dir.clone();
+        let name = self.projects[pi].label();
+        if !crate::git::is_repo(&dir) {
+            return Err(format!("{name} is not a git repository"));
+        }
+        // The push runs on the git panel's worker; without a panel there is none.
+        if then == CommitThen::Push && self.projects[pi].git.is_none() {
+            return Err(format!(
+                "{name} has its git panel off, and the panel is what pushes — drop --push"
+            ));
+        }
+        if then == CommitThen::Merge && self.projects[pi].worktree.is_none() {
+            return Err(format!(
+                "{name} is not a worktree — --merge merges a worktree into its base"
+            ));
+        }
+        let action = ScheduleAction::from(then);
+        let message = message
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .map(str::to_string);
+        let text = match delay_ms.map(Duration::from_millis) {
+            Some(delay) if delay > MAX_COMMIT_DELAY => {
+                return Err(format!(
+                    "--in {} is too far ahead — a week at most",
+                    crate::ctl::human(delay)
+                ));
+            }
+            // Changes and the merge are judged when the timer fires, as with `S`.
+            Some(delay) => {
+                let replaced = self.schedule_commit(dir, delay, action, message);
+                let mut text = format!(
+                    "{} scheduled in {} for {name}",
+                    action.label(),
+                    crate::ctl::human(delay)
+                );
+                if replaced {
+                    text.push_str(", replacing the previous schedule");
+                }
+                text
+            }
+            None => {
+                if crate::git::status(&dir).files.is_empty() {
+                    return Err(format!("nothing to commit in {name}"));
+                }
+                if then == CommitThen::Merge {
+                    self.merge_target(pi)
+                        .map_err(|e| format!("won't commit to merge: {e}"))?;
+                }
+                match message {
+                    Some(msg) => match self.commit_and_follow(&dir, &msg, action) {
+                        Ok(done) => done,
+                        Err(e) => {
+                            self.flash(format!("ctl: {e}"));
+                            return Err(e);
+                        }
+                    },
+                    None => {
+                        self.generate_and_commit(dir, action)?;
+                        format!("generating a message for {name}, then {}…", action.label())
+                    }
+                }
+            }
+        };
+        self.flash(format!("ctl: {text}"));
+        to_value(CommitDone {
+            project: self.project_info(pi),
+            message: text,
         })
     }
 

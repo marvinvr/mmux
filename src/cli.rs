@@ -13,8 +13,9 @@ pub fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     // Control verbs come first: their free-form text (`mmux send s3 -- --version`) must
-    // never be mistaken for mmux's own flags. `ctl` parses its own, `--` included.
-    if args.first().is_some_and(|a| crate::ctl::is_verb(a)) {
+    // never be mistaken for mmux's own flags. `ctl` parses its own, `--` included, and
+    // finds the verb behind leading flags (`mmux --json ls`).
+    if crate::ctl::is_call(&args) {
         return crate::ctl::run(&args);
     }
     if args.iter().any(|a| a == "-h" || a == "--help") {
@@ -70,12 +71,19 @@ pub fn run() -> Result<()> {
     // that the wrapper sets when it spawns the tmux session.
     let inner = std::env::var("MMUX_INNER").is_ok() || args.iter().any(|a| a == "--inner");
     if inner {
+        crate::tmux::adopt_outer_colour_env();
         let dir = std::env::var_os("MMUX_DIR")
             .map(PathBuf::from)
             .map(Ok)
             .unwrap_or_else(std::env::current_dir)?;
         let ws = Config::load_workspace(&dir)?;
         return crate::app::run(ws);
+    }
+
+    // A typo or unknown subcommand must not fall through to a launch: from an agent's
+    // shell that quietly creates a session there (see `tmux::launch_in`).
+    if let Some(arg) = args.first() {
+        anyhow::bail!("unknown command `{arg}` — see `mmux --help`");
     }
 
     // Typed in one of this session's own panes (which no longer inherit `MMUX_INNER`),
@@ -190,6 +198,7 @@ CONTROL (drive a running session from scripts/agents; add --json for JSON):
     mmux wait|last <t>          Wait until an agent is done · print its last reply
     mmux ask "<prompt>"         New agent (or --to <t>), wait, print its reply
     mmux worktree new|rm        Cut a worktree (+ --agent/--prompt) · remove one
+    mmux commit [--in 1h]       Commit now or later (-m, --push/--merge) · cancel
                     <t> = s12 · "Claude #2" · project/name · self.
                     `mmux ls --help` explains every control command.
 
@@ -340,6 +349,7 @@ GIT COMMITS — generated now or scheduled
     Enter stages all, commits and pushes; c commits only; m in a worktree commits
     and merges into its remembered base. Reopen `S` and press x to cancel. Timers
     keep running while detached and clear when mmux quits or restarts.
+    Scripts and agents: `mmux commit [-m …] [--push|--merge] [--in 1h]`.
 
 WORKTREES — a branch as its own project box
     Press `w` (in the sidebar or the git panel) to cut a git worktree. It opens
@@ -404,6 +414,8 @@ CONTROL — drive a running session from scripts and agents
                                      #   --to s12 asks an existing one, -t timeout)
       mmux worktree new fix-auth --prompt "…"   # worktree + an agent in it
       mmux worktree rm fix-auth [--force]       # like X (dirty/busy ⇒ --force)
+      mmux commit -m "fix login" --push         # like c (+^P); no -m ⇒ generated
+      mmux commit --in 2h --push                # like S; `mmux commit cancel`
 
     An agent's state is `working` exactly when its sidebar row spins, `idle`
     otherwise; `wait`/`ask` treat an agent as done once it stops working on

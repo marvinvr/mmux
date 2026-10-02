@@ -238,6 +238,9 @@ merge re-checks that the main checkout is clean and still on the recorded base b
 rather than merging somewhere surprising. Commit-and-push waits behind an in-flight fetch/pull/push
 instead of dropping the push.
 
+Scripts and agents can do the same with [`mmux commit --in`](#controlling-mmux-from-scripts--agents)
+— any delay up to a week, optionally with a fixed message instead of a generated one.
+
 ## Worktrees
 
 A git worktree is a second checkout of the same repository on its own branch. In mmux **a worktree
@@ -546,6 +549,9 @@ mmux last s14                      # its last reply, from its own transcript
 mmux ask "why is the build red?"   # `claude -p`, but visible: new agent → wait → reply
 mmux worktree new fix-auth --prompt "fix the login bug"   # a worktree + an agent working in it
 mmux worktree rm fix-auth          # its sessions close, the checkout goes
+mmux commit -m "fix login" --push  # commit (staged, else everything), then push
+mmux commit --in 1h --push         # what `S` does: stage all, generate, commit, push in 1h
+mmux commit cancel                 # drop the project's scheduled commit
 ```
 
 | Command | What it does |
@@ -565,6 +571,8 @@ mmux worktree rm fix-auth          # its sessions close, the checkout goes
 | `mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>` | [Ask an agent](#asking-an-agent) and print its answer. |
 | `mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]` | Cuts a [worktree](#worktrees) off the project's repository, like `w` (an existing branch is checked out; a new one branches from what the main checkout has out; no name = a generated one), without moving your view. Env files are copied and `worktrees.setup` runs as usual. With `--agent` or `--prompt` it also starts an agent in it (prints its id). Address the worktree afterwards by its branch: `-p <branch>`, `<branch>/<name>`. |
 | `mmux worktree rm <branch> [--force]` | Removes a worktree, like `X`: its sessions close, the checkout goes, and the branch is deleted only if it's merged (unmerged commits stay on the kept branch). Refused while it has uncommitted changes, an agent at work, or is the project in view — unless `--force`, which discards uncommitted changes. Never removes the worktree the caller runs in. |
+| `mmux commit [-p project] [-m "…"] [--push\|--merge] [--in 1h]` | Commits like the git panel's `c`: the staged changes, or everything when nothing is staged. With `-m` (`-` reads it from stdin) it commits right away and prints git's summary; without, an installed Claude/Codex CLI [writes the message](#generated-commit-messages) and the outcome lands in mmux's footer, since that can take a while. `--push` pushes afterwards; `--merge` (worktrees only) merges into the branch it came from, and is refused up front when that merge couldn't run. `--in` [schedules](#scheduled-commits) it instead, like `S` — up to a week ahead, staging everything when it fires, and replacing the project's previous schedule. `mmux ls` shows a pending one next to its project. |
+| `mmux commit cancel [-p project]` | Cancels the project's scheduled commit (or its message generation, if the timer already fired), like `S` then `x`. |
 
 ### Asking an Agent
 
@@ -610,7 +618,10 @@ otherwise (with how long: `idle 42s`); `!` marks one asking for attention. Other
 
 **For scripts and agents.** Every command takes `--json` and then prints the raw response
 (`{"ok": true, "data": …}` or `{"ok": false, "error": "…"}`); failures exit non-zero either way.
-`wait` and `ask` exit `2` when they time out. Programs in mmux panes get `MMUX_SOCKET`,
+`wait` and `ask` exit `2` when they time out. Flags may come before the verb (`mmux --json ls`,
+`mmux -C ~/proj status s3`). An unknown command is an error, never a launch: bare `mmux` (which opens
+the TUI) refuses to run without an interactive terminal, so an agent can't accidentally start a
+session from its own shell. Programs in mmux panes get `MMUX_SOCKET`,
 `MMUX_SESSION` (their own id), `MMUX_PROJECT` (their project's directory) and `MMUX_DEPTH` in their
 environment. `mmux new` refuses callers three levels deep, so agents can start helpers, but helpers
 can't start helpers without end.

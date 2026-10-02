@@ -254,7 +254,12 @@ impl Pane {
                 .map(String::as_str)
                 .unwrap_or("truecolor"),
         );
-        for name in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
+        // NO_COLOR/FORCE_COLOR follow the client too, not the tmux server's global
+        // environment (see `tmux::adopt_outer_colour_env`).
+        for name in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION"]
+            .into_iter()
+            .chain(crate::tmux::OUTER_COLOUR_ENV)
+        {
             match outer_terminal.get(name) {
                 Some(value) => builder.env(name, value),
                 None => builder.env_remove(name),

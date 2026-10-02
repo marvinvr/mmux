@@ -54,12 +54,19 @@ and singleton-per-directory:
   enables opt-in CSI-u reporting and marks the common `xterm*` terminal family capable. It does
   not force enhanced input on ordinary panes; a program must request it.
 - Attaching runs with `TMUX` unset, so mmux works even when launched inside another tmux.
+- Launching refuses without an interactive terminal (stdin and stdout). The tmux server adopts the
+  environment of whatever starts it as the global environment every later session inherits; an
+  agent's tool shell (`NO_COLOR=1`, `FORCE_COLOR=0`, `TERM=dumb`) once started it that way and every
+  mmux on the machine rendered colourless, since crossterm honours `NO_COLOR`. For the same reason
+  `cli.rs` errors on unknown arguments instead of falling through to a launch.
 - The outer wrapper records the client's `TERM`, `COLORTERM`, `TERM_PROGRAM`, and terminal version
   in the session environment. `Pane::spawn` restores them for hosted programs instead of exposing
   the invisible tmux layer, so terminal-specific rendering (including Claude's activity animation)
   matches a direct launch. It also removes the jail's `TMUX`/`TMUX_PANE`; the program is attached
   to mmux's vt100 PTY and cannot negotiate directly with that tmux pane. Each attach refreshes the
-  terminal values used by panes spawned afterward. The inner process's own `MMUX_INNER`/`MMUX_DIR`
+  terminal values used by panes spawned afterward. `NO_COLOR`/`FORCE_COLOR` are recorded the same
+  way, and the inner TUI adopts the client's values (or their absence) at startup, so a tmux server
+  started from a colourless shell can't strip colour from mmux or its panes. The inner process's own `MMUX_INNER`/`MMUX_DIR`
   are stripped too (a bare `mmux` typed in a pane would otherwise start a nested TUI there); panes
   get their [control-socket identity](#the-control-socket) instead. A bare `mmux` for the very
   directory whose session it runs in (its `MMUX_SOCKET` names that session) is refused rather than
@@ -309,6 +316,10 @@ cursor through all three.
   never overwrite user text. The same channel drives empty-field deferred commits and timer-fired
   stage-all → generate → commit → push/merge chains. Timers are keyed by canonical project path,
   live in the persistent mmux process, and queued pushes wait behind the panel's current remote op.
+  `mmux commit` drives the same machinery rather than a parallel one: `--in` arms the same
+  `ScheduledCommit` (optionally carrying a fixed message, which skips generation), a message-less
+  commit is the empty-field deferred commit with no prompt open, and `-m` calls the shared
+  `commit_and_follow` synchronously so the caller gets the result.
 
 Floating above the whole UI — independent of the git panel — is the **`Overlay`** enum, its own
 module ([`app/overlay.rs`](07-module-map.md) for the state + key handling, [`view/overlay.rs`](07-module-map.md)
@@ -464,7 +475,7 @@ removes it from the snapshot, so it's easy to get a clean slate.
 ## The Control Socket
 
 Scripts and agents drive a running session through `mmux ls`/`status`/`read`/`last`/`send`/`keys`/
-`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`/`worktree new|rm`
+`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`/`worktree new|rm`/`commit [cancel]`
 ([usage](03-usage.md#controlling-mmux-from-scripts--agents)). The
 panes are PTYs the inner process owns — tmux sees only the rendered TUI — so neither
 `tmux capture-pane` nor `send-keys` can reach an individual agent. The channel goes into the inner
