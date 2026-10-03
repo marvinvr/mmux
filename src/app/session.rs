@@ -156,6 +156,11 @@ pub struct Session {
     /// consumed there, so a restart (which resumes the conversation) never repeats it.
     /// Never persisted. See [`crate::agent::Tool::prompt_args`].
     pub first_prompt: Option<String>,
+    /// Whether launching this agent appends [`crate::agent::MMUX_NOTE`] to its system
+    /// prompt: only while its pane could actually use the `mmux` CLI — the control
+    /// socket is served and `control.from-panes` allows it. Set by the app when the row
+    /// is created and refreshed on reload; ignored without [`agent`](Self::agent).
+    pub mmux_note: bool,
 }
 
 impl Session {
@@ -182,6 +187,7 @@ impl Session {
             last_working_at: None,
             launched_at: None,
             first_prompt: None,
+            mmux_note: false,
         }
     }
 
@@ -266,22 +272,7 @@ impl Session {
         if let Some(r) = self.agent.as_mut() {
             r.mark_launch();
         }
-        let mut args = self.recipe.args.clone();
-        if let Some(r) = self.agent.as_ref() {
-            args.extend(r.launch_args());
-        }
-        // A control-supplied first prompt rides this launch only. `take` rather than
-        // clone: whether or not the spawn succeeds, it is never sent twice.
-        if let Some(prompt) = self.first_prompt.take() {
-            if let Some(extra) = self
-                .agent
-                .as_ref()
-                .and_then(|r| r.tool.prompt_args(&prompt))
-            {
-                args.extend(extra);
-                self.last_input_at = Some(Instant::now());
-            }
-        }
+        let args = self.launch_argv();
         match Pane::spawn(
             &self.recipe.cmd,
             &args,
@@ -305,6 +296,33 @@ impl Session {
                 self.error = Some(e.to_string());
             }
         }
+    }
+
+    /// The full argument list for the next launch: the recipe's args, then mmux's note
+    /// and the resume flags, then any first prompt. The note goes ahead of the resume
+    /// flags because Codex's `-c` must precede its `resume <id>` subcommand, and ahead
+    /// of the prompt because Claude's must precede the `--` that a prompt may bring.
+    fn launch_argv(&mut self) -> Vec<String> {
+        let mut args = self.recipe.args.clone();
+        if let Some(r) = self.agent.as_ref() {
+            if self.mmux_note {
+                args.extend(r.tool.context_args(crate::agent::MMUX_NOTE));
+            }
+            args.extend(r.launch_args());
+        }
+        // A control-supplied first prompt rides this launch only. `take` rather than
+        // clone: whether or not the spawn succeeds, it is never sent twice.
+        if let Some(prompt) = self.first_prompt.take() {
+            if let Some(extra) = self
+                .agent
+                .as_ref()
+                .and_then(|r| r.tool.prompt_args(&prompt))
+            {
+                args.extend(extra);
+                self.last_input_at = Some(Instant::now());
+            }
+        }
+        args
     }
 
     /// Kill the process but keep the (now-exited) pane so it reads as "exited".
@@ -405,4 +423,50 @@ fn on_path(bin: &str) -> bool {
     std::env::var_os("PATH")
         .map(|paths| std::env::split_paths(&paths).any(|p| p.join(bin).is_file()))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::{Resume, Tool, MMUX_NOTE};
+
+    fn agent(cmd: &str, resume: Resume) -> Session {
+        let recipe = Recipe {
+            cmd: cmd.into(),
+            args: vec!["--x".into()],
+            cwd: PathBuf::from("/p"),
+            env: BTreeMap::new(),
+        };
+        let mut s = Session::new("A".into(), Kind::Agent, recipe, 0, Path::new("/p"));
+        s.agent = Some(resume);
+        s.mmux_note = true;
+        s
+    }
+
+    #[test]
+    fn mmux_note_goes_before_codex_resume_and_claude_prompt() {
+        let mut s = agent("codex", Resume::restored(Tool::Codex, Some("abc".into())));
+        let args = s.launch_argv();
+        assert_eq!(args[..2], ["--x", "-c"]);
+        assert_eq!(args[3..], ["resume", "abc"]);
+
+        let mut s = agent("claude", Resume::restored(Tool::Claude, Some("id".into())));
+        s.first_prompt = Some("-p".into());
+        let args = s.launch_argv();
+        assert_eq!(
+            args,
+            [
+                "--x",
+                "--append-system-prompt",
+                MMUX_NOTE,
+                "--resume",
+                "id",
+                "--",
+                "-p"
+            ]
+        );
+
+        s.mmux_note = false;
+        assert_eq!(s.launch_argv(), ["--x", "--resume", "id"]);
+    }
 }

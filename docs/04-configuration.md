@@ -266,11 +266,12 @@ auto-update:
 | Field | Type | Notes |
 | --- | --- | --- |
 | `enabled` | bool | Defaults to `true`. `false` stops the session serving its control socket, so [`mmux ls`/`send`/`new`/…](03-usage.md#controlling-mmux-from-scripts--agents) can't reach it. |
-| `from-panes` | bool | Defaults to `true`. `false` refuses requests from programs running inside this session's own panes (they identify themselves via `MMUX_SESSION`); callers outside still work. |
+| `from-panes` | bool | Defaults to `true`. `false` refuses requests from programs running inside this session's own panes (they identify themselves via `MMUX_SESSION`); callers outside still work. It also drops the [note detected agents get](03-usage.md#controlling-mmux-from-scripts--agents) telling them they run in mmux. |
 
 Read from the launch directory's config (the manifest's, for a workspace). `enabled` is read when
 the session opens, so turning the socket on or off applies on the next open, not on `R`;
-`from-panes` is checked per request and follows `R`. `from-panes: false` keeps agents from driving mmux by
+`from-panes` is checked per request and follows `R` (for the agent note: from the next agent launch
+or restart). With `enabled: false` agents get no note either. `from-panes: false` keeps agents from driving mmux by
 habit; it is not a security boundary, since a program that clears its environment gets past it. The
 socket itself (`~/.mmux/run/`, owner-only) is reachable by anything running as you — an agent
 sandbox that must not start unsandboxed agents through mmux should deny that directory.

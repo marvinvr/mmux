@@ -73,6 +73,56 @@ impl Tool {
             false => vec![prompt.into()],
         })
     }
+
+    /// The launch args that append `text` to this agent's system prompt — never
+    /// replace it. Claude and Pi take `--append-system-prompt`; Grok its documented
+    /// `--rules` (`--append-system-prompt` is only a hidden alias there). Codex has no
+    /// such flag, so the text goes in as a `-c developer_instructions=…` config override,
+    /// which `-c` parses as TOML; that shadows any `developer_instructions` in the user's
+    /// `config.toml` for this launch. Every launch passes them, resumes included: each
+    /// tool keeps a single copy (Claude reuses its recorded prompt, Pi diffs a named
+    /// section, Grok rewrites its one system message, Codex keeps the first launch's
+    /// in history), and each re-renders from the current flags at some point — Pi on
+    /// every reopen, the others when they rebuild context (a compaction, say).
+    pub fn context_args(self, text: &str) -> Vec<String> {
+        match self {
+            Tool::Claude | Tool::Pi => vec!["--append-system-prompt".into(), text.into()],
+            Tool::Grok => vec!["--rules".into(), text.into()],
+            Tool::Codex => vec![
+                "-c".into(),
+                format!("developer_instructions={}", toml_string(text)),
+            ],
+        }
+    }
+}
+
+/// What a detected agent is told about running inside mmux, via
+/// [`Tool::context_args`]. Deliberately static — identical for every pane, so it never
+/// breaks the agent's prompt cache; the per-pane details are in its environment.
+pub const MMUX_NOTE: &str =
+    "You are running inside mmux, a terminal multiplexer for coding agents. \
+Your pane is $MMUX_SESSION in project $MMUX_PROJECT (environment variables). The `mmux` CLI \
+drives this session from your shell: list and read other agents, send them input, start \
+agents or git worktrees, wait for replies. Run `mmux ls --help` for the control reference \
+and `mmux docs` for the full guide. Only coordinate other agents when the user asks you to.";
+
+/// `s` as a TOML basic string, for a Codex `-c key=value` override.
+fn toml_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// Per-session resume bookkeeping for a Claude/Codex/Pi/Grok agent: which tool, the
@@ -659,6 +709,18 @@ mod tests {
         );
         assert_eq!(Tool::Pi.prompt_args("hi"), None);
         assert_eq!(Tool::Grok.prompt_args("hi"), None);
+    }
+
+    #[test]
+    fn context_appends_to_the_system_prompt_per_tool() {
+        for tool in [Tool::Claude, Tool::Pi] {
+            assert_eq!(tool.context_args("hi"), ["--append-system-prompt", "hi"]);
+        }
+        assert_eq!(Tool::Grok.context_args("hi"), ["--rules", "hi"]);
+        assert_eq!(
+            Tool::Codex.context_args("say \"hi\"\\\nnow\u{1}"),
+            ["-c", r#"developer_instructions="say \"hi\"\\\nnow\u0001""#]
+        );
     }
 
     #[test]

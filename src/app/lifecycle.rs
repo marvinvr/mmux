@@ -62,6 +62,7 @@ impl App {
         // same conversation; any other agent command just spawns plainly.
         if let Some(tool) = crate::agent::Tool::detect(&s.recipe.cmd) {
             s.agent = Some(crate::agent::Resume::new(tool));
+            s.mmux_note = self.mmux_note();
         }
         s
     }
@@ -814,6 +815,11 @@ impl App {
             if let Some(project) = self.projects.first() {
                 self.cfg = project.cfg.clone();
             }
+        }
+        // `control.from-panes` follows `R`: the next (re)launch of any agent honours it.
+        let note = self.mmux_note();
+        for s in &mut self.sessions {
+            s.mmux_note = note;
         }
 
         // A project brought in by this reload gets the same startup semantics it

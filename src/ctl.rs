@@ -809,7 +809,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
 
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get
-MMUX_SOCKET, MMUX_SESSION, MMUX_PROJECT and MMUX_DEPTH in their environment."#
+MMUX_SOCKET, MMUX_SESSION, MMUX_PROJECT and MMUX_DEPTH in their environment;
+detected agents are also told at launch that they run inside mmux."#
     );
 }
 
