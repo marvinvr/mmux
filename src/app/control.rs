@@ -87,6 +87,13 @@ enum Anchor {
 type Reply = Result<Value, String>;
 
 impl App {
+    /// Whether agents launched now should be told they run inside mmux
+    /// ([`crate::agent::MMUX_NOTE`]): only when their pane could act on it — this
+    /// session serves the socket and `control.from-panes` lets panes use it.
+    pub(super) fn mmux_note(&self) -> bool {
+        self.control.is_some() && self.root_cfg().control_from_panes()
+    }
+
     /// Run the control requests waiting on the socket, then release any input that
     /// is due. Called from [`tick`](super::App::tick).
     pub(crate) fn serve_control(&mut self) {

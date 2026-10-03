@@ -626,6 +626,18 @@ session from its own shell. Programs in mmux panes get `MMUX_SOCKET`,
 environment. `mmux new` refuses callers three levels deep, so agents can start helpers, but helpers
 can't start helpers without end.
 
+**Agents know they're in mmux.** A detected agent (Claude, Codex, Pi or Grok) gets a short, fixed note
+appended to its system prompt on every launch: that it runs inside mmux, that `$MMUX_SESSION` and
+`$MMUX_PROJECT` say where, that the `mmux` CLI drives the session, that `mmux ls --help` and
+`mmux docs` explain it, and to coordinate other agents only when asked. Claude and Pi take it as
+`--append-system-prompt`, Grok as `--rules`, Codex as `-c developer_instructions=…` — which stands in
+for any `developer_instructions` in your `~/.codex/config.toml` for that launch. Nothing is replaced:
+each tool's own prompt and your instructions files stay, and a resumed conversation still carries
+the note once. The note is left out when panes can't use the CLI: `control: enabled: false`, a
+socket that couldn't bind, or `from-panes: false` (which follows `R` — the next agent launch or
+restart honours it; Claude and Codex conversations that already have the note keep it until they
+compact, since they reuse the prompt they started with).
+
 **You stay in charge.** Scripted actions never move your cursor or take focus; each shows a brief
 `ctl:` note in the footer instead, and everything started this way is an ordinary sidebar row you can
 open and take over. To turn the socket off, or keep it from programs inside the session, see

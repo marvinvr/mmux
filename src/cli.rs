@@ -421,8 +421,11 @@ CONTROL — drive a running session from scripts and agents
     otherwise; `wait`/`ask` treat an agent as done once it stops working on
     what it was sent. `new agent --prompt "…"` starts one with a first prompt.
     Programs in mmux panes get MMUX_SOCKET, MMUX_SESSION (their own id),
-    MMUX_PROJECT and MMUX_DEPTH; `mmux new` refuses at depth 3. Actions never
-    move your cursor — each shows a `ctl:` note in the footer. Opt out:
+    MMUX_PROJECT and MMUX_DEPTH; `mmux new` refuses at depth 3. Detected agents
+    (Claude/Codex/Pi/Grok) get a short note appended to their system prompt
+    saying they run in mmux and pointing at this CLI (left out when enabled or
+    from-panes is false). Actions never move your cursor — each shows a `ctl:` note in
+    the footer. Opt out:
 
       control:
         enabled: true      # serve the socket at all
