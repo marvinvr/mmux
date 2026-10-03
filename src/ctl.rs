@@ -740,7 +740,7 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
                     println!("  new agent: {}", p.agents.join(", "));
                 }
                 for s in l.sessions.iter().filter(|s| s.project_dir == p.dir) {
-                    println!("  {}", row(s));
+                    println!("  {}{}", "  ".repeat(s.nest), row(s));
                 }
             }
         }
@@ -840,7 +840,8 @@ Every command finds the mmux session for the current directory (a project, a
 workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
 -C <dir> picks another. --json prints the raw response instead of text.
 
-    mmux ls                         Projects and sessions (id, kind, name, state, title)
+    mmux ls                         Projects and sessions (id, kind, name, state, title;
+                                    one an agent started is indented under it)
     mmux status <t>                 One session: state, title, last lines of its screen
     mmux read <t> [-n N]            Last N lines of output (default 200, 0 = all)
     mmux send <t> <text…>           Type text, then press Enter (--no-enter: don't).
@@ -857,8 +858,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     on an agent/terminal, the same as close
     mmux close <t> [--force]        Close an agent/terminal (refused while busy
                                     unless --force); stop a process
-    mmux last <t>                   An agent's last reply (Claude/Codex: from its
-                                    transcript; others: the end of its screen)
+    mmux last <t>                   An agent's last reply (Claude/Codex/Pi/Grok: from
+                                    its transcript; others: the end of its screen)
     mmux wait <t> [--idle|--exit] [-t 10m] [--settle 1.5s]
                                     Block until the agent has finished working on
                                     what it was sent (--idle, the default), or
@@ -1027,6 +1028,8 @@ mod tests {
             input_age_ms: input_age,
             worked_since_input: worked,
             input_pending: false,
+            parent: None,
+            nest: 0,
         }
     }
 

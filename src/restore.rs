@@ -57,6 +57,10 @@ pub struct Snapshot {
     pub tool: Option<Tool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// The position in [`State::sessions`] of the session that started this one (see
+    /// `Session::parent`) — runtime ids don't survive a reopen, positions do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<usize>,
 }
 
 /// The two session kinds that get restored (processes never do).

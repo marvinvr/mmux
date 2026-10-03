@@ -332,10 +332,11 @@ impl App {
         let mut sessions = Vec::new();
         for &pi in &order {
             for kind in [Kind::Agent, Kind::Terminal, Kind::Process] {
-                for (i, s) in self.sessions.iter().enumerate() {
-                    if s.project == pi && s.kind == kind {
-                        sessions.push(self.session_info(i));
-                    }
+                for (i, nest) in self.section_sessions(pi, kind) {
+                    sessions.push(SessionInfo {
+                        nest,
+                        ..self.session_info(i)
+                    });
                 }
             }
         }
@@ -403,6 +404,11 @@ impl App {
             },
             input_pending: self.deferred.iter().any(|d| d.id == s.id)
                 || self.prompts.iter().any(|p| p.id == s.id),
+            parent: s
+                .parent
+                .and_then(|p| self.sessions.iter().find(|c| c.id == p))
+                .map(Session::handle),
+            nest: 0,
         }
     }
 
@@ -530,15 +536,17 @@ impl App {
             NewKind::Terminal => self.new_terminal_session(pi),
         };
         s.depth = req.depth + 1;
+        // Remember who asked, so the sidebar can nest the new row under its spawner.
+        s.parent = req
+            .caller
+            .as_deref()
+            .and_then(parse_handle)
+            .filter(|id| self.sessions.iter().any(|c| c.id == *id));
         let id = s.id;
-        // Claude and Codex take the prompt on their command line (first launch only);
-        // anything else has it typed in once its screen settles.
+        // A detected agent (Claude/Codex/Pi/Grok) takes the prompt on its command line
+        // (first launch only); any other has it typed in once its screen settles.
         let typed = match prompt {
-            Some(p)
-                if s.agent
-                    .as_ref()
-                    .is_some_and(|r| r.tool.prompt_args(p).is_some()) =>
-            {
+            Some(p) if s.agent.is_some() => {
                 s.first_prompt = Some(p.to_string());
                 None
             }

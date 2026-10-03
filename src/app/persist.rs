@@ -65,6 +65,9 @@ impl App {
         self.refresh_agent_ids();
         let root = self.root_dir().to_path_buf();
         let mut sessions = Vec::new();
+        // Runtime id → position in `sessions`, for the parent links. A parent always
+        // precedes its child, so it is already here when the child is written.
+        let mut position: Vec<u64> = Vec::new();
         for s in &self.sessions {
             if !is_restorable(s) {
                 continue;
@@ -98,7 +101,11 @@ impl App {
                 env: s.recipe.env.clone(),
                 tool,
                 session_id,
+                parent: s
+                    .parent
+                    .and_then(|p| position.iter().position(|&id| id == p)),
             });
+            position.push(s.id);
         }
         let state = State {
             version: restore::VERSION,
@@ -175,6 +182,8 @@ impl App {
             return;
         }
         let (rows, cols) = self.last_inner;
+        // The new runtime id of each restored snapshot, by position (`None`: skipped).
+        let mut ids: Vec<Option<u64>> = Vec::new();
         for snap in state.sessions {
             let project = match snap.project_dir.as_deref() {
                 Some(dir) => {
@@ -186,6 +195,7 @@ impl App {
                 None => (snap.project < self.projects.len()).then_some(snap.project),
             };
             let Some(project) = project else {
+                ids.push(None);
                 continue; // a workspace folder went away — skip its rows
             };
             let recipe = Recipe {
@@ -204,6 +214,8 @@ impl App {
                 s.agent = Some(Resume::restored(tool, snap.session_id));
                 s.mmux_note = self.mmux_note();
             }
+            s.parent = snap.parent.and_then(|p| ids.get(p).copied().flatten());
+            ids.push(Some(s.id));
             self.bump_counters(&s);
             s.spawn(rows, cols);
             self.sessions.push(s);

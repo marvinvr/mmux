@@ -142,6 +142,11 @@ pub struct Session {
     /// the config started, the caller's depth + 1 for a `mmux new` issued from inside a
     /// pane. Exported as `MMUX_DEPTH` — the brake on agents spawning agents unboundedly.
     pub depth: u32,
+    /// The [`id`](Self::id) of the session whose pane started this one through the
+    /// control socket (`mmux new`/`ask`/`worktree new --agent`) — what nests a spawned
+    /// agent under its spawner in the sidebar. `None` for anything the user or the
+    /// config started. Persisted by position, so the nesting survives a reopen.
+    pub parent: Option<u64>,
     /// When input last arrived through the control socket (`mmux send`, `mmux keys`
     /// with a submitting key, or a first prompt). Lets a caller tell "working on what I sent" from "was already
     /// working before".
@@ -183,6 +188,7 @@ impl Session {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             project_dir: project_dir.to_path_buf(),
             depth: 1,
+            parent: None,
             last_input_at: None,
             last_working_at: None,
             launched_at: None,
@@ -313,12 +319,8 @@ impl Session {
         // A control-supplied first prompt rides this launch only. `take` rather than
         // clone: whether or not the spawn succeeds, it is never sent twice.
         if let Some(prompt) = self.first_prompt.take() {
-            if let Some(extra) = self
-                .agent
-                .as_ref()
-                .and_then(|r| r.tool.prompt_args(&prompt))
-            {
-                args.extend(extra);
+            if let Some(r) = self.agent.as_ref() {
+                args.extend(r.tool.prompt_args(&prompt));
                 self.last_input_at = Some(Instant::now());
             }
         }

@@ -548,17 +548,31 @@ process itself.
   conversation id (what [restore](#session-restore) already tracks), launch cwd and transcript root,
   plus a screen tail; `ctl.rs` then reads the transcript itself via `agent::last_reply` — Claude's
   `~/.claude/projects/<dir>/<id>.jsonl` (the latest assistant message's text blocks, regathered
-  by message id), Codex's `rollout-…-<id>.jsonl` (the latest agent message) — reading only the
-  file's tail, widening if needed. The root is `agent::session_root`, the same lookup Codex id
-  discovery uses: `CLAUDE_CONFIG_DIR`/`CODEX_HOME` from the agent's recipe env, then the inner
-  process's env, then `$HOME` — resolved by the server, since the client's env may differ. File IO stays off the UI thread, and the reply is the agent's own
-  words rather than a scrape of its TUI; other agents fall back to the screen tail.
+  by message id), Codex's `rollout-…-<id>.jsonl` (the latest agent message), Grok's
+  `~/.grok/sessions/<dir>/<id>/chat_history.jsonl` (the latest assistant message) and Pi's
+  `~/.pi/agent/sessions/<dir>/<time>_<id>.jsonl` (the latest assistant message's text blocks) —
+  reading only the file's tail, widening if needed. Grok's and Pi's are found by id across their
+  project directories rather than by re-deriving each tool's directory encoding. The root is
+  `agent::session_root`, the same lookup Codex id discovery uses: `CLAUDE_CONFIG_DIR`/`CODEX_HOME`/
+  `GROK_HOME`/`PI_CODING_AGENT_SESSION_DIR` (or `PI_CODING_AGENT_DIR`) from the agent's recipe env,
+  then the inner process's env, then `$HOME` — resolved by the server, since the client's env may
+  differ. File IO stays off the UI thread, and the reply is the agent's own words rather than a
+  scrape of its TUI; other agents fall back to the screen tail.
 - **First prompts ride the command line.** `new agent --prompt` sets `Session::first_prompt`,
-  which `spawn` *takes* and appends via `Tool::prompt_args` (Claude and Codex accept a trailing
-  positional prompt) — so it is used by the first launch only and a restart, which resumes the
-  conversation, can't repeat it; it is never persisted. Agents that can't take one get it typed
-  in instead: a `PendingPrompt` waits until the pane has drawn something and held still for
+  which `spawn` *takes* and appends via `Tool::prompt_args` (all four detected tools accept a
+  trailing positional prompt; Grok and Pi always behind `--`, so Grok's argument parser can't read
+  a one-word prompt as a subcommand) — so it is used by the first launch only and a restart, which
+  resumes the conversation, can't repeat it; it is never persisted. Typing it in is a race against
+  the agent's boot — Grok draws a still frame well before its input box listens, and lost prompts
+  that way — so only undetected agents, which can't take one, get it typed in instead: a `PendingPrompt` waits until the pane has drawn something and held still for
   800 ms (at most 10 s), then goes through the same paste + delayed Enter as `send`.
+- **Spawned sessions nest under their spawner.** `new`/`worktree new` record the caller's runtime
+  id (its `MMUX_SESSION`, when it names a live session) as `Session::parent`. Order stays
+  creation order, except that `nav::nest_order` — behind `App::section_sessions`, shared by
+  `build_nav`, the sidebar's indent and `ls` — puts a session right after its spawner, one level
+  deeper, when both are in the same project section. A spawner that has gone, or lives in another
+  project, leaves the child a top-level row. Restore persists the link by snapshot position
+  (`Snapshot::parent`), since runtime ids are reassigned on reopen.
 - **Guards.** `control.enabled`/`from-panes` ([config](04-configuration.md#control)); `new` and
   `worktree new` refuse callers at `MMUX_DEPTH` ≥ 3; closing a working agent or running terminal
   needs `force`, as does removing a worktree with uncommitted changes, an agent at work, or in view

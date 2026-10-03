@@ -30,7 +30,7 @@ human's sidebar, and they can open and take over any session.
 mmux ls                              # projects (+ agent templates) and sessions: id kind name state title
 mmux status s12                      # state, title, last ~5 non-empty screen lines
 mmux read "Dev server" -n 80         # last 80 lines of output (default 200, -n 0 = all)
-mmux last s12                        # an agent's last reply (Claude/Codex: from transcript)
+mmux last s12                        # an agent's last reply (Claude/Codex/Pi/Grok: from transcript)
 mmux send s12 "fix the failing test" # paste text, then Enter (--no-enter: don't; `-` = stdin)
 mmux keys s12 Escape                 # press keys: Enter Escape Tab BTab BSpace Space Up Down Left Right
                                      #   Home End PageUp PageDown Delete Insert F1-F12, C-/M-/S- prefixes

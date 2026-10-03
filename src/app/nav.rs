@@ -132,11 +132,37 @@ impl App {
     }
 
     fn push_sessions(&self, nav: &mut Vec<Nav>, pi: usize, kind: Kind) {
-        for (i, s) in self.sessions.iter().enumerate() {
-            if s.project == pi && s.kind == kind {
-                nav.push(Nav::Session(i));
-            }
+        for (i, _) in self.section_sessions(pi, kind) {
+            nav.push(Nav::Session(i));
         }
+    }
+
+    /// Project `pi`'s sessions of `kind` in display order, each with how deep it nests:
+    /// creation order, except that a session started by another one in the same
+    /// section ([`Session::parent`](super::session::Session::parent)) follows its
+    /// spawner — after the spawner's earlier children — one level deeper. One whose
+    /// spawner is gone or lives elsewhere is a top-level row. Shared by the sidebar and
+    /// `mmux ls`, so both show the same tree.
+    pub(crate) fn section_sessions(&self, pi: usize, kind: Kind) -> Vec<(usize, usize)> {
+        let members: Vec<usize> = (0..self.sessions.len())
+            .filter(|&i| self.sessions[i].project == pi && self.sessions[i].kind == kind)
+            .collect();
+        let ids: Vec<u64> = members.iter().map(|&i| self.sessions[i].id).collect();
+        let parents: Vec<Option<u64>> = members.iter().map(|&i| self.sessions[i].parent).collect();
+        nest_order(&ids, &parents)
+            .into_iter()
+            .map(|(k, depth)| (members[k], depth))
+            .collect()
+    }
+
+    /// How deep session `i` nests under its spawners in its sidebar section (0: a
+    /// top-level row). See [`section_sessions`](Self::section_sessions).
+    pub(crate) fn nest_depth(&self, i: usize) -> usize {
+        let s = &self.sessions[i];
+        self.section_sessions(s.project, s.kind)
+            .into_iter()
+            .find(|&(j, _)| j == i)
+            .map_or(0, |(_, d)| d)
     }
 
     /// Which project a nav row belongs to (the shared panel row belongs to none).
@@ -247,6 +273,43 @@ impl App {
 /// own name. Built by `App::project_sort_key`.
 type SortKey = (String, usize, u8, String);
 
+/// Rows `ids` (each with the id of the row that started it, if any) in tree order with
+/// their depth: creation order, except that a row follows its parent — after the
+/// parent's earlier children — one level deeper. A row whose parent isn't among `ids`
+/// is a root. Returns positions into `ids`.
+fn nest_order(ids: &[u64], parents: &[Option<u64>]) -> Vec<(usize, usize)> {
+    let parent_of = |k: usize| {
+        let p = parents[k]?;
+        (0..ids.len()).find(|&j| j != k && ids[j] == p)
+    };
+    let mut out: Vec<(usize, usize)> = Vec::with_capacity(ids.len());
+    // Depth-first from each root. A parent is always created before its child, so
+    // there is no cycle to meet — but a row is never dropped either way: anything the
+    // walk didn't reach is appended top-level.
+    let mut stack: Vec<(usize, usize)> = (0..ids.len())
+        .rev()
+        .filter(|&k| parent_of(k).is_none())
+        .map(|k| (k, 0))
+        .collect();
+    while let Some((k, depth)) = stack.pop() {
+        if out.len() >= ids.len() {
+            break;
+        }
+        out.push((k, depth));
+        for c in (0..ids.len()).rev() {
+            if parent_of(c) == Some(k) {
+                stack.push((c, depth + 1));
+            }
+        }
+    }
+    for k in 0..ids.len() {
+        if !out.iter().any(|&(j, _)| j == k) {
+            out.push((k, 0));
+        }
+    }
+    out
+}
+
 /// Order the projects for display, given each one's family root, whether its family
 /// carries background activity, and its sort key.
 ///
@@ -275,6 +338,20 @@ fn arrange_families(roots: &[usize], hot: &[bool], keys: &[SortKey]) -> Vec<usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spawned_rows_nest_under_their_spawner() {
+        // 1 started 3 and 5, 3 started 4; 2 is unrelated; 6's spawner (9) is gone.
+        let ids = [1, 2, 3, 4, 5, 6];
+        let parents = [None, None, Some(1), Some(3), Some(1), Some(9)];
+        let order: Vec<(u64, usize)> = nest_order(&ids, &parents)
+            .into_iter()
+            .map(|(k, d)| (ids[k], d))
+            .collect();
+        assert_eq!(order, [(1, 0), (3, 1), (4, 2), (5, 1), (2, 0), (6, 0)]);
+        // A (never expected) cycle still lists every row.
+        assert_eq!(nest_order(&[1, 2], &[Some(2), Some(1)]).len(), 2);
+    }
 
     /// Projects `names`, each `(family root, name, is_worktree)`.
     fn keys(spec: &[(usize, &str, bool)]) -> Vec<SortKey> {

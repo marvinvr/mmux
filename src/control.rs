@@ -268,6 +268,18 @@ pub struct SessionInfo {
     /// the agent's screen to settle).
     #[serde(default)]
     pub input_pending: bool,
+    /// The session that started this one through the control socket, while it's
+    /// still around.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// How deep `ls` nests this row under its spawner (0: top level) — the sidebar's
+    /// indent. Only `ls` fills it in.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub nest: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// A project, as `ls` reports it.

@@ -607,8 +607,10 @@ impl App {
                         };
                         let (glyph, base) =
                             agent_glyph_style(s.status(), attn, s.error.is_some(), working);
+                        // A session another one started sits a step in under its spawner.
+                        let indent = "  ".repeat(self.nest_depth(i));
                         entry_line(
-                            &format!("{glyph} {}", s.name),
+                            &format!("{indent}{glyph} {}", s.name),
                             sel,
                             base,
                             s.subtitle().as_deref(),

@@ -60,18 +60,18 @@ impl Tool {
         matches!(self, Tool::Claude | Tool::Pi | Tool::Grok)
     }
 
-    /// The launch args that hand this agent its first prompt, or `None` when it can't
-    /// take one on the command line (the caller then types it in). Claude and Codex
-    /// both start an interactive session already working on a trailing positional
-    /// prompt. A prompt that looks like a flag goes after `--` so it stays a prompt.
-    pub fn prompt_args(self, prompt: &str) -> Option<Vec<String>> {
-        if !matches!(self, Tool::Claude | Tool::Codex) {
-            return None;
+    /// The launch args that hand this agent its first prompt: every one of them starts
+    /// an interactive session already working on a trailing positional prompt. Claude
+    /// and Codex put a prompt that looks like a flag after `--` so it stays a prompt.
+    /// Grok and Pi always get the `--`: Grok's `clap` would otherwise read a one-word
+    /// prompt like `update` as its subcommand, and Pi documents `[--] [messages…]`.
+    /// (Typing the prompt into the TUI instead is a race against its boot: Grok draws
+    /// a still frame well before its input box listens, and the prompt was lost.)
+    pub fn prompt_args(self, prompt: &str) -> Vec<String> {
+        match self {
+            Tool::Claude | Tool::Codex if !prompt.starts_with('-') => vec![prompt.into()],
+            _ => vec!["--".into(), prompt.into()],
         }
-        Some(match prompt.starts_with('-') {
-            true => vec!["--".into(), prompt.into()],
-            false => vec![prompt.into()],
-        })
     }
 
     /// The launch args that append `text` to this agent's system prompt — never
@@ -258,24 +258,30 @@ pub fn sessions_for(
     }
 }
 
-/// Where `tool` keeps its per-conversation transcripts: `$CLAUDE_CONFIG_DIR/projects` /
-/// `$CODEX_HOME/sessions`, else under `$HOME`. The variable is looked up in the agent's
-/// own recipe `env` first, then in ours (which its pane inherits) — so both discovery
-/// and `mmux last` look where the agent actually writes.
+/// Where `tool` keeps its per-conversation transcripts: `$CLAUDE_CONFIG_DIR/projects`,
+/// `$CODEX_HOME/sessions`, `$GROK_HOME/sessions`, or Pi's `$PI_CODING_AGENT_SESSION_DIR`
+/// (else `$PI_CODING_AGENT_DIR/sessions`), each else under `$HOME`. A variable is looked
+/// up in the agent's own recipe `env` first, then in ours (which its pane inherits) — so
+/// both discovery and `mmux last` look where the agent actually writes.
 pub fn session_root(tool: Tool, env: &BTreeMap<String, String>) -> Option<PathBuf> {
-    let (var, dir, sub) = match tool {
+    let var = |name: &str| {
+        env.get(name)
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os(name).map(PathBuf::from))
+            .filter(|p| !p.as_os_str().is_empty())
+    };
+    let (base, dir, sub) = match tool {
         Tool::Claude => ("CLAUDE_CONFIG_DIR", ".claude", "projects"),
         Tool::Codex => ("CODEX_HOME", ".codex", "sessions"),
-        // Pi/Grok ids are minted before launch, so their on-disk session trees never
-        // need to be scanned to discover which conversation belongs to a pane.
-        Tool::Pi | Tool::Grok => return None,
+        Tool::Grok => ("GROK_HOME", ".grok", "sessions"),
+        Tool::Pi => {
+            if let Some(dir) = var("PI_CODING_AGENT_SESSION_DIR") {
+                return Some(dir);
+            }
+            ("PI_CODING_AGENT_DIR", ".pi/agent", "sessions")
+        }
     };
-    let base = env
-        .get(var)
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os(var).map(PathBuf::from))
-        .filter(|p| !p.as_os_str().is_empty());
-    Some(match base {
+    Some(match var(base) {
         Some(base) => base.join(sub),
         None => home()?.join(dir).join(sub),
     })
@@ -386,9 +392,11 @@ fn codex_id_time(id: &str) -> Option<SystemTime> {
 /// The last reply agent `tool` wrote to conversation `id`, read from its own
 /// transcript — the words it answered with, free of TUI chrome. Claude: the text
 /// blocks of the latest assistant message in `~/.claude/projects/<dir>/<id>.jsonl`.
-/// Codex: the latest agent message in its `rollout-…-<id>.jsonl`. `None` for Pi/Grok,
-/// or when the transcript is missing or holds no reply yet. Reads only the file's
-/// tail unless the reply sits further back.
+/// Codex: the latest agent message in its `rollout-…-<id>.jsonl`. Grok: the latest
+/// assistant message in `<dir>/<id>/chat_history.jsonl`. Pi: the text of the latest
+/// assistant message in `<dir>/<time>_<id>.jsonl`. `None` when the transcript is
+/// missing or holds no reply yet. Reads only the file's tail unless the reply sits
+/// further back.
 pub fn last_reply(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<String> {
     let path = transcript_path(tool, id, cwd, root)?;
     // Most replies are in the last few hundred KiB; widen only when they aren't.
@@ -398,7 +406,8 @@ pub fn last_reply(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<Strin
         let found = match tool {
             Tool::Claude => claude_reply(&lines),
             Tool::Codex => codex_reply(&lines),
-            Tool::Pi | Tool::Grok => None,
+            Tool::Grok => grok_reply(&lines),
+            Tool::Pi => pi_reply(&lines),
         };
         if found.is_some() || whole {
             return found;
@@ -411,7 +420,10 @@ pub fn last_reply(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<Strin
 /// Claude files it under its launch directory with every non-alphanumeric character
 /// turned into `-`; that guess is checked, then every project directory is (Claude's
 /// own naming has shifted before). Codex dates its rollouts, so the tree is walked for
-/// the file ending in the id.
+/// the file ending in the id. Grok keeps a directory per conversation, named by its id,
+/// under a percent-encoded launch directory; Pi a `<time>_<id>.jsonl` under a
+/// `--path-with-dashes--` one. Both are found by id across the project directories
+/// rather than by re-deriving those encodings.
 fn transcript_path(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<PathBuf> {
     let file = format!("{id}.jsonl");
     match tool {
@@ -440,7 +452,23 @@ fn transcript_path(tool: Tool, id: &str, cwd: &Path, root: &Path) -> Option<Path
                 .map(|(_, p)| p)
                 .find(|p| p.to_string_lossy().ends_with(&suffix))
         }
-        Tool::Pi | Tool::Grok => None,
+        Tool::Grok => std::fs::read_dir(root)
+            .ok()?
+            .flatten()
+            .map(|e| e.path().join(id).join("chat_history.jsonl"))
+            .find(|p| p.is_file()),
+        Tool::Pi => {
+            let suffix = format!("_{file}");
+            std::fs::read_dir(root)
+                .ok()?
+                .flatten()
+                .filter_map(|e| std::fs::read_dir(e.path()).ok())
+                .flat_map(|d| d.flatten().map(|e| e.path()))
+                .find(|p| {
+                    p.file_name()
+                        .is_some_and(|n| n.to_string_lossy().ends_with(&suffix))
+                })
+        }
     }
 }
 
@@ -504,6 +532,50 @@ fn claude_reply(lines: &[&str]) -> Option<String> {
         None => texts(last),
     };
     Some(parts.join("\n\n").trim().to_string())
+}
+
+/// The latest assistant message among Grok `chat_history.jsonl` lines: one record
+/// per message, its `content` a string (or, defensively, text blocks). Narration
+/// alongside a tool call counts too — mid-turn, that is the latest thing it said.
+fn grok_reply(lines: &[&str]) -> Option<String> {
+    lines.iter().rev().find_map(|l| {
+        let v: serde_json::Value = serde_json::from_str(l).ok()?;
+        if v["type"] != "assistant" {
+            return None;
+        }
+        let text = match &v["content"] {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(blocks) => text_blocks(blocks),
+            _ => return None,
+        };
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    })
+}
+
+/// The text of the latest assistant message among Pi transcript lines — `message`
+/// records whose `message.role` is `assistant`, thinking and tool calls skipped.
+fn pi_reply(lines: &[&str]) -> Option<String> {
+    lines.iter().rev().find_map(|l| {
+        let v: serde_json::Value = serde_json::from_str(l).ok()?;
+        if v["type"] != "message" || v["message"]["role"] != "assistant" {
+            return None;
+        }
+        let text = text_blocks(v["message"]["content"].as_array()?);
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    })
+}
+
+/// The `text` of every `{"type":"text"}` block, paragraph-separated.
+fn text_blocks(blocks: &[serde_json::Value]) -> String {
+    blocks
+        .iter()
+        .filter(|b| b["type"] == "text")
+        .filter_map(|b| b["text"].as_str())
+        .filter(|t| !t.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// Where a Claude agent stands on input it was sent at some instant, judged from its
@@ -701,14 +773,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_claude_and_codex_take_a_prompt_argument() {
-        assert_eq!(Tool::Claude.prompt_args("hi"), Some(vec!["hi".to_string()]));
-        assert_eq!(
-            Tool::Codex.prompt_args("-x"),
-            Some(vec!["--".to_string(), "-x".to_string()])
-        );
-        assert_eq!(Tool::Pi.prompt_args("hi"), None);
-        assert_eq!(Tool::Grok.prompt_args("hi"), None);
+    fn every_tool_takes_a_prompt_argument() {
+        assert_eq!(Tool::Claude.prompt_args("hi"), ["hi"]);
+        assert_eq!(Tool::Codex.prompt_args("-x"), ["--", "-x"]);
+        // Grok/Pi always separate it, so `update` can't become Grok's subcommand.
+        assert_eq!(Tool::Grok.prompt_args("update"), ["--", "update"]);
+        assert_eq!(Tool::Pi.prompt_args("hi"), ["--", "hi"]);
     }
 
     #[test]
@@ -756,6 +826,51 @@ mod tests {
         assert_eq!(codex_reply(&lines).as_deref(), Some("second"));
         assert_eq!(codex_reply(&lines[..2]).as_deref(), Some("first"));
         assert_eq!(codex_reply(&lines[..1]), None);
+    }
+
+    #[test]
+    fn grok_and_pi_replies_skip_tools_and_thinking() {
+        let grok = [
+            r#"{"type":"user","content":[{"type":"text","text":"<user_query>q</user_query>"}]}"#,
+            r#"{"type":"assistant","content":"Looking.","tool_calls":[{"name":"list_dir"}]}"#,
+            r#"{"type":"tool_result","content":"a\nb"}"#,
+            r#"{"type":"reasoning","content":null}"#,
+            r#"{"type":"assistant","content":" Done: a, b. "}"#,
+        ];
+        assert_eq!(grok_reply(&grok).as_deref(), Some("Done: a, b."));
+        assert_eq!(grok_reply(&grok[..3]).as_deref(), Some("Looking."));
+        assert_eq!(grok_reply(&grok[..1]), None);
+        let pi = [
+            r#"{"type":"session","id":"x"}"#,
+            r#"{"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hm"},{"type":"text","text":"Here."}]}}"#,
+            r#"{"type":"message","message":{"role":"assistant","content":[{"type":"toolCall"}]}}"#,
+            r#"{"type":"message","message":{"role":"toolResult","content":[{"type":"text","text":"out"}]}}"#,
+        ];
+        assert_eq!(pi_reply(&pi).as_deref(), Some("Here."));
+        assert_eq!(pi_reply(&pi[..1]), None);
+    }
+
+    #[test]
+    fn finds_grok_and_pi_transcripts_by_id() {
+        let root = std::env::temp_dir().join(format!("mmux-gp-{}", mint_uuid()));
+        let cwd = Path::new("/w");
+        let grok = root.join("%2Fw").join("abc");
+        std::fs::create_dir_all(&grok).unwrap();
+        std::fs::write(grok.join("chat_history.jsonl"), "").unwrap();
+        assert_eq!(
+            transcript_path(Tool::Grok, "abc", cwd, &root),
+            Some(grok.join("chat_history.jsonl"))
+        );
+        assert_eq!(transcript_path(Tool::Grok, "abd", cwd, &root), None);
+        let pi = root.join("--w--");
+        std::fs::create_dir_all(&pi).unwrap();
+        std::fs::write(pi.join("2026-01-01T00-00-00-000Z_abc.jsonl"), "").unwrap();
+        assert_eq!(
+            transcript_path(Tool::Pi, "abc", cwd, &root),
+            Some(pi.join("2026-01-01T00-00-00-000Z_abc.jsonl"))
+        );
+        assert_eq!(transcript_path(Tool::Pi, "bc", cwd, &root), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

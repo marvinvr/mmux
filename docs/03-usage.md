@@ -54,6 +54,10 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   processes, agents and terminals **don't linger once they exit cleanly** — quitting an agent
   (`/quit`, Ctrl-D) or `exit`ing a terminal removes its row outright rather than leaving a dim
   "exited" husk. A crash is the exception: it stays put, painted red, so you don't miss it.
+- An agent (or terminal) that **another agent started** through the [control CLI](#controlling-mmux-from-scripts--agents)
+  (`mmux new`, `mmux ask`, `mmux worktree new --agent`) sits indented a step under the agent that
+  started it, so a delegating agent and its helpers read as one group. Once the spawner is closed
+  its helpers move back out to the top level; the nesting survives a reopen.
 - Every session row shows a dim **subtitle** — the terminal title the program sets (e.g. what
   an agent is currently doing), falling back to its last error.
 - For an **agent**, an explicit `OSC 9;4` terminal-progress report drives the working/ready state
@@ -556,7 +560,7 @@ mmux commit cancel                 # drop the project's scheduled commit
 
 | Command | What it does |
 | --- | --- |
-| `mmux ls` | Every project (sidebar order, with the agent templates `new agent` accepts) and every session: id, kind, name, state, title. |
+| `mmux ls` | Every project (sidebar order, with the agent templates `new agent` accepts) and every session: id, kind, name, state, title. A session another one started is indented under it, as in the sidebar (`--json`: `parent`, `nest`). |
 | `mmux status <t>` | One session's state and title plus its **status line** — the last few non-empty lines of its screen, where an agent keeps its own status and input box. |
 | `mmux read <t> [-n N]` | The last `N` lines (default 200, `0` = all) of its scrollback + screen as plain text. The way to read a dev server's errors. |
 | `mmux send <t> <text…>` | Types the text (as one bracketed paste when the program supports it), then presses Enter as a separate keystroke ~150 ms later so agent TUIs submit it. `--no-enter` skips the Enter; `-` as the text reads it from stdin (multi-line prompts). |
@@ -566,7 +570,7 @@ mmux commit cancel                 # drop the project's scheduled commit
 | `mmux start <t>` / `restart <t>` | Starts a session that isn't running (stopped, exited, or failed); restarts one regardless. Processes keep the [one-dev-stack](#worktrees) rule. |
 | `mmux stop <t> [--force]` | Stops a process in place (running its `stop:` teardown, like `x`); on an agent or terminal it is `close` — refused while busy unless `--force`. |
 | `mmux close <t> [--force]` | Closes an agent or terminal. Refused while an agent is working or a terminal is running, unless `--force`. |
-| `mmux last <t>` | The agent's last reply. Claude and Codex answers come from the agent's own transcript (just the words, no TUI chrome); anything else falls back to the last ~40 lines of its screen. `--json` says which (`"source": "transcript"` or `"screen"`). |
+| `mmux last <t>` | The agent's last reply. Claude, Codex, Pi and Grok answers come from the agent's own transcript (just the words, no TUI chrome); anything else falls back to the last ~40 lines of its screen. `--json` says which (`"source": "transcript"` or `"screen"`). |
 | `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest — which keeps a just-started agent from reading as done before it has begun. `--exit` waits for the session to end instead. Exits `2` on timeout. |
 | `mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>` | [Ask an agent](#asking-an-agent) and print its answer. |
 | `mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]` | Cuts a [worktree](#worktrees) off the project's repository, like `w` (an existing branch is checked out; a new one branches from what the main checkout has out; no name = a generated one), without moving your view. Env files are copied and `worktrees.setup` runs as usual. With `--agent` or `--prompt` it also starts an agent in it (prints its id). Address the worktree afterwards by its branch: `-p <branch>`, `<branch>/<name>`. |
@@ -592,10 +596,10 @@ The new agent's id is printed to stderr (`mmux: asked s14 Claude #3 …`), so a 
 with `--to`. The agent stays open afterwards unless `--close`. On timeout (`-t`, default 10 minutes)
 it exits `2` and leaves the agent working — `mmux wait` and `mmux last` pick it up from there.
 
-Claude and Codex receive a first prompt on their command line, exactly as if you had typed
-`claude "…"`; it is used for that first launch only, so restarting the agent resumes the conversation
-without repeating it. Other agents have it typed in once their screen has settled (at most ~10 s
-after starting).
+Claude, Codex, Pi and Grok receive a first prompt on their command line, exactly as if you had
+typed `claude "…"`; it is used for that first launch only, so restarting the agent resumes the
+conversation without repeating it. Other agents have it typed in once their screen has settled (at
+most ~10 s after starting).
 
 "Done" means the agent's sidebar spinner has stopped: the same working signal the sidebar uses. An
 agent that stops to ask you something — a permission prompt, a question — is done too; `mmux status`
