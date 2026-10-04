@@ -161,11 +161,12 @@ pub struct Session {
     /// consumed there, so a restart (which resumes the conversation) never repeats it.
     /// Never persisted. See [`crate::agent::Tool::prompt_args`].
     pub first_prompt: Option<String>,
-    /// Whether launching this agent appends [`crate::agent::MMUX_NOTE`] to its system
-    /// prompt: only while its pane could actually use the `mmux` CLI — the control
-    /// socket is served and `control.from-panes` allows it. Set by the app when the row
-    /// is created and refreshed on reload; ignored without [`agent`](Self::agent).
-    pub mmux_note: bool,
+    /// The note launching this agent appends to its system prompt
+    /// ([`crate::agent::mmux_note`]) — `None` unless its pane could actually use the
+    /// `mmux` CLI: the control socket is served and `control.from-panes` allows it. Set
+    /// by the app when the row is created and refreshed on reload; ignored without
+    /// [`agent`](Self::agent).
+    pub mmux_note: Option<String>,
 }
 
 impl Session {
@@ -193,7 +194,7 @@ impl Session {
             last_working_at: None,
             launched_at: None,
             first_prompt: None,
-            mmux_note: false,
+            mmux_note: None,
         }
     }
 
@@ -311,8 +312,8 @@ impl Session {
     fn launch_argv(&mut self) -> Vec<String> {
         let mut args = self.recipe.args.clone();
         if let Some(r) = self.agent.as_ref() {
-            if self.mmux_note {
-                args.extend(r.tool.context_args(crate::agent::MMUX_NOTE));
+            if let Some(note) = &self.mmux_note {
+                args.extend(r.tool.context_args(note));
             }
             args.extend(r.launch_args());
         }
@@ -441,7 +442,7 @@ mod tests {
         };
         let mut s = Session::new("A".into(), Kind::Agent, recipe, 0, Path::new("/p"));
         s.agent = Some(resume);
-        s.mmux_note = true;
+        s.mmux_note = Some(MMUX_NOTE.into());
         s
     }
 
@@ -468,7 +469,7 @@ mod tests {
             ]
         );
 
-        s.mmux_note = false;
+        s.mmux_note = None;
         assert_eq!(s.launch_argv(), ["--x", "--resume", "id"]);
     }
 }

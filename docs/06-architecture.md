@@ -503,17 +503,19 @@ process itself.
   cwd and each ancestor (a project or its workspace), else by asking every live socket for its
   project dirs and taking the deepest match (worktrees live under `~/.mmux/worktrees`). It sends
   `MMUX_SESSION` only to its *own* socket, where the id means something.
-- **Agents are told.** A detected agent's launch appends `agent::MMUX_NOTE` to its system prompt
+- **Agents are told.** A detected agent's launch appends `agent::mmux_note` — the fixed `MMUX_NOTE`,
+  plus, in a worktree, its branch, base and how to merge it back — to its system prompt
   via `Tool::context_args` (`--append-system-prompt` for Claude/Pi, `--rules` for Grok, a
   TOML-encoded `-c developer_instructions=…` for Codex) — on *every* launch, resumes included. None
   of them stacks a second copy on resume (Claude replays its recorded prompt, Pi diffs a named
   `addendum` section, Grok rewrites its single system message, Codex keeps the first launch's
   developer message in history), but each re-renders from the current flags at some point — Pi on
   every reopen (dropping the section if the flag is gone), the others when they rebuild context
-  after a compaction — so omitting it on resume would lose it. The text is static so it never breaks prompt caching; the per-pane
-  facts are in the environment it points at. `spawn` puts it after the recipe's args and before
+  after a compaction — so omitting it on resume would lose it. The text is constant for a pane's
+  life (a session never changes project) so it never breaks prompt caching; the per-pane identity is
+  in the environment it points at, and only the worktree facts, fixed per project, are written in. `spawn` puts it after the recipe's args and before
   the resume flags and first prompt (Codex's `-c` must precede `resume <id>`, Claude's flags the
-  `--` of a prompt). `Session.mmux_note` gates it: set from `App::mmux_note()` (socket served and
+  `--` of a prompt). `Session.mmux_note` holds it: set from `App::mmux_note(pi)` (`None` unless the socket is served and
   `control.from-panes`) when an agent row is created or restored and refreshed on every reload, so a
   restart honours a changed `from-panes` without per-kind lifecycle.
 - **The user keeps the cursor.** Control actions reuse the same building blocks as the keys —

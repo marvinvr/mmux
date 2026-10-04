@@ -97,14 +97,47 @@ impl Tool {
 }
 
 /// What a detected agent is told about running inside mmux, via
-/// [`Tool::context_args`]. Deliberately static — identical for every pane, so it never
-/// breaks the agent's prompt cache; the per-pane details are in its environment.
-pub const MMUX_NOTE: &str =
-    "You are running inside mmux, a terminal multiplexer for coding agents. \
-Your pane is $MMUX_SESSION in project $MMUX_PROJECT (environment variables). The `mmux` CLI \
-drives this session from your shell: list and read other agents, send them input, start \
-agents or git worktrees, wait for replies. Run `mmux ls --help` for the control reference \
-and `mmux docs` for the full guide. Only coordinate other agents when the user asks you to.";
+/// [`Tool::context_args`]: what hosts it, where its own coordinates live, and what the
+/// `mmux` CLI lets it do — pitched so it *thinks* of agents and worktrees when a task
+/// would split well, without acting on them unasked. The per-pane identity stays in
+/// its environment; only a worktree's branch and base are written in (see
+/// [`mmux_note`]).
+pub const MMUX_NOTE: &str = "You are running inside mmux, the terminal multiplexer that hosts \
+this session: a sidebar of coding agents, terminals and dev processes, grouped by project, where \
+each git worktree opens as a project of its own. Your pane is $MMUX_SESSION in project \
+$MMUX_PROJECT (environment variables). The `mmux` CLI drives it from your shell: list and read \
+the other agents, send them input and wait for their replies; start agents of your own \
+(`mmux new agent`, or `mmux ask` to hand one a prompt and get its answer back); cut a git \
+worktree for isolated or parallel work, optionally with an agent already working in it \
+(`mmux worktree new`); commit and merge a worktree back into its base branch \
+(`mmux commit --merge`, your own worktree included); and remove a finished one \
+(`mmux worktree rm`). Run `mmux ls --help` for the control reference and `mmux docs` for the \
+full guide. Suggest these when a task would split or isolate well, but start agents or \
+worktrees, merge, or remove one only when the user asks or agrees.";
+
+/// The note for an agent in project `worktree` — `Some((branch, base))` when that
+/// project is a git worktree (`base` if mmux knows it), `None` otherwise: [`MMUX_NOTE`],
+/// plus where the worktree goes when it's done. Still constant for the life of a pane,
+/// whose project never changes, so a resume never sees a different prompt.
+pub fn mmux_note(worktree: Option<(&str, Option<&str>)>) -> String {
+    let Some((branch, base)) = worktree else {
+        return MMUX_NOTE.to_string();
+    };
+    let merge = match base {
+        Some(base) => format!(
+            "branched from `{base}`. When its work is done, `mmux commit --merge` run here \
+commits it and merges it into `{base}`"
+        ),
+        None => "whose base branch mmux doesn't know, so `mmux commit --merge` won't work \
+here — commit, and leave merging to the user"
+            .to_string(),
+    };
+    format!(
+        "{MMUX_NOTE} You are working in one of those worktrees: branch `{branch}`, {merge}. \
+You can't remove your own worktree from inside it; once merged and idle, mmux clears it away \
+(or the user does)."
+    )
+}
 
 /// `s` as a TOML basic string, for a Codex `-c key=value` override.
 fn toml_string(s: &str) -> String {
@@ -791,6 +824,16 @@ mod tests {
             Tool::Codex.context_args("say \"hi\"\\\nnow\u{1}"),
             ["-c", r#"developer_instructions="say \"hi\"\\\nnow\u0001""#]
         );
+    }
+
+    #[test]
+    fn the_note_names_a_worktrees_branch_and_base() {
+        assert_eq!(mmux_note(None), MMUX_NOTE);
+        let note = mmux_note(Some(("fix-auth", Some("main"))));
+        assert!(note.starts_with(MMUX_NOTE));
+        assert!(note.contains("branch `fix-auth`, branched from `main`"));
+        assert!(note.contains("merges it into `main`"));
+        assert!(mmux_note(Some(("x", None))).contains("won't work"));
     }
 
     #[test]

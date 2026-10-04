@@ -87,11 +87,20 @@ enum Anchor {
 type Reply = Result<Value, String>;
 
 impl App {
-    /// Whether agents launched now should be told they run inside mmux
-    /// ([`crate::agent::MMUX_NOTE`]): only when their pane could act on it — this
-    /// session serves the socket and `control.from-panes` lets panes use it.
-    pub(super) fn mmux_note(&self) -> bool {
-        self.control.is_some() && self.root_cfg().control_from_panes()
+    /// What an agent launched now in project `pi` is told about running inside mmux
+    /// ([`crate::agent::mmux_note`], naming the worktree it's in) — `None` unless its
+    /// pane could act on it: this session serves the socket and `control.from-panes`
+    /// lets panes use it.
+    pub(super) fn mmux_note(&self, pi: usize) -> Option<String> {
+        if self.control.is_none() || !self.root_cfg().control_from_panes() {
+            return None;
+        }
+        let base = self.worktree_base(pi);
+        let worktree = self.projects[pi]
+            .worktree
+            .as_ref()
+            .map(|wt| (wt.branch.as_str(), base.as_deref()));
+        Some(crate::agent::mmux_note(worktree))
     }
 
     /// Run the control requests waiting on the socket, then release any input that

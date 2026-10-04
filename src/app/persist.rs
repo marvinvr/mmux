@@ -212,7 +212,7 @@ impl App {
             let mut s = Session::new(snap.name, kind, recipe, project, &dir);
             if let Some(tool) = snap.tool {
                 s.agent = Some(Resume::restored(tool, snap.session_id));
-                s.mmux_note = self.mmux_note();
+                s.mmux_note = self.mmux_note(project);
             }
             s.parent = snap.parent.and_then(|p| ids.get(p).copied().flatten());
             ids.push(Some(s.id));

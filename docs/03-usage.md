@@ -630,10 +630,14 @@ session from its own shell. Programs in mmux panes get `MMUX_SOCKET`,
 environment. `mmux new` refuses callers three levels deep, so agents can start helpers, but helpers
 can't start helpers without end.
 
-**Agents know they're in mmux.** A detected agent (Claude, Codex, Pi or Grok) gets a short, fixed note
-appended to its system prompt on every launch: that it runs inside mmux, that `$MMUX_SESSION` and
-`$MMUX_PROJECT` say where, that the `mmux` CLI drives the session, that `mmux ls --help` and
-`mmux docs` explain it, and to coordinate other agents only when asked. Claude and Pi take it as
+**Agents know they're in mmux.** A detected agent (Claude, Codex, Pi or Grok) gets a short note
+appended to its system prompt on every launch: that mmux is what hosts it, that `$MMUX_SESSION` and
+`$MMUX_PROJECT` say where, what the `mmux` CLI lets it do — read and drive other agents, start its
+own (`new agent`, `ask`), cut worktrees (optionally with an agent in them), merge a worktree back
+(`commit --merge`, its own included) and remove finished ones — that `mmux ls --help` and
+`mmux docs` explain it, and to suggest these when a task would split well but act only when you ask
+or agree. An agent in a worktree is also told its branch and base, that `mmux commit --merge` from
+there merges it, and that it can't remove its own worktree (the reaper or you will). Claude and Pi take it as
 `--append-system-prompt`, Grok as `--rules`, Codex as `-c developer_instructions=…` — which stands in
 for any `developer_instructions` in your `~/.codex/config.toml` for that launch. Nothing is replaced:
 each tool's own prompt and your instructions files stay, and a resumed conversation still carries
