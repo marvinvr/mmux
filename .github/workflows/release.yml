@@ -112,6 +112,10 @@ jobs:
           git -C "$tap" init -q
           git -C "$tap" add -A
           git -C "$tap" -c user.email=ci@mmux.local -c user.name=ci commit -qm "mmux verify formula"
+          # The formula depends on tmux, which brew can't resolve by name with the API off
+          # unless homebrew/core is tapped (it isn't, by default). Install it from the API
+          # first; brew then resolves the dependency from the installed keg.
+          env -u HOMEBREW_NO_INSTALL_FROM_API brew install tmux
           brew install mmux/verify/mmux
           mmux --version | grep -q "mmux ${{ steps.v.outputs.version }}"
 

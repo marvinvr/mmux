@@ -38,9 +38,9 @@ curl -fsSL https://mmux.org/install.sh | sh
 On macOS you can use Homebrew instead (`brew install marvinvr/mmux/mmux`), or build from source
 with [Rust](https://rustup.rs) (`cargo install --path .`).
 
-mmux needs **tmux** on your `PATH`. The git panel uses `git`; the `Ctrl+P` file picker opens
-files in your `$EDITOR`. See [Installation](docs/02-installation.md) for prebuilt binaries and
-the macOS code-signing note.
+mmux needs **tmux** on your `PATH` (Homebrew installs it for you). The git panel uses `git`; the
+`Ctrl+P` file picker opens files in your `$EDITOR`. See [Installation](docs/02-installation.md)
+for prebuilt binaries and the macOS code-signing note.
 
 A script-installed binary **keeps itself up to date**: it checks in the background on startup and
 every 6 hours, downloads new releases automatically, and shows a quiet `↻ restart to update`

@@ -4,7 +4,7 @@
 
 | Tool | Required? | Used for |
 | --- | --- | --- |
-| **tmux** | Yes | mmux runs its TUI inside a per-directory tmux session. Without `tmux` on your `PATH`, `mmux` prints an error and exits. |
+| **tmux** | Yes | mmux runs its TUI inside a per-directory tmux session. Homebrew installs it for you; otherwise, without `tmux` on your `PATH`, `mmux` exits with the install command for your system (e.g. `brew install tmux`, `sudo apt install tmux`). |
 | **git** | For the git panel | The built-in [git panel](03-usage.md#the-git-panel) shells out to the `git` CLI. It only appears when the directory is a git repository. |
 | an editor | Optional | The [Ctrl+P file picker](03-usage.md#the-file-picker) opens the chosen file with `$VISUAL`/`$EDITOR`, falling back to the first of `micro`, `nano`, `vim`, `vi` on `PATH`. |
 
@@ -35,7 +35,8 @@ Two environment overrides:
 | `MMUX_BIN_DIR` | Install to a different directory (default `~/.local/bin`). |
 | `MMUX_VERSION` | Install a specific version, e.g. `MMUX_VERSION=0.8.1` (default: latest). |
 
-If `~/.local/bin` isn't on your `PATH`, the script prints the line to add.
+If `~/.local/bin` isn't on your `PATH`, the script prints the line to add; if tmux is missing, it
+prints the command to install it (it never installs tmux itself).
 
 ## Homebrew (macOS)
 

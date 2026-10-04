@@ -13,6 +13,9 @@ class Mmux < Formula
   sha256 "SOURCE_SHA_PLACEHOLDER"
   head "https://github.com/marvinvr/mmux.git", branch: "main"
 
+  # mmux runs inside a per-directory tmux session; it won't start without it.
+  depends_on "tmux"
+
   on_macos do
     on_arm do
       url "https://github.com/marvinvr/mmux/releases/download/TAG_PLACEHOLDER/mmux-aarch64-apple-darwin.tar.gz"

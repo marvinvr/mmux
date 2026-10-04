@@ -73,12 +73,7 @@ pub fn launch_in(dir: PathBuf) -> Result<()> {
         }
     }
 
-    if which_tmux().is_none() {
-        eprintln!(
-            "tmux not found on PATH. mmux uses tmux to keep sessions alive — please install it."
-        );
-        std::process::exit(1);
-    }
+    require_tmux();
 
     // Canonicalize so `dir`, `dir/`, and symlinks all map to the same session.
     let canon = std::fs::canonicalize(&dir).unwrap_or(dir.clone());
@@ -365,6 +360,55 @@ fn which_tmux() -> Option<()> {
         .map(|_| ())
 }
 
+/// Exit with an install hint when tmux is missing. Everything mmux runs lives inside a
+/// tmux session, so there's no degraded mode to fall back to.
+fn require_tmux() {
+    if which_tmux().is_some() {
+        return;
+    }
+    eprintln!("mmux needs tmux to keep your sessions alive, and it isn't installed.");
+    eprintln!("{}", tmux_install_hint());
+    std::process::exit(1);
+}
+
+/// The exact command to install tmux here, for the first package manager on `PATH`.
+/// `web/install.sh` prints the same hint — keep the two in step.
+fn tmux_install_hint() -> String {
+    // (manager binary, install command), in preference order. System managers get
+    // `sudo` only when it exists: a root shell in a container usually has none.
+    let managers: &[(&str, &str)] = if cfg!(target_os = "macos") {
+        &[("brew", "brew install tmux"), ("port", "port install tmux")]
+    } else {
+        &[
+            ("apt-get", "apt install tmux"),
+            ("dnf", "dnf install tmux"),
+            ("yum", "yum install tmux"),
+            ("pacman", "pacman -S tmux"),
+            ("zypper", "zypper install tmux"),
+            ("apk", "apk add tmux"),
+            ("xbps-install", "xbps-install -S tmux"),
+            ("brew", "brew install tmux"),
+        ]
+    };
+    let sudo = if on_path("sudo") { "sudo " } else { "" };
+    match managers.iter().find(|(bin, _)| on_path(bin)) {
+        // Homebrew refuses to run as root, so never prefix it.
+        Some(("brew", cmd)) => format!("Install it with:  {cmd}"),
+        Some((_, cmd)) => format!("Install it with:  {sudo}{cmd}"),
+        // Homebrew is the usual route on a Mac, even before it's set up.
+        None if cfg!(target_os = "macos") => {
+            "Install Homebrew from https://brew.sh, then run:  brew install tmux".to_string()
+        }
+        None => "Install it with your system's package manager.".to_string(),
+    }
+}
+
+/// Whether `bin` is found in any `PATH` entry.
+fn on_path(bin: &str) -> bool {
+    std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|p| p.join(bin).is_file()))
+}
+
 /// One row in the attach picker: either a running tmux session, or a recent
 /// directory with no live session (`running == false`, selecting it launches one).
 struct Entry {
@@ -382,10 +426,7 @@ struct Entry {
 
 /// `mmux attach` / `mmux a`: pick any running mmux session anywhere and join it.
 pub fn attach_picker() -> Result<()> {
-    if which_tmux().is_none() {
-        eprintln!("tmux not found on PATH.");
-        std::process::exit(1);
-    }
+    require_tmux();
     configure_server();
     let entries = build_entries();
     if entries.is_empty() {

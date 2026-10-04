@@ -114,6 +114,41 @@ case ":$PATH:" in
 *":$BIN_DIR:"*) : ;;
 *) warn "$BIN_DIR is not on your PATH — add it, e.g.  export PATH=\"$BIN_DIR:\$PATH\"" ;;
 esac
-command -v tmux >/dev/null 2>&1 || warn "tmux is not installed — mmux needs it to run (install it with your package manager)"
 
-info "done — run 'mmux' to start"
+# mmux runs inside tmux, so without it there's nothing to start yet. Name the exact install
+# command for this machine (the same hint mmux itself prints — keep the two in step) as the
+# last thing on screen, but don't run it: that needs root, and this script never uses sudo.
+if command -v tmux >/dev/null 2>&1; then
+	info "done — run 'mmux' to start"
+	exit 0
+fi
+# System managers get sudo only when it exists: a root shell in a container usually has none.
+sudo=""
+command -v sudo >/dev/null 2>&1 && sudo="sudo "
+if [ "$os" = "Darwin" ]; then
+	managers="brew port"
+else
+	managers="apt-get dnf yum pacman zypper apk xbps-install brew"
+fi
+tmux_cmd=""
+for pm in $managers; do
+	command -v "$pm" >/dev/null 2>&1 || continue
+	case "$pm" in
+	brew) tmux_cmd="brew install tmux" ;; # Homebrew refuses to run as root
+	apt-get) tmux_cmd="${sudo}apt install tmux" ;;
+	pacman) tmux_cmd="${sudo}pacman -S tmux" ;;
+	apk) tmux_cmd="${sudo}apk add tmux" ;;
+	xbps-install) tmux_cmd="${sudo}xbps-install -S tmux" ;;
+	*) tmux_cmd="${sudo}$pm install tmux" ;; # port, dnf, yum, zypper
+	esac
+	break
+done
+warn "mmux needs tmux to keep your sessions alive, and it isn't installed"
+if [ -n "$tmux_cmd" ]; then
+	warn "install it with:  $tmux_cmd"
+elif [ "$os" = "Darwin" ]; then
+	warn "install Homebrew from https://brew.sh, then run:  brew install tmux"
+else
+	warn "install it with your system's package manager"
+fi
+info "done — install tmux, then run 'mmux' to start"
