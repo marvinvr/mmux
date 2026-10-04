@@ -292,7 +292,10 @@ impl App {
             }
             Cmd::Stop { target, force } | Cmd::Close { target, force } => {
                 let i = self.resolve_target(req, target)?;
-                self.control_close(i, *force)
+                // An agent closing itself is always "working" — it's running this very
+                // command — so the busy guard would only ever stand in its way.
+                let own = self.caller_index(req) == Some(i);
+                self.control_close(i, *force || own)
             }
             Cmd::WorktreeNew {
                 branch,
@@ -306,7 +309,11 @@ impl App {
                 agent.as_deref(),
                 prompt.as_deref(),
             ),
-            Cmd::WorktreeRm { target, force } => self.control_worktree_rm(req, target, *force),
+            Cmd::WorktreeRm {
+                target,
+                force,
+                confirm,
+            } => self.control_worktree_rm(req, target, *force, *confirm),
             Cmd::Commit {
                 project,
                 message,
@@ -642,23 +649,27 @@ impl App {
         })
     }
 
+    /// The session whose pane sent `req`, if it came from one of ours.
+    fn caller_index(&self, req: &Request) -> Option<usize> {
+        let id = req.caller.as_deref().and_then(parse_handle)?;
+        self.sessions.iter().position(|s| s.id == id)
+    }
+
     /// `worktree rm`: the `X` gesture. Without `force` it refuses whatever the modal
     /// would have warned about — uncommitted changes, an agent still at work — and
-    /// the worktree the human is looking at. Never the caller's own worktree: that
-    /// would close the pane asking.
-    fn control_worktree_rm(&mut self, req: &Request, target: &str, force: bool) -> Reply {
+    /// the worktree the human is looking at. The caller's own worktree also needs
+    /// `confirm`: removing it closes the pane asking, so the first try only explains
+    /// that, and names the flag that goes through with it.
+    fn control_worktree_rm(
+        &mut self,
+        req: &Request,
+        target: &str,
+        force: bool,
+        confirm: bool,
+    ) -> Reply {
         let (pi, branch) = self.target_worktree(target)?;
-        let own = req
-            .caller
-            .as_deref()
-            .and_then(parse_handle)
-            .and_then(|id| self.sessions.iter().find(|s| s.id == id))
-            .is_some_and(|s| s.project == pi);
-        if own {
-            return Err(format!(
-                "you are running inside ⑂ {branch} — removing it would close your own pane; ask from outside it"
-            ));
-        }
+        let caller = self.caller_index(req);
+        let own = caller.is_some_and(|i| self.sessions[i].project == pi);
         if !force {
             if !crate::git::is_clean(&self.projects[pi].dir) {
                 return Err(format!(
@@ -668,8 +679,12 @@ impl App {
             let working: Vec<String> = self
                 .sessions
                 .iter()
-                .filter(|s| s.project == pi && s.kind == Kind::Agent && s.busy())
-                .map(|s| format!("{} {}", s.handle(), s.name))
+                .enumerate()
+                // The caller is busy running this command; that's no reason to refuse.
+                .filter(|&(i, s)| {
+                    s.project == pi && s.kind == Kind::Agent && s.busy() && Some(i) != caller
+                })
+                .map(|(_, s)| format!("{} {}", s.handle(), s.name))
                 .collect();
             if !working.is_empty() {
                 return Err(format!(
@@ -682,6 +697,30 @@ impl App {
                     "⑂ {branch} is the project in view — pass --force to remove it anyway"
                 ));
             }
+        }
+        if own && !confirm {
+            let others = self
+                .sessions
+                .iter()
+                .enumerate()
+                .filter(|&(i, s)| s.project == pi && Some(i) != caller)
+                .count();
+            let others = match others {
+                0 => String::new(),
+                1 => " and the 1 other session in it".to_string(),
+                n => format!(" and the {n} other sessions in it"),
+            };
+            let dirty = match crate::git::is_clean(&self.projects[pi].dir) {
+                true => "",
+                false => " Its uncommitted changes are discarded.",
+            };
+            return Err(format!(
+                "not removed: ⑂ {branch} is the worktree you are running in. Removing it closes \
+your own pane{others} — this conversation ends there, and nothing you do after it runs — then \
+deletes the checkout; the branch goes too, but only if it's merged.{dirty} If its work should \
+land, merge it first (`mmux commit --merge`), and finish anything you still owe the user. \
+To go ahead, run the same command again with --confirm."
+            ));
         }
         let project = self.project_info(pi);
         let message = self

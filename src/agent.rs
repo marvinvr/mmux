@@ -111,7 +111,8 @@ the other agents, send them input and wait for their replies; start agents of yo
 worktree for isolated or parallel work, optionally with an agent already working in it \
 (`mmux worktree new`); commit and merge a worktree back into its base branch \
 (`mmux commit --merge`, your own worktree included); and remove a finished one \
-(`mmux worktree rm`). Run `mmux ls --help` for the control reference and `mmux docs` for the \
+(`mmux worktree rm` — your own too, which ends you: it warns first). You can also close your \
+own pane when you're done (`mmux close self`). Run `mmux ls --help` for the control reference and `mmux docs` for the \
 full guide. Suggest these when a task would split or isolate well, but start agents or \
 worktrees, merge, or remove one only when the user asks or agrees.";
 
@@ -134,8 +135,8 @@ here — commit, and leave merging to the user"
     };
     format!(
         "{MMUX_NOTE} You are working in one of those worktrees: branch `{branch}`, {merge}. \
-You can't remove your own worktree from inside it; once merged and idle, mmux clears it away \
-(or the user does)."
+Then `mmux worktree rm {branch}` removes it, closing your own pane with it; left alone, mmux \
+clears a merged worktree away once it goes idle."
     )
 }
 
@@ -833,6 +834,7 @@ mod tests {
         assert!(note.starts_with(MMUX_NOTE));
         assert!(note.contains("branch `fix-auth`, branched from `main`"));
         assert!(note.contains("merges it into `main`"));
+        assert!(note.contains("`mmux worktree rm fix-auth`"));
         assert!(mmux_note(Some(("x", None))).contains("won't work"));
     }
 

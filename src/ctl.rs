@@ -88,6 +88,10 @@ struct Args {
     merge: bool,
     /// `commit --in`: schedule rather than commit now.
     delay: Option<Duration>,
+    /// `worktree rm --confirm`: go through with removing the caller's own worktree.
+    /// Deliberately left out of every help text, so an agent only learns it from the
+    /// warning a first, unconfirmed attempt prints.
+    confirm: bool,
 }
 
 fn parse(args: &[String]) -> Result<Args> {
@@ -113,6 +117,7 @@ fn parse(args: &[String]) -> Result<Args> {
             }
             "--no-enter" if flags => out.no_enter = true,
             "-f" | "--force" if flags => out.force = true,
+            "--confirm" if flags => out.confirm = true,
             "-p" | "--project" if flags => out.project = Some(value(a)?),
             "--cmd" if flags => out.command = Some(value(a)?),
             "--prompt" if flags => out.prompt = Some(value(a)?),
@@ -294,6 +299,7 @@ fn build(a: &Args) -> Result<Cmd> {
                 Some(t) => Cmd::WorktreeRm {
                     target: t.clone(),
                     force: a.force,
+                    confirm: a.confirm,
                 },
                 None => bail!("`mmux worktree rm` needs the worktree's branch (see `mmux ls`)"),
             },
@@ -857,7 +863,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
     mmux stop <t> [--force]         Stop a process in place (runs its stop: command);
                                     on an agent/terminal, the same as close
     mmux close <t> [--force]        Close an agent/terminal (refused while busy
-                                    unless --force); stop a process
+                                    unless --force); stop a process. `close self`
+                                    closes your own pane, no --force needed
     mmux last <t>                   An agent's last reply (Claude/Codex/Pi/Grok: from
                                     its transcript; others: the end of its screen)
     mmux wait <t> [--idle|--exit] [-t 10m] [--settle 1.5s]
@@ -878,7 +885,9 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     checkout goes, the branch is deleted only if
                                     merged. Refused while it has uncommitted changes,
                                     an agent at work, or is in view, unless --force
-                                    (which discards uncommitted changes).
+                                    (which discards uncommitted changes). From
+                                    inside the worktree itself, the first try only
+                                    explains what removing it would close.
     mmux commit [-p project] [-m "<message>"] [--push|--merge] [--in 1h]
                                     Commit the staged changes (else everything) —
                                     the git panel's `c`. Without -m a Claude/Codex
@@ -1123,7 +1132,13 @@ mod tests {
             Cmd::WorktreeRm {
                 target: "fix-auth".into(),
                 force: true,
+                confirm: false,
             }
         );
+        let a = parse(&args(&["worktree", "rm", "fix-auth", "--confirm"])).unwrap();
+        assert!(matches!(
+            build(&a).unwrap(),
+            Cmd::WorktreeRm { confirm: true, .. }
+        ));
     }
 }

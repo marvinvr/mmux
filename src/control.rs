@@ -153,11 +153,15 @@ pub enum Cmd {
     },
     /// Remove a worktree — the `X` gesture: its sessions close, the checkout goes, and
     /// the branch is deleted only if merged. Refused while it has uncommitted changes,
-    /// an agent at work, or is the project in view, unless `force`.
+    /// an agent at work, or is the project in view, unless `force`. The caller's *own*
+    /// worktree also takes `confirm`: without it the reply is a warning of what removal
+    /// would cost the caller, so an agent reads that before it can end itself.
     WorktreeRm {
         target: String,
         #[serde(default)]
         force: bool,
+        #[serde(default)]
+        confirm: bool,
     },
     /// Commit a project's changes — the git panel's `c`, or with `delay_ms` its `S`.
     /// Now: the staged changes, else everything. Scheduled: everything, staged when the

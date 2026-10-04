@@ -39,11 +39,13 @@ mmux new terminal --cmd "npm test"   # start a terminal, type a command into it 
 mmux start|restart "Dev server"      # start anything not running / (re)start any session
 mmux stop "Dev server" [--force]     # process: stop in place (runs its stop: teardown)
 mmux close s12 [--force]             # agent/terminal: close for good (busy => refused without --force)
+mmux close self                      # close your own pane (no --force needed)
 mmux wait s12 [-t 10m] [--settle 1.5s] [--idle|--exit]   # until the agent is done (default) / ended
 mmux ask "why is CI red?"            # new agent -> wait -> print its reply
 mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
                                      # cut a git worktree (+ an agent in it)
 mmux worktree rm <branch> [--force]  # remove it: sessions close, checkout goes
+                                     # (your own: warns first that it ends you)
 ```
 
 - States: an agent is `working` (its sidebar row spins) or `idle` (`idle 42s`); others are

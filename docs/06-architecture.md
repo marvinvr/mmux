@@ -578,7 +578,11 @@ process itself.
 - **Guards.** `control.enabled`/`from-panes` ([config](04-configuration.md#control)); `new` and
   `worktree new` refuse callers at `MMUX_DEPTH` ≥ 3; closing a working agent or running terminal
   needs `force`, as does removing a worktree with uncommitted changes, an agent at work, or in view
-  (the caller's own worktree is never removed — it would close the pane asking). The socket
+  (minus the caller, which is busy running the command). The caller's own worktree — whose removal
+  closes the pane asking — also needs a confirmation that is in no help text: the first try only
+  replies with what removal would cost (its pane, the other sessions there, uncommitted changes)
+  and names the flag that goes through with it, so an agent can't end itself without reading that.
+  `close self` skips the busy guard, since the caller is always busy running it. The socket
   is owner-only, which is the real boundary.
 
 ## Navigation, Focus, and Regions
