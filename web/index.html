@@ -86,6 +86,8 @@
         <span class="nav-sep" aria-hidden="true">·</span>
         <a href="#features">what you get</a>
         <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="#watch">watch</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
         <!-- hidden: "try it" sandbox — keep for later, don't delete
         <a href="#how">try it</a>
         <span class="nav-sep" aria-hidden="true">·</span>
@@ -274,7 +276,31 @@ workspace:
     </section>
 
     <!-- =================================================================== -->
-    <!-- §4.6 install — one-line CTA; script default, Homebrew behind a tab   -->
+    <!-- §4.6 watch — the 50s promo, click-to-play. Sits right before install -->
+    <!-- because the video ends on the install command.                      -->
+    <!-- =================================================================== -->
+    <section id="watch">
+      <p class="kicker">// in motion</p>
+      <h2 class="section-h2">fifty seconds, <span class="grad">start to finish.</span></h2>
+      <p class="watch-lede">from a wall of terminal tabs to one sidebar — agents, processes, worktrees, and a session that's still there when you come back.</p>
+
+      <!-- Ships with native controls so it plays without JS; tui.js (§11) swaps
+           them for the .video-play chip until first play. preload="none" keeps the
+           ~11 MB off the wire until asked; the self-hosted poster holds the frame
+           (and the 16:9 box holds the layout) if the media host is unreachable. -->
+      <figure class="video-card">
+        <figcaption class="video-card-name">mmux-promo.mp4 <span class="video-card-len">0:50</span></figcaption>
+        <div class="video-frame">
+          <video class="video-el" src="https://public.mmux.org/video/mmux-promo.mp4" poster="assets/promo-poster.webp" width="1920" height="1080" preload="none" playsinline controls aria-label="mmux promo video, 50 seconds"></video>
+          <button type="button" class="video-play" hidden>
+            <span class="video-play-chip"><span class="video-play-glyph" aria-hidden="true">▶</span> <span class="video-play-label">play</span> <span class="video-play-len" aria-hidden="true">0:50</span></span>
+          </button>
+        </div>
+      </figure>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- §4.7 install — one-line CTA; script default, Homebrew behind a tab   -->
     <!-- =================================================================== -->
     <section id="install">
       <p class="kicker">// get it</p>
@@ -310,7 +336,7 @@ workspace:
   </main>
 
   <!-- ===================================================================== -->
-  <!-- §4.7 footer                                                           -->
+  <!-- §4.8 footer                                                           -->
   <!-- ===================================================================== -->
   <footer class="site-footer">
     <span class="footer-brand">mmux</span>

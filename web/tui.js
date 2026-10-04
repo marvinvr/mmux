@@ -1931,6 +1931,40 @@
   }
 
   /* =====================================================================
+   * Promo video (§4.6): the <video> ships with native controls so it plays
+   * without JS. Here they give way to the .video-play chip until the first
+   * click, which hands control back to the native bar. If the media host
+   * fails, the poster stays and the chip becomes a disabled "unavailable" note.
+   * ===================================================================== */
+  function wirePromoVideo() {
+    var video = document.querySelector(".video-el");
+    var play = document.querySelector(".video-play");
+    if (!video || !play) return;
+    var label = play.querySelector(".video-play-label");
+
+    function fail() {
+      video.controls = false;
+      play.hidden = false;
+      play.disabled = true;
+      if (label) label.textContent = "video unavailable";
+    }
+    video.addEventListener("error", fail);
+    if (video.error) return fail();
+
+    video.controls = false;
+    play.hidden = false;
+    play.addEventListener("click", function () {
+      play.hidden = true;
+      video.controls = true;
+      var p = video.play();
+      // a network failure surfaces via the error event above; anything else
+      // (e.g. a blocked play()) leaves the native controls to retry with.
+      if (p && p.catch) p.catch(function () {});
+      video.focus();
+    });
+  }
+
+  /* =====================================================================
    * Smooth-scroll nav anchors (§11). Respect reduced-motion.
    * ===================================================================== */
   function wireNavAnchors() {
@@ -1965,6 +1999,7 @@
     sandboxDriver.start();  // makes #tw-how (the "how it works" terminal) playable
     wireCopyButtons();
     wireInstallTabs();
+    wirePromoVideo();
     wireNavAnchors();
   }
 

@@ -7,7 +7,7 @@
  * centerpiece is the scroll-through demo — a sticky terminal that scrubs scenes.
  *
  * Map: tokens → reset → primitives → nav → hero → demo (sticky scrub) →
- *      #tw window → syntax tones → features → how → install → footer →
+ *      #tw window → syntax tones → features → how → watch → install → footer →
  *      responsive → reduced-motion/focus → polish.
  * ========================================================================== */
 
@@ -1171,6 +1171,90 @@ section {
 }
 
 /* ============================================================================
+ * watch — the promo video, shown as the file it is (same name-tab card as the
+ * yaml). Click-to-play: the whole frame is the button, the green chip is the cue.
+ * ========================================================================== */
+.watch-lede {
+  font-size: 1.04rem;
+  line-height: 1.7;
+  color: var(--text-2);
+  max-width: 64ch;
+  margin: -1.25rem 0 2.25rem;
+}
+.video-card {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.video-card-name {
+  display: flex;
+  justify-content: space-between;
+  padding: .45rem .9rem;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--green-bright);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.video-card-len { color: var(--muted); font-weight: 400; }
+/* the 16:9 box holds the layout whether or not the media host answers */
+.video-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--bg);
+}
+.video-el {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--bg);
+}
+.video-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* the poster's end card is top-heavy (mark + wordmark + tagline); the chip sits
+   * in the empty lower third instead of over the logo */
+  padding: 0 0 15%;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.video-play[hidden] { display: none; }
+.video-play:focus-visible { outline-offset: -4px; }
+.video-play-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .55rem 1.1rem;
+  font-size: .92rem;
+  font-weight: 600;
+  color: #08130a;
+  background: var(--green);
+  border-radius: var(--radius-sm);
+  transition: background .15s ease;
+}
+.video-play:hover .video-play-chip { background: var(--green-bright); }
+.video-play-glyph { font-size: .8em; }
+.video-play-len { font-weight: 400; opacity: .7; }
+/* media host unreachable: the poster stays, the chip turns into a quiet note */
+.video-play:disabled { cursor: default; }
+.video-play:disabled .video-play-chip {
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.video-play:disabled .video-play-glyph,
+.video-play:disabled .video-play-len { display: none; }
+
+/* ============================================================================
  * install — single command, brew only
  * ========================================================================== */
 #install { text-align: center; }
@@ -1308,6 +1392,9 @@ section {
   .nav-links .nav-sep { display: none; }
   .hero-install,
   .install-row { width: 100%; }
+  /* keep the play chip clear of the poster's tagline at phone heights */
+  .video-play { padding-bottom: 5%; }
+  .video-play-chip { padding: .4rem .8rem; font-size: .82rem; }
 }
 
 @media (max-width: 460px) {

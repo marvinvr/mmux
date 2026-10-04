@@ -22,11 +22,13 @@ here and nowhere else.
 
 - **Static only.** Plain HTML + CSS + vanilla JS. No framework, no bundler, no build step. Plain
   `<script defer>` + globals (NOT ES modules). Works over `file://`.
-- **One external origin, exactly.** The self-hosted umami instance (`stats.marvinvr.ch`) is loaded
-  from `index.html` and allow-listed in the CSP's `script-src` + `connect-src` (nginx.conf). It is
-  analytics only — the site must render perfectly with it blocked or offline. **Nothing else** may
-  be remote: no CDNs, no remote fonts, no remote images. The Departure Mono woff2 is self-hosted
-  in `fonts/`.
+- **Two external origins, exactly, each scoped to one job.** The self-hosted umami instance
+  (`stats.marvinvr.ch`) is loaded from `index.html` and allow-listed in the CSP's `script-src` +
+  `connect-src` (nginx.conf) — analytics only. The media host (`public.mmux.org`) serves the promo
+  video and is allow-listed in `media-src` only (§4.6). The site must render perfectly with either
+  blocked or offline. **Nothing else** may be remote: no CDNs, no remote fonts, no remote images
+  (the video's poster is self-hosted in `assets/`). The Departure Mono woff2 is self-hosted in
+  `fonts/`.
 - **NO ASCII-ART CHROME.** Borders, frames, cards, the terminal window are **real CSS** — never
   box-drawing characters used as site layout. Box-drawing appears ONLY as authentic *content*
   inside the terminal screen (the Codex banner box, the git boxes' ratatui look) — and in
@@ -88,7 +90,8 @@ Authenticity beats palette purity inside the window.
 ## 4. Page sections (in order)
 
 ### 4.1 `<header class="site-nav">`
-`.brand` (the pixel tile SVG + `mmux`) · links: `the demo · what you get · try it · github`.
+`.brand` (the pixel tile SVG + `mmux`) · links: `the demo · what you get · watch · github`
+(`try it` is commented out while `#how` is hidden).
 Phones keep only the brand + github.
 
 ### 4.2 `<section id="hero">`
@@ -117,14 +120,26 @@ kicker `// try it`, h2 **go on, type into it.** The lede tells the visitor it's 
 `#tw-how`, a second `.tw` skeleton driven by the sandbox driver (§6.2), and the three
 `.how-points` (one window / always there / anywhere).
 
-### 4.6 `<section id="install">`
+### 4.6 `<section id="watch">` — the promo video
+kicker `// in motion`, h2 **fifty seconds, start to finish.**, a one-line `.watch-lede`, then a
+`.video-card` — the same name-tab "file" card as the yaml (`mmux-promo.mp4` + `0:50`) around a
+16:9 `.video-frame`. It sits directly before `#install` because the video ends on the install
+command. The `<video>` streams from `https://public.mmux.org/video/mmux-promo.mp4` with
+`preload="none"` (nothing fetched until asked) and `poster="assets/promo-poster.webp"` — a still of
+the video's own end card (mark + wordmark + tagline), self-hosted. It ships with native `controls`
+so it plays without JS; `wirePromoVideo` (tui.js) swaps them for the `.video-play` chip (whole
+frame clickable, green chip in the poster's empty lower third) until the first click, then hands
+back the native bar. No autoplay — the video has sound. If the media host fails, the poster and
+the 16:9 box stay and the chip becomes a disabled `video unavailable` note.
+
+### 4.7 `<section id="install">`
 kicker `// get it`, h2 **install in one line.** A centered `.install-tabs` strip (`script` default
 + `Homebrew`) sits on its own line above the command and toggles which `.install-row[data-panel]`
 shows — one command line at a time, reusing the copy chip (toggle in tui.js §11). Then `then, in any
 project directory: mmux`, ghost buttons → github + the docs. Script default, Homebrew alternative;
 no cargo.
 
-### 4.7 `<footer class="site-footer">`
+### 4.8 `<footer class="site-footer">`
 `mmux · GPLv3 · github · docs · built by marvinvr`.
 
 ---
@@ -323,7 +338,8 @@ stacked captions, no pulses).
 web/
   index.html    # sections (§4) + both #tw skeletons + head: canonical, OG/Twitter,
                 #   sitemap/llms alternates, schema.org JSON-LD, data: favicon,
-                #   font preload, and the ONE external script (umami, deferred).
+                #   font preload, the ONE external script (umami, deferred), and
+                #   the promo <video> (streamed from public.mmux.org, §4.6).
   styles.css    # the whole v4 system: @font-face (Departure Mono), tokens, every
                 #   class in §4/§5. No remote url()/@import.
   scenes.js     # window.MMUX_SCENES (§7) — pure data + tiny builders (codexBox,
@@ -331,14 +347,15 @@ web/
   tui.js        # renderTUI/renderLine + scroll & sandbox drivers + copy + nav.
   fonts/        # DepartureMono-Regular.woff2 + its OFL LICENSE + README.
   banner.txt    # the plain-text card nginx serves to curl/wget/httpie on `/`.
-  robots.txt / sitemap.xml / llms.txt / assets/ (og-image, icon)   # stable URLs.
+  robots.txt / sitemap.xml / llms.txt / assets/ (og-image, icon, promo-poster)   # stable URLs.
                 # og-image.png's editable source is ../assets/og-image.src.html —
                 #   kept OUTSIDE web/ so it never ships; regen recipe in its comment.
   Dockerfile    # nginx:alpine; fingerprints css/js to <name>.<hash>.<ext> and
                 #   rewrites index.html refs (1y immutable cache stays safe).
                 #   fonts/, assets/ and the txt/xml files are copied verbatim.
   nginx.conf    # gzip + charset utf-8 + strict CSP (self + the umami origin in
-                #   script-src/connect-src) + the curl→banner.txt rewrite on `/`
+                #   script-src/connect-src + public.mmux.org in media-src)
+                #   + the curl→banner.txt rewrite on `/`
                 #   + no-cache index.html + 1y immutable fingerprinted assets.
   DESIGN.md     # this file.  README.md — the web/ readme.
 ```
@@ -369,6 +386,8 @@ web/
 - [ ] Responsive: git panel hides <900px, single column <640px, no x-overflow; art rows clip
       with an ellipsis instead of scrolling or tearing.
 - [ ] Landmarks, heading order, visible focus, AA contrast, decorative bits aria-hidden.
-- [ ] Works over `file://` with zero network; the only remote request in production is umami,
-      and the CSP allow-lists exactly that origin. `curl https://mmux.org/` returns banner.txt.
+- [ ] Works over `file://` with zero network (the video section degrades to its poster); the
+      only remote requests in production are umami and, on play, the video from
+      public.mmux.org — the CSP allow-lists exactly those, per directive. `curl https://mmux.org/`
+      returns banner.txt.
 - [ ] `node --check` passes; no console errors; no globals beyond MMUX + MMUX_SCENES.
