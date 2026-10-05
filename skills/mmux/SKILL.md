@@ -83,10 +83,33 @@ The helper's id goes to stderr (`mmux: asked s14 Claude #3 — waiting for its r
 follow up with `--to`. It stays in the sidebar unless `--close`. On timeout (`-t`, default 10m) `ask`
 exits 2 and leaves it working: `mmux wait s14 && mmux last s14` picks it back up.
 
+**Long waits: run them in the background**
+
+`ask` and `wait` block until the helper is done, which can take many minutes. Your harness's
+foreground command limit is usually shorter (Claude Code: 2 minutes by default, 10 at most), and a
+blocking call holds up your turn. If your harness can run a command in the background and wake you
+when it exits (Claude Code: Bash with `run_in_background: true`), do that, with a `-t` longer
+than the work. You stay free to work, and the helper's reply arrives as the command's output. If a
+blocking call gets killed anyway, the helper keeps working: `mmux wait <id> && mmux last <id>`
+picks it back up.
+
+```sh
+# Second opinion while you keep working: one background command, woken with the review.
+# (stderr names the helper, e.g. s14, for a later `ask --to s14`.)
+mmux ask -t 1h --agent codex "review src/parser.rs for edge cases; list concrete bugs"
+
+# Fan out: start helpers (each prints its id), then one background wait per helper,
+# so you're woken by each one as it finishes, with its reply.
+mmux new agent claude --prompt "add tests for src/parser.rs"           # s14 Claude #3 — started …
+mmux new agent codex --prompt "document the new --strict flag in docs/"   # s15 Codex #1 — started …
+mmux wait s14 -t 1h && mmux last s14     # background
+mmux wait s15 -t 1h && mmux last s15     # background
+```
+
 **Step by step instead of `ask`**
 ```sh
 mmux new agent claude --prompt "add tests for src/parser.rs"   # prints: s14 Claude #3 — started …
-mmux wait s14 -t 20m
+mmux wait s14 -t 20m                 # long: in the background (see above)
 mmux last s14
 ```
 
@@ -94,7 +117,7 @@ mmux last s14
 ```sh
 mmux worktree new fix-auth --prompt "fix the login redirect bug, commit when done"
 # prints: created ⑂ fix-auth … / project: fix-auth <checkout dir> / agent: s15 Claude #1
-mmux wait s15 -t 30m && mmux last s15
+mmux wait s15 -t 30m && mmux last s15     # in the background
 mmux worktree rm fix-auth            # after it's merged or pushed
 ```
 The `project:` line (`--json`: `data.project.dir`) is the checkout, for your own `git -C`. A

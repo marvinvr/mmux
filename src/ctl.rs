@@ -875,6 +875,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     Start an agent (or use --to), give it the
                                     prompt, wait, print its reply. The agent stays
                                     in the sidebar unless --close. `-` = stdin.
+                                    Long waits (ask/wait): run them as a
+                                    background job if your shell tool can.
     mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
                                     Cut a git worktree (a generated branch name if
                                     none) and open it as a project; with --agent or
