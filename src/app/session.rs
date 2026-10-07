@@ -23,6 +23,10 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 /// the close confirmation so the two never disagree about "is it working".
 const TITLE_IDLE: Duration = Duration::from_secs(2);
 
+/// How long after a launch an agent's activity is taken for start-up noise rather
+/// than work, as far as [`Session::idle_for`] is concerned.
+const STARTUP_GRACE: Duration = Duration::from_secs(30);
+
 /// Which sidebar bucket a session belongs to. Drives ordering, the badge, and
 /// the placeholder wording — never the lifecycle, which is identical for all.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -157,6 +161,11 @@ pub struct Session {
     pub last_working_at: Option<Instant>,
     /// When the pane was last spawned — the start of its idle clock before it ever works.
     pub launched_at: Option<Instant>,
+    /// Idle time carried over a reopen: how long a restored agent had already been
+    /// quiet when it came back (see [`crate::restore::Snapshot::quiet_since`]), so a
+    /// restart — or a self-update — doesn't reset the clock
+    /// [`idle_for`](Self::idle_for) keeps. Cleared by every spawn; zero otherwise.
+    pub idle_carry: Duration,
     /// A first prompt to hand over as a launch argument on the next spawn, then drop:
     /// consumed there, so a restart (which resumes the conversation) never repeats it.
     /// Never persisted. See [`crate::agent::Tool::prompt_args`].
@@ -193,6 +202,7 @@ impl Session {
             last_input_at: None,
             last_working_at: None,
             launched_at: None,
+            idle_carry: Duration::ZERO,
             first_prompt: None,
             mmux_note: None,
         }
@@ -292,6 +302,7 @@ impl Session {
                 self.pane = Some(p);
                 self.error = None;
                 self.launched_at = Some(Instant::now());
+                self.idle_carry = Duration::ZERO;
                 // Subsequent (re)starts of this agent should resume the session
                 // this launch just created.
                 if let Some(r) = self.agent.as_mut() {
@@ -379,6 +390,26 @@ impl Session {
         self.working(TITLE_IDLE)
     }
 
+    /// How long this agent has shown no life — not worked, not been sent input —
+    /// counting any [`idle_carry`](Self::idle_carry) from before a reopen. `None`
+    /// until its pane has launched. What the idle-agent closer measures; unlike
+    /// `mmux status`'s `idle_for_ms`, input it never acted on still counts as life.
+    ///
+    /// Activity in the first [`STARTUP_GRACE`] after a launch is the program drawing
+    /// itself (a resumed conversation retitles its pane), not work, so it doesn't
+    /// reset the clock.
+    pub fn idle_for(&self) -> Option<Duration> {
+        let launched = self.launched_at?;
+        match self
+            .last_working_at
+            .max(self.last_input_at)
+            .filter(|&t| t > launched + STARTUP_GRACE)
+        {
+            Some(active) => Some(active.elapsed()),
+            None => Some(launched.elapsed() + self.idle_carry),
+        }
+    }
+
     /// Drain notifications captured from this session's pane since the last call.
     pub fn take_notifications(&self) -> Vec<Notify> {
         self.pane
@@ -444,6 +475,33 @@ mod tests {
         s.agent = Some(resume);
         s.mmux_note = Some(MMUX_NOTE.into());
         s
+    }
+
+    /// The clock the idle-agent closer reads: life after launch resets it, start-up
+    /// noise and input-less quiet don't, and a reopen's carry adds on.
+    #[test]
+    fn idle_for_ignores_startup_noise_and_counts_the_carry() {
+        // Minutes, not hours, of `Instant` arithmetic: a freshly booted CI machine
+        // can't reach further back than its uptime.
+        let (min, hour) = (Duration::from_secs(60), Duration::from_secs(3600));
+        let mut s = agent("claude", Resume::restored(Tool::Claude, None));
+        assert_eq!(s.idle_for(), None, "never launched");
+
+        let launched = Instant::now() - 3 * min;
+        s.launched_at = Some(launched);
+        s.idle_carry = 30 * hour;
+        // A retitle right after the (resumed) launch is not work: the carry still counts.
+        s.last_working_at = Some(launched + Duration::from_secs(5));
+        assert!(s.idle_for().unwrap() >= 30 * hour + 3 * min);
+
+        // Real work later on resets the clock to that moment, carry and all.
+        s.last_working_at = Some(Instant::now() - min);
+        let idle = s.idle_for().unwrap();
+        assert!(idle >= min && idle < 2 * min);
+
+        // So does input it was sent, even before it acts on it.
+        s.last_input_at = Some(Instant::now());
+        assert!(s.idle_for().unwrap() < Duration::from_secs(5));
     }
 
     #[test]

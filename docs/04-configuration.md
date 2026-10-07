@@ -23,7 +23,7 @@ setting up a config).
 
 The project file is layered on top of the global one, and **project values win**:
 
-- `name`, `git-panel`, `notifications`, and `auto-update` — the project's value replaces the
+- `name`, `git-panel`, `notifications`, `auto-update`, and `close-idle-agents` — the project's value replaces the
   global one **wholesale** if set. (There is no field-level merge: a project `notifications:` block
   that sets only `enabled: true` does **not** inherit the global `mechanism`/`throttle_secs` — unset
   sub-fields fall back to their built-in defaults, not to the global value.)
@@ -123,6 +123,7 @@ session goes away.
 | `auto-update` | map | [Self-update](#auto-update) settings (Homebrew + script-installed binaries). |
 | `workspace` | map | Turn this file into a [workspace manifest](#workspace-manifests). Project-layer only; ignored in the global config. |
 | `control` | map | [Control socket](#control) settings — scripts and agents driving the session. |
+| `close-idle-agents` | duration | How long an agent may sit idle before mmux [closes it](#closing-idle-agents) — only in a project whose working tree is clean. `36h` (default), `2d`, `90m`, a bare number of minutes, or `off`. |
 
 ### Workspace
 
@@ -242,6 +243,27 @@ off` if that matters to you.
 
 An unparseable value (`reap: soon`) is treated as `off`: a typo must never turn into surprise
 deletions.
+
+### Closing Idle Agents
+
+An agent that has done nothing for `close-idle-agents` (default **36 hours**) is closed
+automatically — but only when its project is a git repository with a **clean working tree**
+(nothing modified, staged, or untracked). With nothing uncommitted, whatever the agent did is
+already in history, so closing it costs only the row; the conversation itself stays in the tool's
+own history (`claude --resume`, `codex resume`, …). The footer says what went.
+
+"Idle" means not working *and* not sent anything: the clock restarts whenever the agent works or
+receives input. It survives a quit-and-reopen or a restart-to-update (the time mmux was closed
+counts as idle too), but not a crash. An agent is never closed while it's working, while it's the
+row you have selected, or while its project has changes — and a directory that isn't a git repo
+never qualifies. Terminals and processes are never touched.
+
+In a [worktree](#worktrees) the setting is read from the project it was cut from, like `reap`.
+As with `reap`, an unparseable value (`close-idle-agents: soon`) is treated as `off`.
+
+```yaml
+close-idle-agents: 3d      # or `off` to keep agents until you close them
+```
 
 ### Notifications
 

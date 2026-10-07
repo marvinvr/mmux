@@ -61,6 +61,12 @@ pub struct Config {
     /// see [`ControlConfig`] and [`crate::control`].
     #[serde(default)]
     pub control: Option<ControlConfig>,
+    /// How long a running agent may sit idle before mmux closes it — **only** when its
+    /// project is a git repo with a clean working tree, so nothing it was in the middle
+    /// of is left unaccounted for. `36h`, `2d`, `90m`, a bare number of minutes, or
+    /// `off`. Unset ⇒ [`DEFAULT_CLOSE_IDLE_AGENTS`]; see [`Config::close_idle_agents_after`].
+    #[serde(default, rename = "close-idle-agents")]
+    pub close_idle_agents: Option<String>,
     /// The directory the config was loaded from. Relative `cwd`s resolve against this.
     #[serde(skip)]
     pub dir: PathBuf,
@@ -185,6 +191,11 @@ pub fn worktree_reap_after(cfg: Option<&WorktreeConfig>) -> Option<Duration> {
         Some(raw) => parse_duration(raw),
     }
 }
+
+/// How long an agent idles in a clean project before it's closed, when
+/// `close-idle-agents` is unset. A day and a half: past a weekend's worth of "I'll get
+/// back to it" is long enough that a row with nothing left to show is just clutter.
+pub const DEFAULT_CLOSE_IDLE_AGENTS: Duration = Duration::from_secs(36 * 3600);
 
 /// Parse a short duration: `45s`, `30m`, `2h`, `1d`, or a bare number meaning minutes.
 /// `off`/`never`/`no`/`false`/`0` (and anything unrecognised) mean "don't".
@@ -559,6 +570,16 @@ impl Config {
     pub fn control_from_panes(&self) -> bool {
         self.control.as_ref().map(|c| c.from_panes).unwrap_or(true)
     }
+
+    /// The effective idle-agent close delay: the configured one,
+    /// [`DEFAULT_CLOSE_IDLE_AGENTS`] when unset, or `None` when switched off (or set to
+    /// something unparseable — like `worktrees.reap`, a typo must not close agents).
+    pub fn close_idle_agents_after(&self) -> Option<Duration> {
+        match self.close_idle_agents.as_deref() {
+            None => Some(DEFAULT_CLOSE_IDLE_AGENTS),
+            Some(raw) => parse_duration(raw),
+        }
+    }
 }
 
 /// The directory's basename, or `"mmux"` if it has none (e.g. the filesystem root).
@@ -698,6 +719,7 @@ fn merge(base: Option<Config>, project: Config) -> Config {
         auto_update: project.auto_update.or(base.auto_update),
         worktrees: project.worktrees.or(base.worktrees),
         control: project.control.or(base.control),
+        close_idle_agents: project.close_idle_agents.or(base.close_idle_agents),
         // A manifest is a per-directory fact: only the project file can declare one
         // (a global `workspace:` must not turn every directory into that workspace).
         workspace: project.workspace,
@@ -969,6 +991,33 @@ mod tests {
         // …but a block the project doesn't set falls back to the global wholesale
         // (no field-level merge — the global's notifications come through intact).
         assert!(!merged.notifications.unwrap().enabled);
+    }
+
+    #[test]
+    fn close_idle_agents_defaults_parses_and_switches_off() {
+        assert_eq!(
+            cfg("name: x\n").close_idle_agents_after(),
+            Some(DEFAULT_CLOSE_IDLE_AGENTS)
+        );
+        assert_eq!(
+            cfg("close-idle-agents: 2d\n").close_idle_agents_after(),
+            Some(Duration::from_secs(2 * 86_400))
+        );
+        assert_eq!(
+            cfg("close-idle-agents: off\n").close_idle_agents_after(),
+            None
+        );
+        // A typo disables it rather than inventing a schedule.
+        assert_eq!(
+            cfg("close-idle-agents: soon\n").close_idle_agents_after(),
+            None
+        );
+        // A project's setting wins over the global one, as for every scalar block.
+        let merged = merge(
+            Some(cfg("close-idle-agents: 12h\n")),
+            cfg("close-idle-agents: off\n"),
+        );
+        assert_eq!(merged.close_idle_agents_after(), None);
     }
 
     #[test]

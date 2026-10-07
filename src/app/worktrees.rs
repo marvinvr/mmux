@@ -38,13 +38,14 @@ fn base_key(branch: &str) -> String {
     format!("branch.{branch}.mmuxbase")
 }
 
-/// A duration as something a footer note can say: `40m`, `2h`, `3d`.
-fn human_duration(d: Duration) -> String {
+/// A duration as something a footer note can say: `40m`, `36h`, `3d`. Hours run up
+/// to two days, so a day and a half doesn't round down to `1d`.
+pub(super) fn human_duration(d: Duration) -> String {
     let mins = d.as_secs() / 60;
     match mins {
         0 => "moments".to_string(),
         m if m < 60 => format!("{m}m"),
-        m if m < 60 * 24 => format!("{}h", m / 60),
+        m if m < 60 * 48 => format!("{}h", m / 60),
         m => format!("{}d", m / (60 * 24)),
     }
 }

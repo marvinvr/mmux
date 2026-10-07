@@ -150,6 +150,9 @@ pub(crate) struct App {
     /// Its per-worktree idle clocks update every tick regardless; this only paces the
     /// checks. See [`App::step_worktree_reaper`](worktrees).
     next_reap_scan: Instant,
+    /// When the idle-agent closer may next look for agents to close. See
+    /// [`App::step_agent_reaper`](lifecycle).
+    next_agent_reap_scan: Instant,
 
     sel: usize, // index into build_nav()
     /// How far the sidebar column is scrolled, in rows. The sidebar lays itself out at
@@ -377,6 +380,9 @@ impl App {
             // Nothing is reaped in the first minute of a session — a worktree you just
             // reopened mmux to look at should still be there when the UI settles.
             next_reap_scan: Instant::now() + Duration::from_secs(60),
+            // Same grace for agents: a reopen restores their idle clocks, and nothing
+            // should vanish before the UI has even settled.
+            next_agent_reap_scan: Instant::now() + Duration::from_secs(60),
             sel: 0,
             sidebar_scroll: 0,
             sidebar_scroll_sel: 0,
@@ -577,6 +583,9 @@ impl App {
         self.step_worktree_reaper();
         // Answer scripted callers on the control socket and release paced input.
         self.serve_control();
+        // Close agents long idle in a clean project (after `serve_control`, which
+        // stamps this tick's activity).
+        self.step_agent_reaper();
         // Drop a stale diff preview, or refresh it so an agent's live edits show.
         self.diff_upkeep();
         // Advance the background self-update (drain workers, run the periodic re-check).
@@ -864,7 +873,7 @@ pub fn run(ws: Workspace) -> Result<()> {
     // Final snapshot while the panes are still alive, so the next open — after this
     // quit, or the update restart below — restores them with each one's freshest cwd.
     if res.is_ok() {
-        app.save_state();
+        app.save_final_state();
     }
 
     disable_raw_mode()?;

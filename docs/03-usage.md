@@ -54,6 +54,10 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   processes, agents and terminals **don't linger once they exit cleanly** — quitting an agent
   (`/quit`, Ctrl-D) or `exit`ing a terminal removes its row outright rather than leaving a dim
   "exited" husk. A crash is the exception: it stays put, painted red, so you don't miss it.
+- An agent left **idle for 36 hours** in a project with a **clean working tree** is closed for you
+  (never while it's working, selected, or its project has uncommitted changes) — the footer says
+  so, and its conversation can still be resumed from the tool itself. See
+  [`close-idle-agents`](04-configuration.md#closing-idle-agents).
 - An agent (or terminal) that **another agent started** through the [control CLI](#controlling-mmux-from-scripts--agents)
   (`mmux new`, `mmux ask`, `mmux worktree new --agent`) sits indented a step under the agent that
   started it, so a delegating agent and its helpers read as one group. Once the spawner is closed

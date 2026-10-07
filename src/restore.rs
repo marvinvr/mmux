@@ -61,6 +61,14 @@ pub struct Snapshot {
     /// `Session::parent`) — runtime ids don't survive a reopen, positions do.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<usize>,
+    /// When an agent went quiet (see `Session::idle_for`), in seconds since the
+    /// Unix epoch, so its idle clock carries on across a reopen instead of restarting
+    /// — the time mmux was closed counts as quiet too. Written only by the final save
+    /// on a clean exit: a mid-session snapshot would go stale the moment the agent
+    /// worked again, and a crash must not resurrect it. The first save after a
+    /// restore drops it again for the same reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quiet_since: Option<u64>,
 }
 
 /// The two session kinds that get restored (processes never do).

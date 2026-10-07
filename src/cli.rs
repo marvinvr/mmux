@@ -447,6 +447,8 @@ FIELD REFERENCE
                 once in a new checkout) · reap (how long a finished worktree idles
                 before it's cleared away: 30m default, 2h, 90s, or `off`)
     control     enabled (bool, default true) · from-panes (bool, default true)
+    close-idle-agents  how long an agent may idle before it's closed — only when its
+                project's working tree is clean: 36h default, 2d, 90m, or `off`
     auto-update enabled (bool, default true; Homebrew + script-installed binaries —
                 checks on start and every 6 hours. A script install downloads it in the
                 background and shows "restart to update"; a brew install shows "update

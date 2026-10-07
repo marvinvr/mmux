@@ -13,7 +13,7 @@ use crate::restore::{self, SnapKind, Snapshot, State};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 impl App {
     /// The launch directory (canonical) — the key for this workspace's state file.
@@ -62,7 +62,19 @@ impl App {
     /// id first (see [`refresh_agent_ids`](Self::refresh_agent_ids)). Processes are
     /// excluded — they return from config.
     pub(crate) fn save_state(&mut self) {
+        self.write_state(false);
+    }
+
+    /// The last snapshot as the loop exits: [`save_state`](Self::save_state) plus each
+    /// agent's idle clock, which only a clean exit can vouch for (see
+    /// [`Snapshot::quiet_since`]).
+    pub(crate) fn save_final_state(&mut self) {
+        self.write_state(true);
+    }
+
+    fn write_state(&mut self, clocks: bool) {
         self.refresh_agent_ids();
+        let wall = SystemTime::now();
         let root = self.root_dir().to_path_buf();
         let mut sessions = Vec::new();
         // Runtime id → position in `sessions`, for the parent links. A parent always
@@ -104,6 +116,12 @@ impl App {
                 parent: s
                     .parent
                     .and_then(|p| position.iter().position(|&id| id == p)),
+                quiet_since: s
+                    .idle_for()
+                    .filter(|_| clocks && s.kind == Kind::Agent)
+                    .and_then(|idle| wall.checked_sub(idle))
+                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs()),
             });
             position.push(s.id);
         }
@@ -218,6 +236,14 @@ impl App {
             ids.push(Some(s.id));
             self.bump_counters(&s);
             s.spawn(rows, cols);
+            // Carry the idle clock over the reopen (the time mmux was closed counts).
+            if let Some(quiet) = snap
+                .quiet_since
+                .map(|secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
+                .and_then(|t| SystemTime::now().duration_since(t).ok())
+            {
+                s.idle_carry = quiet;
+            }
             self.sessions.push(s);
         }
         let navlen = self.build_nav().len();

@@ -683,10 +683,11 @@ pub fn branch_exists(dir: &Path, name: &str) -> bool {
 }
 
 /// Whether the working tree at `dir` has nothing changed at all (tracked *or*
-/// untracked). The gate on merging a worktree back and on removing one without
-/// discarding work.
+/// untracked). The gate on merging a worktree back, on removing one without
+/// discarding work, and on closing an idle agent. A git that fails (not a repo, a
+/// held lock) reads as *not* clean: every caller is asking "is it safe to proceed?".
 pub fn is_clean(dir: &Path) -> bool {
-    status(dir).files.is_empty()
+    run(dir, &["status", "--porcelain"]).is_ok_and(|out| out.trim().is_empty())
 }
 
 /// Create a linked worktree at `path`. `base` picks the two cases apart: `Some(b)`
@@ -940,6 +941,8 @@ mod tests {
         worktree_add(&work, &wt, "brave-otter", Some("main")).unwrap();
         assert!(branch_exists(&work, "brave-otter"));
         assert!(is_clean(&wt));
+        // Outside any repository git fails, and a failure must never read as clean.
+        assert!(!is_clean(work.parent().unwrap()));
 
         // Both checkouts are listed, main first, each with its own branch.
         let list = worktrees(&work);

@@ -7,6 +7,7 @@ use super::overlay::{Confirmed, Overlay};
 use super::picker::Picker;
 use super::procform::ProcForm;
 use super::session::{Kind, Recipe, Session, Status};
+use super::worktrees::human_duration;
 use super::{App, Focus, Project};
 use crate::config::{self, Config};
 use std::collections::HashSet;
@@ -18,6 +19,11 @@ use std::time::{Duration, Instant};
 /// process teardown commands to finish before giving up, so a misbehaving `stop:` can't
 /// wedge quit indefinitely. Generous enough for a real `docker compose down`.
 const STOP_QUIT_WAIT: Duration = Duration::from_secs(30);
+
+/// How often the idle-agent closer checks its candidates' working trees. An agent
+/// is only a candidate once its idle clock has run out, so this paces nothing but
+/// the `git status` of a project whose agents are already overdue.
+const AGENT_REAP_SCAN_EVERY: Duration = Duration::from_secs(60);
 
 impl App {
     /// True when any agent, terminal, or process still has a live pane — i.e. quitting
@@ -554,9 +560,6 @@ impl App {
     /// config-defined entries, so they keep their (stopped) row to be restarted in
     /// place. Called once per loop from [`tick`](super::App::tick).
     pub(crate) fn prune_exited(&mut self) {
-        // The row still exists here, so its project has not demoted yet. Capture its
-        // identity before removing anything or shifting session indices.
-        let selected = self.current_nav();
         let dead: Vec<usize> = self
             .sessions
             .iter()
@@ -564,9 +567,83 @@ impl App {
             .filter(|(_, s)| s.kind != Kind::Process && matches!(s.status(), Status::Exited))
             .map(|(i, _)| i)
             .collect();
+        self.drop_sessions(&dead);
+    }
+
+    /// Close agents that have sat idle for
+    /// [`close-idle-agents`](crate::config::Config::close_idle_agents) (36h by default)
+    /// in a project whose working tree is clean.
+    ///
+    /// A clean tree is what makes this safe to do unasked: whatever the agent did is
+    /// committed (or was never written), so closing it loses nothing but the row — and
+    /// the conversation itself stays in the tool's own history. A dirty tree, a
+    /// directory that isn't a repo, or a git that can't answer all keep it. Neither is
+    /// the row you're looking at ever closed under you.
+    ///
+    /// Runs once per [`AGENT_REAP_SCAN_EVERY`], and only forks `git status` for a
+    /// project with an agent already past its delay.
+    pub(crate) fn step_agent_reaper(&mut self) {
+        let now = Instant::now();
+        if now < self.next_agent_reap_scan {
+            return;
+        }
+        self.next_agent_reap_scan = now + AGENT_REAP_SCAN_EVERY;
+
+        let selected = match self.current_nav() {
+            Some(Nav::Session(i)) => Some(i),
+            _ => None,
+        };
+        // Per-project verdicts, so several idle agents in one project cost one fork.
+        let mut clean: Vec<Option<bool>> = vec![None; self.projects.len()];
+        let mut ripe: Vec<usize> = Vec::new();
+        let mut idlest = Duration::ZERO;
+        for (i, s) in self.sessions.iter().enumerate() {
+            if s.kind != Kind::Agent || !s.is_running() || s.busy() || selected == Some(i) {
+                continue;
+            }
+            let root = self.family_root(s.project);
+            let (Some(after), Some(idle)) = (
+                self.projects[root].cfg.close_idle_agents_after(),
+                s.idle_for(),
+            ) else {
+                continue;
+            };
+            if idle < after {
+                continue;
+            }
+            let dir = &self.projects[s.project].dir;
+            if *clean[s.project].get_or_insert_with(|| crate::git::is_clean(dir)) {
+                ripe.push(i);
+                idlest = idlest.max(idle);
+            }
+        }
+        let note = match ripe.as_slice() {
+            [] => return,
+            [i] => format!(
+                "closed {} in {} — idle {}, nothing uncommitted",
+                self.sessions[*i].name,
+                self.projects[self.sessions[*i].project].label(),
+                human_duration(idlest)
+            ),
+            many => format!(
+                "closed {} idle agents — nothing uncommitted in their projects",
+                many.len()
+            ),
+        };
+        self.drop_sessions(&ripe);
+        self.flash(note);
+    }
+
+    /// Kill and remove the sessions at `dead` (ascending indices), keeping the cursor
+    /// on the row it was on — or, if that row went, the one now in its place — and
+    /// handing focus back to the sidebar if it sat in a removed pane.
+    fn drop_sessions(&mut self, dead: &[usize]) {
         if dead.is_empty() {
             return;
         }
+        // The rows still exist here, so their project has not demoted yet. Capture the
+        // selection's identity before removing anything or shifting session indices.
+        let selected = self.current_nav();
         // Keep the selected project's box where it is when the last agent quits from
         // inside its pane. A later project switch clears this pin and lets it demote.
         let active_loses_last_agent =

@@ -287,6 +287,24 @@ contents already exist somewhere else.** Branch deletion uses `-d`, never `-D`, 
 branch is kept and the checkout alone goes. The same `Integration` reading drives the manual `X`
 confirmation, which is why that warning can be specific about what would actually be lost.
 
+### Closing Idle Agents
+
+`step_agent_reaper` (`app/lifecycle.rs`) is the agent-level counterpart, paced at
+`AGENT_REAP_SCAN_EVERY`: an agent that isn't `busy`, isn't the selected row, and whose
+`Session::idle_for` has passed [`close-idle-agents`](04-configuration.md#closing-idle-agents) is
+closed — if `git::is_clean` holds for its project (one `git status` per candidate project per scan).
+The clean tree is the safety argument, the same one the worktree reaper rests on: with nothing
+uncommitted the agent's work is already in history, so only the row goes. `is_clean` treats a git
+that fails as *dirty*, so a non-repo or a held lock can never read as permission.
+
+`idle_for` is the time since the agent last worked or was sent input (`last_working_at` /
+`last_input_at`), ignoring activity in the first `STARTUP_GRACE` after a launch — a resumed
+conversation retitles its pane, which the title heuristic would otherwise read as work. It
+survives a reopen through `Session::idle_carry`: the final save on a clean exit stamps each agent's
+`quiet_since` (wall clock) into the [restore state](#session-restore), and `restore_sessions` turns it
+back into a carry. Only that final save writes it, and the first save after a restore drops it, so
+a crash can never resurrect a stale clock and close an agent that was busy since.
+
 ## The Git Panel and Overlays
 
 The right column is a **native git panel** — mmux's own UI, not an embedded program. It is **not**
@@ -439,7 +457,9 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
 - **Save.** `app/persist.rs` snapshots the live agents/terminals to
   `~/.mmux/state/<session-hash>.yaml` (keyed by the same canonical-dir hash tmux uses, via
   `tmux::session_name`). It writes on every structural change (a cheap fingerprint in `tick()`
-  gates the write) and once more from `run()` as the loop exits, with each pane's **freshest** cwd.
+  gates the write) and once more from `run()` as the loop exits (`save_final_state`), with each
+  pane's **freshest** cwd and — only then — each agent's idle clock (see
+  [Closing Idle Agents](#closing-idle-agents)).
   Each save also resolves every agent's resume id (`refresh_agent_ids`): Claude/Pi/Grok ids are
   minted by mmux and left untouched, while a fresh Codex agent records its pane launch time and adopts the
   first top-level rollout created for that cwd afterward (`agent::sessions_for`). Discovery retries
