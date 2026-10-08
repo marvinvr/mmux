@@ -1,6 +1,6 @@
 //! The command side of the [control socket](crate::control): `mmux ls`, `status`,
 //! `read`, `last`, `send`, `keys`, `new`, `start`, `stop`, `restart`, `close`, `wait`,
-//! `ask`, `worktree new|rm`, `commit [cancel]`. Each parses its arguments, finds the right running session
+//! `ask`, `worktree new|rm`, `commit [cancel]`, `reload`. Each parses its arguments, finds the right running session
 //! ([`crate::control::locate`]), sends its request(s) and prints the answer — as
 //! text for people, or JSON with `--json` for scripts and agents.
 //!
@@ -11,8 +11,8 @@
 
 use crate::agent::Turn;
 use crate::control::{
-    self, Cmd, CommitDone, CommitThen, Done, LastInfo, Listing, NewKind, ReadOut, Reply, Request,
-    Response, SessionInfo, StatusInfo, WorktreeDone,
+    self, Cmd, CommitDone, CommitThen, Done, LastInfo, Listing, NewKind, ReadOut, ReloadDone,
+    Reply, Request, Response, SessionInfo, StatusInfo, WorktreeDone,
 };
 use anyhow::{bail, Result};
 use serde_json::Value;
@@ -39,7 +39,7 @@ const EXIT_TIMEOUT: i32 = 2;
 /// The verbs this module owns — checked by [`crate::cli`] before anything else.
 pub const VERBS: &[&str] = &[
     "ls", "status", "read", "last", "send", "keys", "new", "start", "stop", "restart", "close",
-    "wait", "ask", "worktree", "commit",
+    "wait", "ask", "worktree", "commit", "reload",
 ];
 
 /// Whether `arg` is a control verb.
@@ -334,6 +334,7 @@ fn build(a: &Args) -> Result<Cmd> {
                 }
             }
         },
+        "reload" => Cmd::Reload,
         other => bail!("unknown command `{other}`"),
     })
 }
@@ -786,6 +787,10 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
             let d: CommitDone = serde_json::from_value(resp.data)?;
             println!("{}", d.message);
         }
+        "reload" => {
+            let d: ReloadDone = serde_json::from_value(resp.data)?;
+            println!("{}", d.message);
+        }
         _ => {
             let d: Done = serde_json::from_value(resp.data)?;
             println!("{} {} — {}", d.session.id, d.session.name, d.message);
@@ -901,6 +906,10 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     fires, and it replaces the project's previous
                                     schedule. `ls` shows what's pending.
     mmux commit cancel [-p project] Cancel the project's scheduled commit
+    mmux reload                     Reload the config live (global, every project,
+                                    the workspace manifest) — the TUI's `R`. Run it
+                                    after editing mmux.yaml; fails with the parse
+                                    error if a config doesn't load.
 
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get

@@ -24,7 +24,7 @@ use super::session::{Kind, Session, Status};
 use super::{App, Focus};
 use crate::control::{
     Cmd, CommitDone, CommitThen, Done, Hello, LastInfo, Listing, NewKind, ProjectInfo, ReadOut,
-    Request, Response, SessionInfo, StatusInfo, WorktreeDone,
+    ReloadDone, Request, Response, SessionInfo, StatusInfo, WorktreeDone,
 };
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde_json::Value;
@@ -338,6 +338,15 @@ impl App {
                     project: self.project_info(pi),
                     message,
                 })
+            }
+            Cmd::Reload => {
+                let r = self.keep_selection(|app| app.reload());
+                // Whatever did load is applied either way; the caller most likely just
+                // edited a config, so a broken one is the answer it needs.
+                if !r.errors.is_empty() {
+                    return Err(format!("{}\n{}", r.message, r.errors.join("\n")));
+                }
+                to_value(ReloadDone { message: r.message })
             }
         }
     }

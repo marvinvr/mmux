@@ -111,8 +111,9 @@ the other agents, send them input and wait for their replies; start agents of yo
 worktree for isolated or parallel work, optionally with an agent already working in it \
 (`mmux worktree new`); commit and merge a worktree back into its base branch \
 (`mmux commit --merge`, your own worktree included); and remove a finished one \
-(`mmux worktree rm` — your own too, which ends you: it warns first). You can also close your \
-own pane when you're done (`mmux close self`). Run `mmux ls --help` for the control reference and `mmux docs` for the \
+(`mmux worktree rm` — your own too, which ends you: it warns first). After editing an \
+`mmux.yaml`, `mmux reload` applies it live. You can also close your own pane when you're done \
+(`mmux close self`). Run `mmux ls --help` for the control reference and `mmux docs` for the \
 full guide. Suggest these when a task would split or isolate well, but start agents or \
 worktrees, merge, or remove one only when the user asks or agrees.";
 

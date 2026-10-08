@@ -560,6 +560,7 @@ mmux worktree rm fix-auth          # its sessions close, the checkout goes
 mmux commit -m "fix login" --push  # commit (staged, else everything), then push
 mmux commit --in 1h --push         # what `S` does: stage all, generate, commit, push in 1h
 mmux commit cancel                 # drop the project's scheduled commit
+mmux reload                        # what `R` does: apply an edited mmux.yaml live
 ```
 
 | Command | What it does |
@@ -581,6 +582,7 @@ mmux commit cancel                 # drop the project's scheduled commit
 | `mmux worktree rm <branch> [--force]` | Removes a worktree, like `X`: its sessions close, the checkout goes, and the branch is deleted only if it's merged (unmerged commits stay on the kept branch). Refused while it has uncommitted changes, an agent at work, or is the project in view — unless `--force`, which discards uncommitted changes. Run from inside the worktree being removed, the first try removes nothing: it explains that this closes the caller's own pane (and every other session there) and how to go through with it. |
 | `mmux commit [-p project] [-m "…"] [--push\|--merge] [--in 1h]` | Commits like the git panel's `c`: the staged changes, or everything when nothing is staged. With `-m` (`-` reads it from stdin) it commits right away and prints git's summary; without, an installed Claude/Codex CLI [writes the message](#generated-commit-messages) and the outcome lands in mmux's footer, since that can take a while. `--push` pushes afterwards; `--merge` (worktrees only) merges into the branch it came from, and is refused up front when that merge couldn't run. `--in` [schedules](#scheduled-commits) it instead, like `S` — up to a week ahead, staging everything when it fires, and replacing the project's previous schedule. `mmux ls` shows a pending one next to its project. |
 | `mmux commit cancel [-p project]` | Cancels the project's scheduled commit (or its message generation, if the timer already fired), like `S` then `x`. |
+| `mmux reload` | [Reloads the config live](04-configuration.md#live-reload), exactly like `R`: the global config, every project's `mmux.yaml`, and the workspace manifest. Prints the same summary the footer flashes. If a config fails to load, whatever did load is still applied, but the command fails (exit `1`) with each broken file's parse error — so an agent that just edited `mmux.yaml` learns right away whether it took. |
 
 ### Asking an Agent
 

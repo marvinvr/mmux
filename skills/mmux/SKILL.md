@@ -46,6 +46,8 @@ mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
                                      # cut a git worktree (+ an agent in it)
 mmux worktree rm <branch> [--force]  # remove it: sessions close, checkout goes
                                      # (your own: warns first that it ends you)
+mmux reload                          # reload the config live, like R — after editing mmux.yaml;
+                                     #   fails with the parse error if a config doesn't load
 ```
 
 - States: an agent is `working` (its sidebar row spins) or `idle` (`idle 42s`); others are

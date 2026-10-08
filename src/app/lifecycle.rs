@@ -25,6 +25,14 @@ const STOP_QUIT_WAIT: Duration = Duration::from_secs(30);
 /// the `git status` of a project whose agents are already overdue.
 const AGENT_REAP_SCAN_EVERY: Duration = Duration::from_secs(60);
 
+/// What a [`reload`](App::reload) did: the footer's summary line, plus each config
+/// that failed to load (dir: error). `R` only shows the summary; `mmux reload` also
+/// reports the errors, since the caller there usually just edited the file.
+pub(crate) struct Reloaded {
+    pub message: String,
+    pub errors: Vec<String>,
+}
+
 impl App {
     /// True when any agent, terminal, or process still has a live pane — i.e. quitting
     /// right now would kill running work.
@@ -700,13 +708,15 @@ impl App {
     /// process that's still running is kept as an orphan rather than killed. A running
     /// process whose command (recipe) actually changed is **restarted** so the new
     /// command takes effect immediately — you no longer have to stop/start it by hand.
-    /// Bound to `R` / `Ctrl-b R`.
+    /// Bound to `R` / `Ctrl-b R`, and to `mmux reload` over the control socket — which
+    /// is why it returns what it did rather than only flashing it.
     ///
     /// Existing projects are refreshed in place, keyed by directory. In a manifest
     /// workspace, newly listed folders append live and removed folders are dropped with
     /// their panes; retained projects are not reordered until the next open.
-    pub(crate) fn reload(&mut self) {
-        let mut failed = 0usize;
+    pub(crate) fn reload(&mut self) -> Reloaded {
+        // One entry per config that failed to load, naming its dir and the parse error.
+        let mut errors: Vec<String> = Vec::new();
         let mut workspace_warnings = Vec::new();
         let mut added_projects = Vec::new();
         let mut removed_projects = Vec::new();
@@ -747,7 +757,7 @@ impl App {
                         }
                     }
                 }
-                Err(_) => failed += 1,
+                Err(e) => errors.push(format!("{}: {e:#}", self.root.display())),
             }
         }
 
@@ -766,8 +776,8 @@ impl App {
                     c.workspace = None; // member projects never expand nested workspaces
                     new_cfgs.push(Some(c));
                 }
-                Err(_) => {
-                    failed += 1;
+                Err(e) => {
+                    errors.push(format!("{}: {e:#}", dir.display()));
                     new_cfgs.push(None);
                 }
             }
@@ -974,8 +984,8 @@ impl App {
         if orphaned > 0 {
             parts.push(format!("{orphaned} orphaned"));
         }
-        if failed > 0 {
-            parts.push(format!("{failed} unreadable"));
+        if !errors.is_empty() {
+            parts.push(format!("{} unreadable", errors.len()));
         }
         parts.extend(workspace_warnings);
         let summary = if parts.is_empty() {
@@ -983,7 +993,9 @@ impl App {
         } else {
             parts.join(", ")
         };
-        self.flash(format!("reloaded — {summary}"));
+        let message = format!("reloaded — {summary}");
+        self.flash(message.clone());
+        Reloaded { message, errors }
     }
 
     /// Drop manifest members no longer listed, killing their panes and compacting every

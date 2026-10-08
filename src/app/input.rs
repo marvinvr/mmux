@@ -128,7 +128,9 @@ impl App {
             KeyCode::Char('s') => self.do_start(),
             KeyCode::Char('x') => self.do_stop(),
             KeyCode::Char('r') => self.do_restart(),
-            KeyCode::Char('R') => self.reload(),
+            KeyCode::Char('R') => {
+                self.reload();
+            }
             // Process-only: edit reopens the guided form on the selected process; delete
             // asks to confirm, then removes it from the config. No-ops on other rows.
             KeyCode::Char('e') => self.edit_selected(),

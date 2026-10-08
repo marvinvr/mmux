@@ -182,6 +182,9 @@ pub enum Cmd {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<String>,
     },
+    /// Re-read every config (global, projects, workspace manifest) live — the `R` key.
+    /// Refused, with each parse error, when any config fails to load.
+    Reload,
 }
 
 fn yes() -> bool {
@@ -398,6 +401,13 @@ pub struct WorktreeDone {
 pub struct CommitDone {
     /// The project, as it is after the action (its `scheduled_commit` included).
     pub project: ProjectInfo,
+    pub message: String,
+}
+
+/// `reload`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ReloadDone {
+    /// The footer's summary: `reloaded — +1 process(es), 1 restarted`.
     pub message: String,
 }
 
@@ -646,6 +656,8 @@ mod tests {
         assert_eq!(req.depth, 0);
         assert_eq!(req.caller, None);
         assert!(matches!(req.cmd, Cmd::Send { enter: true, .. }));
+        let req: Request = serde_json::from_str(r#"{"cmd":"reload"}"#).unwrap();
+        assert_eq!(req.cmd, Cmd::Reload);
         let req: Request = serde_json::from_str(r#"{"cmd":"new","kind":"terminal"}"#).unwrap();
         assert!(matches!(
             req.cmd,

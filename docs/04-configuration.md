@@ -433,7 +433,8 @@ ordinary project directory.
 
 ## Live Reload
 
-Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the global config
+Press `R` (or `Ctrl-b R`) — or run `mmux reload` from any shell, which is how an agent applies a
+config it just edited — to re-read every loaded project's `mmux.yaml` and the global config
 **without losing running panes**:
 
 - newly added processes and agents appear;
@@ -444,7 +445,8 @@ Press `R` (or `Ctrl-b R`) to re-read every loaded project's `mmux.yaml` and the 
 - in a manifest workspace, newly listed folders are appended live with their normal project and
   `autostart` behavior, while removed folders and their live panes are dropped;
 - a one-line footer flash summarizes what changed (added / removed / restarted / orphaned /
-  unreadable).
+  unreadable). `mmux reload` prints that line too, and fails with each unreadable config's parse
+  error.
 
 Reload refreshes every retained project in place and reconciles workspace additions/removals.
 Removing a member kills its mmux panes and forgets its restore state without inspecting or changing

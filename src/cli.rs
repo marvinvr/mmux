@@ -198,6 +198,7 @@ CONTROL (drive a running session from scripts/agents; add --json for JSON):
     mmux wait|last <t>          Wait until an agent is done · print its last reply
     mmux ask "<prompt>"         New agent (or --to <t>), wait, print its reply
     mmux worktree new|rm        Cut a worktree (+ --agent/--prompt) · remove one
+    mmux reload                 Reload the config live, like R (after editing mmux.yaml)
     mmux commit [--in 1h]       Commit now or later (-m, --push/--merge) · cancel
                     <t> = s12 · "Claude #2" · project/name · self.
                     `mmux ls --help` explains every control command.
@@ -416,6 +417,7 @@ CONTROL — drive a running session from scripts and agents
       mmux worktree rm fix-auth [--force]       # like X (dirty/busy ⇒ --force)
       mmux commit -m "fix login" --push         # like c (+^P); no -m ⇒ generated
       mmux commit --in 2h --push                # like S; `mmux commit cancel`
+      mmux reload                    # like R: apply an edited mmux.yaml live
 
     An agent's state is `working` exactly when its sidebar row spins, `idle`
     otherwise; `wait`/`ask` treat an agent as done once it stops working on

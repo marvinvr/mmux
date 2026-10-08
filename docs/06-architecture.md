@@ -495,7 +495,7 @@ removes it from the snapshot, so it's easy to get a clean slate.
 ## The Control Socket
 
 Scripts and agents drive a running session through `mmux ls`/`status`/`read`/`last`/`send`/`keys`/
-`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`/`worktree new|rm`/`commit [cancel]`
+`new`/`start`/`stop`/`restart`/`close`/`wait`/`ask`/`worktree new|rm`/`commit [cancel]`/`reload`
 ([usage](03-usage.md#controlling-mmux-from-scripts--agents)). The
 panes are PTYs the inner process owns — tmux sees only the rendered TUI — so neither
 `tmux capture-pane` nor `send-keys` can reach an individual agent. The channel goes into the inner
