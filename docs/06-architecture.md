@@ -482,6 +482,11 @@ directory — after a quit, a crash, or a [self-update](#self-update) restart. `
     Codex has no such flag, so mmux launches it plain, **discovers** the session it created
     (`agent::sessions_for` — the first unclaimed top-level rollout created after that pane's
     launch time), and reattaches with `codex resume <uuid>`.
+    Before that reattach, mmux checks the conversation is actually on disk
+    (`agent::conversation_exists`). An agent opened and quit before its first message has an
+    id but no transcript, and Claude, Grok, and Codex error on a resume of it. That launch
+    starts a new conversation instead. Pi's `--session-id` already creates a missing session,
+    so its id is kept.
   - **Terminals reopen at their live cwd.** `Pane::cwd()` reads the shell's working directory from
     the OS (`/proc/<pid>/cwd` on Linux, `proc_pidinfo` on macOS), so a `cd` survives — though as a
     fresh shell (no history/env/jobs). Editor panes reopen their file the same way.

@@ -314,8 +314,12 @@ impl Session {
         }
         // Append any Claude/Codex/Pi/Grok resume flags. The first launch *creates* the
         // session (`--session-id`); after that, and for a restored agent, launches
-        // *resume* it (`--resume`, `--session-id`, or `codex resume`).
+        // *resume* it (`--resume`, `--session-id`, or `codex resume`). A resume whose
+        // conversation was never written (opened, no message, quit) starts a new one
+        // instead — those tools error on a missing id. Checked before mark_launch so
+        // a Codex that drops its id records this launch's discovery window.
         if let Some(r) = self.agent.as_mut() {
+            r.forget_if_missing(&self.recipe.cwd, &self.recipe.env);
             r.mark_launch();
         }
         let args = self.launch_argv();

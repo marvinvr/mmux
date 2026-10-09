@@ -18,6 +18,13 @@
 //! Codex both write one transcript per conversation tagged with its `cwd`. Codex
 //! candidates are matched against the pane's launch time, so an existing conversation
 //! from the same directory can never be adopted.
+//!
+//! A resume is attempted only when that conversation is actually on disk
+//! ([`conversation_exists`]). An agent closed before its first message has an id
+//! but no transcript, and Claude (`No conversation found with session ID`), Grok
+//! (`Session does not exist`), and Codex error on a resume of it. That launch
+//! starts a new conversation instead. Pi's `--session-id` already creates a
+//! missing session, so its id is left alone.
 //! Used by [`crate::app`] to persist and restore agents across a quit/crash/self-update
 //! reopen (see [`crate::restore`]).
 
@@ -191,7 +198,9 @@ impl Resume {
         }
     }
 
-    /// Restore a resumable agent from saved state — always reattaches.
+    /// Restore a resumable agent from saved state — asks to reattach.
+    /// [`Self::forget_if_missing`] drops that when the tool never wrote the
+    /// conversation, so the launch creates a new one instead of erroring.
     pub fn restored(tool: Tool, id: Option<String>) -> Resume {
         Resume {
             tool,
@@ -200,6 +209,25 @@ impl Resume {
             started_at: None,
             discover_at: None,
         }
+    }
+
+    /// If this launch would resume a conversation the tool never wrote, start a
+    /// fresh one instead. An agent opened and quit before its first message still
+    /// has the id mmux minted, and Claude/Grok/Codex reject a resume of it.
+    /// Pi is left as-is: its `--session-id` creates a missing session.
+    /// Call before [`Self::mark_launch`], so a Codex that drops its id records
+    /// this launch's discovery window.
+    pub fn forget_if_missing(&mut self, cwd: &Path, env: &BTreeMap<String, String>) {
+        if self.tool == Tool::Pi || !self.resume {
+            return;
+        }
+        let Some(id) = self.id.clone() else {
+            return;
+        };
+        if conversation_exists(self.tool, &id, cwd, env) {
+            return;
+        }
+        *self = Resume::new(self.tool);
     }
 
     /// Mark the start of a plain Codex launch whose new id is not known yet.
@@ -291,6 +319,48 @@ pub fn sessions_for(
         Some(root) => scan_sessions(tool, &root, cwd),
         None => Vec::new(),
     }
+}
+
+/// Whether `id` names a conversation `tool` can resume. Claude and Codex: a
+/// non-empty transcript under [`session_root`]. Grok: a non-empty `summary.json`,
+/// `updates.jsonl`, or `chat_history.jsonl` in its session directory — Grok's
+/// resume looks the session up by that index, and an agent that exits before the
+/// first message never writes one (`Session does not exist`). No home or no tree
+/// means it isn't there. Pi isn't asked: [`Resume::forget_if_missing`] skips it.
+pub fn conversation_exists(
+    tool: Tool,
+    id: &str,
+    cwd: &Path,
+    env: &BTreeMap<String, String>,
+) -> bool {
+    let Some(root) = session_root(tool, env) else {
+        return false;
+    };
+    match tool {
+        Tool::Grok => grok_session_written(&root, id),
+        Tool::Claude | Tool::Codex | Tool::Pi => {
+            transcript_path(tool, id, cwd, &root).is_some_and(|path| nonempty_file(&path))
+        }
+    }
+}
+
+/// A Grok session directory that resume can find: the index (`summary.json`) or
+/// either conversation log, non-empty. Searched across project directories, same
+/// as [`transcript_path`], so a cwd encoding mismatch doesn't look like "missing".
+fn grok_session_written(root: &Path, id: &str) -> bool {
+    let Ok(projects) = std::fs::read_dir(root) else {
+        return false;
+    };
+    projects.flatten().any(|entry| {
+        let dir = entry.path().join(id);
+        ["summary.json", "updates.jsonl", "chat_history.jsonl"]
+            .into_iter()
+            .any(|name| nonempty_file(&dir.join(name)))
+    })
+}
+
+fn nonempty_file(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > 0)
 }
 
 /// Where `tool` keeps its per-conversation transcripts: `$CLAUDE_CONFIG_DIR/projects`,
@@ -917,6 +987,117 @@ mod tests {
         );
         assert_eq!(transcript_path(Tool::Pi, "bc", cwd, &root), None);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn tool_home(var: &str) -> (PathBuf, BTreeMap<String, String>) {
+        let home = std::env::temp_dir().join(format!("mmux-resume-{var}-{}", mint_uuid()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let mut env = BTreeMap::new();
+        env.insert(var.to_string(), home.to_string_lossy().into_owned());
+        (home, env)
+    }
+
+    #[test]
+    fn missing_conversation_starts_fresh_instead_of_resuming() {
+        let (home, env) = tool_home("GROK_HOME");
+        let id = "11111111-1111-4111-8111-111111111111";
+        let mut g = Resume::restored(Tool::Grok, Some(id.into()));
+        g.forget_if_missing(Path::new("/proj"), &env);
+        assert!(!g.resume);
+        let new_id = g.id.clone().unwrap();
+        assert_ne!(new_id, id);
+        assert_eq!(g.launch_args(), vec!["--session-id".to_string(), new_id]);
+
+        // A stub directory with an empty log is still not a conversation.
+        let stub = home.join("sessions").join("proj").join(id);
+        std::fs::create_dir_all(&stub).unwrap();
+        std::fs::write(stub.join("chat_history.jsonl"), "").unwrap();
+        let mut g = Resume::restored(Tool::Grok, Some(id.into()));
+        g.forget_if_missing(Path::new("/proj"), &env);
+        assert!(!g.resume);
+
+        // A written summary is what Grok's resume looks up, so it is kept.
+        std::fs::write(stub.join("summary.json"), "{}\n").unwrap();
+        let mut g = Resume::restored(Tool::Grok, Some(id.into()));
+        g.forget_if_missing(Path::new("/proj"), &env);
+        assert!(g.resume);
+        assert_eq!(g.id.as_deref(), Some(id));
+        assert_eq!(
+            g.launch_args(),
+            vec!["--resume".to_string(), id.to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn missing_claude_and_codex_conversations_start_fresh() {
+        let (home, env) = tool_home("CLAUDE_CONFIG_DIR");
+        let id = "33333333-3333-4333-8333-333333333333";
+        let mut c = Resume::restored(Tool::Claude, Some(id.into()));
+        c.forget_if_missing(Path::new("/proj"), &env);
+        assert!(!c.resume);
+        assert_eq!(c.launch_args()[0], "--session-id");
+
+        let file = home
+            .join("projects")
+            .join("slug")
+            .join(format!("{id}.jsonl"));
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "").unwrap();
+        let mut c = Resume::restored(Tool::Claude, Some(id.into()));
+        c.forget_if_missing(Path::new("/proj"), &env);
+        assert!(!c.resume, "an empty transcript is not a conversation");
+
+        std::fs::write(&file, "{}\n").unwrap();
+        let mut c = Resume::restored(Tool::Claude, Some(id.into()));
+        c.forget_if_missing(Path::new("/proj"), &env);
+        assert!(c.resume);
+        assert_eq!(
+            c.launch_args(),
+            vec!["--resume".to_string(), id.to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (home, env) = tool_home("CODEX_HOME");
+        let mut x = Resume::restored(Tool::Codex, Some("abc".into()));
+        x.forget_if_missing(Path::new("/proj"), &env);
+        assert!(x.id.is_none());
+        assert!(x.launch_args().is_empty());
+
+        let roll = home.join("sessions").join("2026").join("10").join("09");
+        std::fs::create_dir_all(&roll).unwrap();
+        std::fs::write(roll.join("rollout-abc.jsonl"), "{}\n").unwrap();
+        let mut x = Resume::restored(Tool::Codex, Some("abc".into()));
+        x.forget_if_missing(Path::new("/proj"), &env);
+        assert_eq!(
+            x.launch_args(),
+            vec!["resume".to_string(), "abc".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn pi_keeps_its_id_when_nothing_is_on_disk() {
+        let mut p = Resume::restored(Tool::Pi, Some("abc".into()));
+        p.forget_if_missing(Path::new("/proj"), &BTreeMap::new());
+        assert!(p.resume);
+        assert_eq!(p.id.as_deref(), Some("abc"));
+        assert_eq!(
+            p.launch_args(),
+            vec!["--session-id".to_string(), "abc".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_fresh_agent_is_not_reminted() {
+        let (home, env) = tool_home("GROK_HOME");
+        let mut g = Resume::new(Tool::Grok);
+        let id = g.id.clone();
+        g.forget_if_missing(Path::new("/proj"), &env);
+        assert_eq!(g.id, id);
+        assert!(!g.resume);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

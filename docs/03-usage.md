@@ -529,7 +529,9 @@ rather than consuming drawer height.
 - Run `mmux` again in the same directory to reattach.
 - **Your session comes back.** Even after a `q` (or a crash, or a restart-to-update), reopening a
   directory **restores the agents and terminals** you had open: **Claude, Codex, Pi, and Grok agents
-  resume their conversation**, and **terminals reopen in the directory you left them in** (as a fresh
+  resume their conversation** (an agent closed before its first message starts a new one, instead of
+  erroring on a resume of a conversation the tool never wrote), and **terminals reopen in the
+  directory you left them in** (as a fresh
   shell — history, env, and background jobs don't carry over). Anything that can't resume starts
   fresh; processes come back via autostart or a click. To start clean instead, **close the sessions
   (`x`) before quitting** — only what's still open is remembered.

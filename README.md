@@ -20,8 +20,8 @@ The whole thing runs inside an invisible, per-directory **tmux session**, so:
   from anywhere, to rejoin.
 
 Even after you **quit** (or a crash, or a restart-to-update), reopening a directory **restores your
-session** — Claude/Codex/Pi/Grok agents resume their conversation and terminals reopen where you
-left them.
+session** — Claude/Codex/Pi/Grok agents resume their conversation (or start a new one if they
+were closed before the first message) and terminals reopen where you left them.
 
 When an agent goes idle — finished, or waiting on you — its sidebar row lights up **green**. And
 when a program rings the bell or emits a notification escape (e.g. Claude Code announcing it's
