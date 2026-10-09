@@ -10,6 +10,7 @@ mod git;
 mod notify;
 mod open;
 mod pane;
+mod prompt;
 mod restore;
 mod tmux;
 mod update;

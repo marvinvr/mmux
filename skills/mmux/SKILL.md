@@ -1,6 +1,6 @@
 ---
 name: mmux
-description: Drive a running mmux (terminal multiplexer for AI agents, terminals and dev processes) from the command line. Use when running inside an mmux pane (MMUX_SESSION / MMUX_SOCKET is set), or when asked to check on, list, spawn, prompt, wait for, or close other coding agents in mmux; to read a dev server's or process's logs/errors; to start, stop or restart a process; to delegate a prompt to another agent (Claude, Codex, …) and read its reply; to cut or remove a git worktree with its own agent for parallel work; or to type text/keys into another terminal session.
+description: Drive a running mmux (terminal multiplexer for AI agents, terminals and dev processes) from the command line. Use when running inside an mmux pane (MMUX_SESSION / MMUX_SOCKET is set), or when asked to check on, list, spawn, prompt, wait for, answer, or close other coding agents in mmux; to read a dev server's or process's logs/errors; to start, stop or restart a process; to delegate a prompt to another agent (Claude, Codex, …) and read its reply; to cut or remove a git worktree with its own agent for parallel work; or to type text/keys into another terminal session.
 ---
 
 # mmux control CLI
@@ -34,6 +34,8 @@ mmux last s12                        # an agent's last reply (Claude/Codex/Pi/Gr
 mmux send s12 "fix the failing test" # paste text, then Enter (--no-enter: don't; `-` = stdin)
 mmux keys s12 Escape                 # press keys: Enter Escape Tab BTab BSpace Space Up Down Left Right
                                      #   Home End PageUp PageDown Delete Insert F1-F12, C-/M-/S- prefixes
+mmux answer s12 2                    # answer an agent that needs input: choice 2 of its prompt
+                                     #   (also: yes, no, an option's text, a reply; --dismiss)
 mmux new agent codex -p api --prompt "…"   # start an agent (template by name or command; default: first)
 mmux new terminal --cmd "npm test"   # start a terminal, type a command into it (stays open)
 mmux start|restart "Dev server"      # start anything not running / (re)start any session
@@ -41,6 +43,7 @@ mmux stop "Dev server" [--force]     # process: stop in place (runs its stop: te
 mmux close s12 [--force]             # agent/terminal: close for good (busy => refused without --force)
 mmux close self                      # close your own pane (no --force needed)
 mmux wait s12 [-t 10m] [--settle 1.5s] [--idle|--exit]   # until the agent is done (default) / ended
+                                     #   exit 3 = it needs input (see "Answering an agent")
 mmux ask "why is CI red?"            # new agent -> wait -> print its reply
 mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
                                      # cut a git worktree (+ an agent in it)
@@ -50,8 +53,10 @@ mmux reload                          # reload the config live, like R — after 
                                      #   fails with the parse error if a config doesn't load
 ```
 
-- States: an agent is `working` (its sidebar row spins) or `idle` (`idle 42s`); others are
-  `running`, `stopped`, `exited`, `failed`. A trailing `!` means it wants attention.
+- States: an agent is `working` (its sidebar row spins), `needs-input` (`needs-input 12s`: blocked
+  on a question, a permission prompt or a notification it raised, until input reaches it) or `idle`
+  (`idle 42s`); others are `running`, `stopped`, `exited`, `failed`. A trailing `!` means it rang
+  the bell.
 - Flags may go anywhere; use `--` before text that starts with a dash: `mmux send s3 -- --help`.
 - `keys`: a recognised key name is pressed, any other word is typed as text.
 - `--prompt` is for `new agent`, `--cmd` for `new terminal`; the other combination is refused.
@@ -83,7 +88,8 @@ mmux ask --close "one-off question"                       # close the helper aft
 ```
 The helper's id goes to stderr (`mmux: asked s14 Claude #3 — waiting for its reply`) so you can
 follow up with `--to`. It stays in the sidebar unless `--close`. On timeout (`-t`, default 10m) `ask`
-exits 2 and leaves it working: `mmux wait s14 && mmux last s14` picks it back up.
+exits 2 and leaves it working: `mmux wait s14 && mmux last s14` picks it back up. If the helper
+stops to ask something, `ask` exits 3 like `wait` (below).
 
 **Long waits: run them in the background**
 
@@ -131,14 +137,33 @@ removes the worktree you run in. Merging is up to you (`git merge`/`gh pr create
 
 **Check on sibling agents**
 ```sh
-mmux ls                              # who is working / idle / wants attention
+mmux ls                              # who is working / needs-input / idle
 mmux status s9                       # what is on its screen right now
 ```
 "Done" (for `wait`/`ask`) means the agent stopped working on what it was sent — for Claude, its
-transcript must also show that turn at rest. Input is `send`, a first prompt, or `keys` that include
-`Enter`/`C-m`/`C-j`; input it never visibly starts on stops holding `wait` after 20 s. An agent that
-stopped to ask a question or a permission prompt is also done, so check `mmux status` and answer
-with `send`/`keys` if needed.
+transcript must also show that turn at rest. Input is `send`, a first prompt, `answer`, or `keys`
+that include `Enter`/`C-m`/`C-j`; input it never visibly starts on stops holding `wait` after 20 s.
+
+**Answering an agent that needs input**
+
+An agent blocked on a permission prompt, a multiple-choice question, a `[y/n]` line, or a
+notification it raised is **not done**: `wait` and `ask` stop for it with **exit 3** and print what
+it asks — `asks:` (the question), `notification:`, `choices:` (`❯` marks the cursor), the last
+screen lines, and an `answer:` hint. Decide (or ask your user, if it's their call — e.g. a
+destructive command), answer, and wait again:
+```sh
+mmux wait s14 -t 30m; echo $?        # 3 → it needs input; the report is on stdout
+mmux answer s14 1                    # pick choice 1 (moves the cursor, presses Enter)
+mmux answer s14 no                   # the first choice starting with "No"
+mmux answer s14 "don't ask"          # the one choice whose label contains this text
+mmux answer s14 "use the v2 API"     # no choices on screen: typed as a reply + Enter
+mmux wait s14 -t 30m && mmux last s14
+```
+Text that matches no choice, or several, is refused with the list of choices (to type free text
+into a menu, use `send`). If the report says no choices could be read, look at its screen lines;
+if nothing is actually being asked, `mmux answer s14 --dismiss` clears the flag. `--json`: the
+report is `error`, and `data.needs_input` has `since_ms`, `prompt` (`question`, `choices[]` of
+`n`/`label`/`selected`, `yes_no`), `notification` and `screen[]`.
 
 ## Scripting: `--json` and exit codes
 
@@ -148,12 +173,13 @@ usage errors (missing target or prompt, bad `--cmd`/`--prompt` use) included.
 - `worktree new`/`rm` → `project` (as in `ls`), `branch`, `message`, and `agent` (a session) if one
   was started.
 - A session: `id`, `kind`, `name`, `project`, `project_dir`, `status`, `working`, `attention`,
-  `title`, `error`, `idle_for_ms`, `input_age_ms`, `worked_since_input`, `input_pending`.
+  `needs_input` (only while it needs input), `title`, `error`, `idle_for_ms`, `input_age_ms`,
+  `worked_since_input`, `input_pending`.
 - `status` adds `status_line[]`; `read` → `id`, `name`, `text`; `last`/`ask` → `id`, `name`,
   `reply`, `source` (`transcript` or `screen`); actions → the session plus `message`.
 
 Exit codes: `0` success · `1` error or refusal (bad target, not running, busy, depth limit…) ·
-`2` `wait`/`ask` timed out.
+`2` `wait`/`ask` timed out · `3` `wait`/`ask` stopped because the agent needs input.
 
 ## Etiquette and safety
 

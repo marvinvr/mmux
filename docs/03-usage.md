@@ -49,8 +49,9 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   need *me*". A leading glyph + name color carry the whole state: a busy agent shows a small gray
   **spinner** (rotating braille dots) before its name (a running terminal keeps a static `·`), a
   session that **crashed** (exited non-zero on its own) or **failed to launch** shows a red hollow
-  `○`, and a session waiting on you lights up **green** (`●`). So when you scan the sidebar, the
-  only colored agent is the one to go look at — and the spinning ones are still grinding. Unlike
+  `○`, and a session waiting on you lights up **green** (`●`). An agent **blocked on a question**
+  shows a bold yellow **`?`** instead (see below). So when you scan the sidebar, the only colored
+  agent is the one to go look at — and the spinning ones are still grinding. Unlike
   processes, agents and terminals **don't linger once they exit cleanly** — quitting an agent
   (`/quit`, Ctrl-D) or `exit`ing a terminal removes its row outright rather than leaving a dim
   "exited" husk. A crash is the exception: it stays put, painted red, so you don't miss it.
@@ -75,6 +76,16 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   *is* suppressed on the pane you're actively viewing. The bell / notification escape *separately*
   raises a [desktop notification](05-notifications.md), and process rows show that bell as a
   trailing green `●`, since their name already signals up/down.
+- An agent **needs input** (yellow `?`) when it is blocked on someone: a **question or permission
+  prompt on its screen** — a numbered menu with a cursor and a selection hint (Claude Code's and
+  Codex's approval prompts, Claude's multiple-choice questions, a folder-trust dialog) or a `[y/n]`
+  line — or a **bell / notification escape** it raised. This outranks every other signal: an agent
+  that is asking is never shown (or reported) as working, whatever its progress state or title
+  say, and the `?` stays — even while you view it — until **input reaches it** (your keys, a paste,
+  a click, or `mmux send`/`keys`/`answer`). A notification from an agent that had already been
+  idle for 30 s (Claude's "waiting for your input" a minute after it finished) is a reminder, not a
+  question, and leaves it green. Collapsed projects and the project switcher count these as
+  `? N asking`.
 
 ## Focus
 
@@ -550,9 +561,10 @@ mmux read "Dev server" -n 80       # the last 80 lines of a process's output
 mmux new agent claude              # start an agent; prints its id (s14 Claude #3 — started …)
 mmux send s14 "fix the failing test"   # type a prompt and press Enter
 mmux keys s14 Escape               # press keys: Enter, C-c, Up, Tab, F5, M-x, S-Tab …
+mmux answer s14 2                  # pick option 2 of the question/permission prompt it shows
 mmux restart "Dev server"          # start / stop / restart work on any session
 mmux close s14 --force             # close an agent even while it's working
-mmux wait s14                      # block until the agent has finished working
+mmux wait s14                      # block until the agent has finished working (exit 3: it asks)
 mmux last s14                      # its last reply, from its own transcript
 mmux ask "why is the build red?"   # `claude -p`, but visible: new agent → wait → reply
 mmux worktree new fix-auth --prompt "fix the login bug"   # a worktree + an agent working in it
@@ -569,6 +581,7 @@ mmux reload                        # what `R` does: apply an edited mmux.yaml li
 | `mmux status <t>` | One session's state and title plus its **status line** — the last few non-empty lines of its screen, where an agent keeps its own status and input box. |
 | `mmux read <t> [-n N]` | The last `N` lines (default 200, `0` = all) of its scrollback + screen as plain text. The way to read a dev server's errors. |
 | `mmux send <t> <text…>` | Types the text (as one bracketed paste when the program supports it), then presses Enter as a separate keystroke ~150 ms later so agent TUIs submit it. `--no-enter` skips the Enter; `-` as the text reads it from stdin (multi-line prompts). |
+| `mmux answer <t> <choice>` | [Answers an agent that needs input](#answering-an-agent): `2` picks option 2 of the prompt on its screen, `yes`/`no` the first option starting with that word, any other text the one option whose label contains it — mmux moves the menu's cursor there and presses Enter. A `[y/n]` line gets `y`/`n`; with no prompt on screen the answer is typed as a reply (+ Enter). `--dismiss` clears a notification without typing anything. |
 | `mmux keys <t> <key>…` | Presses keys, tmux-style: `Enter` `Escape` `Tab` `BTab` `BSpace` `Space` `Up`/`Down`/`Left`/`Right` `Home`/`End` `PageUp`/`PageDown` `Delete` `Insert` `F1`–`F12`, a single character, with `C-` (Ctrl), `M-` (Alt) and `S-` (Shift) prefixes (aliases like `Esc`, `Return`, `PgUp`, `Del` work too). Any other word is typed as text. |
 | `mmux new agent [template] [-p project] [--prompt "…"]` | Starts an agent from a template (by name or command, e.g. `claude`; default: the first), optionally with a first prompt (`-` reads it from stdin). |
 | `mmux new terminal [-p project] [--cmd "…"]` | Starts a terminal, optionally typing a command into it (the terminal stays open afterwards). `--cmd` is for terminals only, `--prompt` for agents only. |
@@ -576,7 +589,7 @@ mmux reload                        # what `R` does: apply an edited mmux.yaml li
 | `mmux stop <t> [--force]` | Stops a process in place (running its `stop:` teardown, like `x`); on an agent or terminal it is `close` — refused while busy unless `--force`. |
 | `mmux close <t> [--force]` | Closes an agent or terminal. Refused while an agent is working or a terminal is running, unless `--force` — except `mmux close self`, which closes the caller's own pane without it. |
 | `mmux last <t>` | The agent's last reply. Claude, Codex, Pi and Grok answers come from the agent's own transcript (just the words, no TUI chrome); anything else falls back to the last ~40 lines of its screen. `--json` says which (`"source": "transcript"` or `"screen"`). |
-| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest — which keeps a just-started agent from reading as done before it has begun. `--exit` waits for the session to end instead. Exits `2` on timeout. |
+| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest — which keeps a just-started agent from reading as done before it has begun. `--exit` waits for the session to end instead. Exits `2` on timeout, and `3` — in either mode — as soon as the agent [needs input](#answering-an-agent) (for at least 0.5 s), printing what it asks. |
 | `mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>` | [Ask an agent](#asking-an-agent) and print its answer. |
 | `mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]` | Cuts a [worktree](#worktrees) off the project's repository, like `w` (an existing branch is checked out; a new one branches from what the main checkout has out; no name = a generated one), without moving your view. Env files are copied and `worktrees.setup` runs as usual. With `--agent` or `--prompt` it also starts an agent in it (prints its id). Address the worktree afterwards by its branch: `-p <branch>`, `<branch>/<name>`. |
 | `mmux worktree rm <branch> [--force]` | Removes a worktree, like `X`: its sessions close, the checkout goes, and the branch is deleted only if it's merged (unmerged commits stay on the kept branch). Refused while it has uncommitted changes, an agent at work, or is the project in view — unless `--force`, which discards uncommitted changes. Run from inside the worktree being removed, the first try removes nothing: it explains that this closes the caller's own pane (and every other session there) and how to go through with it. |
@@ -600,7 +613,8 @@ mmux ask --json "…"                                         # {"id","name","re
 
 The new agent's id is printed to stderr (`mmux: asked s14 Claude #3 …`), so a script can follow up
 with `--to`. The agent stays open afterwards unless `--close`. On timeout (`-t`, default 10 minutes)
-it exits `2` and leaves the agent working — `mmux wait` and `mmux last` pick it up from there.
+it exits `2` and leaves the agent working — `mmux wait` and `mmux last` pick it up from there. If
+the agent stops to ask something, `ask` exits `3` with the same report as `wait`.
 
 Claude, Codex, Pi and Grok receive a first prompt on their command line, exactly as if you had
 typed `claude "…"`; it is used for that first launch only, so restarting the agent resumes the
@@ -608,8 +622,49 @@ conversation without repeating it. Other agents have it typed in once their scre
 most ~10 s after starting).
 
 "Done" means the agent's sidebar spinner has stopped: the same working signal the sidebar uses. An
-agent that stops to ask you something — a permission prompt, a question — is done too; `mmux status`
-shows what's on its screen, and `mmux send`/`mmux keys` answer it.
+agent that stops to ask something is **not** done — see below.
+
+### Answering an Agent
+
+An agent that [needs input](#status-and-attention) — a permission prompt, a multiple-choice
+question, a `[y/n]` line, or a notification it raised — would otherwise hold a `wait` forever. So
+`wait` (and `ask`) stop for it and exit `3`, printing what it asks:
+
+```text
+s14 Claude #3 needs input — it is waiting on an answer, not finished
+asks: Do you want to proceed?
+notification: Claude needs your permission to use Bash
+choices:
+  ❯ 1. Yes
+    2. Yes, and don't ask again for rm commands in /repo
+    3. No, and tell Claude what to do differently (esc)
+--- screen
+…the last 15 non-empty lines of its screen…
+---
+answer: mmux answer s14 1-3, yes/no, or an option's text
+```
+
+With `--json` that report is the `error`, and `data` carries the session's status, whose
+`needs_input` holds `since_ms`, `prompt` (`question`, `choices[]` of `n`/`label`/`selected`,
+`yes_no`), `notification` and `screen[]`. `mmux status` and `mmux ls` show the state too
+(`needs-input 12s`).
+
+Answer it, then wait again:
+
+```sh
+mmux answer s14 1            # option 1
+mmux answer s14 no           # the first option starting with "No"
+mmux answer s14 "don't ask"  # the one option whose label contains that text
+mmux answer s14 "use the v2 API"   # nothing to pick from: typed as a reply
+mmux wait s14 && mmux last s14
+```
+
+A choice is picked the way a person would: the menu's cursor moves to it with arrow keys and Enter
+confirms, so it works for any menu that draws a cursor. Text that matches no option (or several) is
+refused with the list of choices — to type free text into a menu, use `mmux send`. An answer counts
+as input, so the next `wait` waits for the work it starts. When no choices could be read (only a
+notification), the report says so; read the screen it shows, and if nothing is actually being asked,
+`mmux answer <t> --dismiss` clears the flag.
 
 **Which mmux.** A command talks to the session for the current directory — the project itself, a
 workspace it belongs to, or the project a worktree was cut from. Inside an mmux pane it talks to
@@ -621,14 +676,15 @@ name or `new` picks a project. With none running it says so.
 the same name exists in several projects, or `self` for the pane you run in. An ambiguous name lists
 the candidates.
 
-**Working or idle.** An agent's state is `working` exactly when its sidebar row spins and `idle`
-otherwise (with how long: `idle 42s`); `!` marks one asking for attention. Other sessions read
-`running`, `stopped`, `exited` or `failed`. The JSON adds `idle_for_ms`, `input_age_ms`,
+**Working, needs input, or idle.** An agent's state is `working` exactly when its sidebar row
+spins, `needs-input` while it shows the yellow `?` (with how long: `needs-input 12s`), and `idle`
+otherwise (`idle 42s`); `!` marks a bell nobody has looked at. Other sessions read `running`,
+`stopped`, `exited` or `failed`. The JSON adds `needs_input`, `idle_for_ms`, `input_age_ms`,
 `worked_since_input` and `input_pending` — the pieces `mmux wait` decides with.
 
 **For scripts and agents.** Every command takes `--json` and then prints the raw response
 (`{"ok": true, "data": …}` or `{"ok": false, "error": "…"}`); failures exit non-zero either way.
-`wait` and `ask` exit `2` when they time out. Flags may come before the verb (`mmux --json ls`,
+`wait` and `ask` exit `2` when they time out and `3` when the agent needs input. Flags may come before the verb (`mmux --json ls`,
 `mmux -C ~/proj status s3`). An unknown command is an error, never a launch: bare `mmux` (which opens
 the TUI) refuses to run without an interactive terminal, so an agent can't accidentally start a
 session from its own shell. Programs in mmux panes get `MMUX_SOCKET`,

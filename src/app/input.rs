@@ -350,7 +350,11 @@ impl App {
             Some(p) => match p.mouse_input(action, button, m.column, m.row, ox, oy) {
                 Some(bytes) => {
                     p.reset_scroll(); // a forwarded event acts on the live view
-                    p.send(bytes);
+                                      // A click can answer a program; motion and releases can't.
+                    match action {
+                        MouseAction::Down => p.input(bytes),
+                        _ => p.send(bytes),
+                    }
                     true
                 }
                 None => false,
@@ -969,7 +973,7 @@ impl App {
             }
             _ if self.focus == Focus::Terminal => {
                 if let Some(p) = self.focused_pane() {
-                    p.send(p.paste_input(&s));
+                    p.input(p.paste_input(&s));
                 }
             }
             _ => {}

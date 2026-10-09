@@ -1,5 +1,5 @@
 //! The command side of the [control socket](crate::control): `mmux ls`, `status`,
-//! `read`, `last`, `send`, `keys`, `new`, `start`, `stop`, `restart`, `close`, `wait`,
+//! `read`, `last`, `send`, `keys`, `answer`, `new`, `start`, `stop`, `restart`, `close`, `wait`,
 //! `ask`, `worktree new|rm`, `commit [cancel]`, `reload`. Each parses its arguments, finds the right running session
 //! ([`crate::control::locate`]), sends its request(s) and prints the answer — as
 //! text for people, or JSON with `--json` for scripts and agents.
@@ -35,11 +35,17 @@ const INPUT_GRACE: Duration = Duration::from_secs(20);
 const TRANSCRIPT_GRACE: Duration = Duration::from_secs(30);
 /// Exit status for a `wait`/`ask` that ran out of time (errors are 1).
 const EXIT_TIMEOUT: i32 = 2;
+/// Exit status for a `wait`/`ask` that stopped because the agent is asking for input —
+/// it is blocked, not finished.
+const EXIT_NEEDS_INPUT: i32 = 3;
+/// How long an agent must have been asking before `wait` stops for it, so a menu that
+/// only flashes past mid-turn doesn't end the wait.
+const ASK_SETTLE: Duration = Duration::from_millis(500);
 
 /// The verbs this module owns — checked by [`crate::cli`] before anything else.
 pub const VERBS: &[&str] = &[
-    "ls", "status", "read", "last", "send", "keys", "new", "start", "stop", "restart", "close",
-    "wait", "ask", "worktree", "commit", "reload",
+    "ls", "status", "read", "last", "send", "keys", "answer", "new", "start", "stop", "restart",
+    "close", "wait", "ask", "worktree", "commit", "reload",
 ];
 
 /// Whether `arg` is a control verb.
@@ -88,6 +94,8 @@ struct Args {
     merge: bool,
     /// `commit --in`: schedule rather than commit now.
     delay: Option<Duration>,
+    /// `answer --dismiss`: clear the agent's notification without answering.
+    dismiss: bool,
     /// `worktree rm --confirm`: go through with removing the caller's own worktree.
     /// Deliberately left out of every help text, so an agent only learns it from the
     /// warning a first, unconfirmed attempt prints.
@@ -118,6 +126,7 @@ fn parse(args: &[String]) -> Result<Args> {
             "--no-enter" if flags => out.no_enter = true,
             "-f" | "--force" if flags => out.force = true,
             "--confirm" if flags => out.confirm = true,
+            "--dismiss" if flags => out.dismiss = true,
             "-p" | "--project" if flags => out.project = Some(value(a)?),
             "--cmd" if flags => out.command = Some(value(a)?),
             "--prompt" if flags => out.prompt = Some(value(a)?),
@@ -267,6 +276,19 @@ fn build(a: &Args) -> Result<Cmd> {
                 project: a.project.clone(),
                 command: a.command.clone(),
                 prompt,
+            }
+        }
+        "answer" => {
+            let answer = a.pos[1.min(a.pos.len())..].join(" ");
+            if answer.trim().is_empty() && !a.dismiss {
+                bail!(
+                    "`mmux answer` needs a target and an answer: a choice number (2), yes/no, an option's text, or a reply — or --dismiss"
+                );
+            }
+            Cmd::Answer {
+                target: target()?,
+                answer: Some(answer).filter(|t| !t.trim().is_empty()),
+                dismiss: a.dismiss,
             }
         }
         "start" => Cmd::Start { target: target()? },
@@ -457,6 +479,16 @@ enum WaitEnd {
     /// The condition held; the session's last state (`None`: it's gone).
     Done(Option<StatusInfo>),
     TimedOut(Option<StatusInfo>),
+    /// The agent is asking for input (see [`is_asking`]) — blocked, not done.
+    NeedsInput(StatusInfo),
+}
+
+/// Whether a running agent has been asking for input for at least [`ASK_SETTLE`].
+fn is_asking(s: &SessionInfo) -> bool {
+    s.status == "running"
+        && s.needs_input
+            .as_ref()
+            .is_some_and(|n| n.since_ms >= ASK_SETTLE.as_millis() as u64)
 }
 
 /// Whether an agent has finished with what it was given: quiet (not working, nothing
@@ -533,6 +565,11 @@ fn wait_for(
     let mut last = Some(first);
     loop {
         if let Some(s) = &last {
+            // Blocked on a question, it will neither finish nor exit: say so, whichever
+            // way the caller is waiting.
+            if is_asking(&s.session) {
+                return Ok(WaitEnd::NeedsInput(s.clone()));
+            }
             let done = match exit {
                 true => s.session.status != "running",
                 false => {
@@ -574,6 +611,7 @@ fn run_wait(a: &Args, ctx: &Ctx) -> Result<()> {
     let (state, timed_out) = match wait_for(ctx, &a.pos[0], a.exit, timeout, settle) {
         Ok(WaitEnd::Done(s)) => (s, false),
         Ok(WaitEnd::TimedOut(s)) => (s, true),
+        Ok(WaitEnd::NeedsInput(s)) => needs_input_exit(a, &s, None),
         Err(e) => fail(a, e),
     };
     if timed_out {
@@ -648,6 +686,13 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
     let settle = a.settle.unwrap_or(DEFAULT_SETTLE);
     match wait_for(ctx, &id, false, timeout, settle) {
         Ok(WaitEnd::Done(_)) => {}
+        Ok(WaitEnd::NeedsInput(s)) => needs_input_exit(
+            a,
+            &s,
+            Some(&format!(
+                "then `mmux wait {id}` and `mmux last {id}` for its reply"
+            )),
+        ),
         Ok(WaitEnd::TimedOut(_)) => fail_with(
             a,
             format!(
@@ -675,6 +720,71 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
         false => println!("{}", reply.reply),
     }
     Ok(())
+}
+
+/// End a `wait`/`ask` on an agent that is asking for input: report what it asks, how
+/// to answer, and exit [`EXIT_NEEDS_INPUT`]. With `--json` the report is the error and
+/// the session's state rides along as `data`.
+fn needs_input_exit(a: &Args, s: &StatusInfo, then: Option<&str>) -> ! {
+    let mut report = needs_input_report(&s.session);
+    if let Some(then) = then {
+        report.push_str(&format!("\n{then}"));
+    }
+    if a.json {
+        let resp = Response {
+            ok: false,
+            error: Some(report),
+            data: serde_json::to_value(s).unwrap_or_default(),
+        };
+        print_json(&resp);
+    } else {
+        println!("{report}");
+    }
+    std::process::exit(EXIT_NEEDS_INPUT);
+}
+
+/// What a session asking for input wants, for people and agents alike: the question,
+/// its choices, the notification, the screen it sits on, and how to answer.
+fn needs_input_report(s: &SessionInfo) -> String {
+    let mut out = format!(
+        "{} {} needs input — it is waiting on an answer, not finished",
+        s.id, s.name
+    );
+    let Some(n) = &s.needs_input else {
+        return out;
+    };
+    let prompt = n.prompt.as_ref();
+    if let Some(q) = prompt.and_then(|p| p.question.as_deref()) {
+        out.push_str(&format!("\nasks: {q}"));
+    }
+    if let Some(text) = &n.notification {
+        out.push_str(&format!("\nnotification: {text}"));
+    }
+    let choices = prompt.map(|p| p.choices.as_slice()).unwrap_or_default();
+    if !choices.is_empty() {
+        out.push_str("\nchoices:");
+        for c in choices {
+            let cursor = if c.selected { "❯" } else { " " };
+            out.push_str(&format!("\n  {cursor} {}. {}", c.n, c.label));
+        }
+    }
+    if !n.screen.is_empty() {
+        out.push_str("\n--- screen");
+        for l in &n.screen {
+            out.push_str(&format!("\n{l}"));
+        }
+        out.push_str("\n---");
+    }
+    let how = match prompt {
+        Some(p) if !p.choices.is_empty() => format!(
+            "1-{}, yes/no, or an option's text",
+            choices.last().map_or(1, |c| c.n)
+        ),
+        Some(p) if p.yes_no => "yes|no".to_string(),
+        _ => "\"<reply>\" (no choices could be read — check the screen above), or --dismiss if nothing is being asked".to_string(),
+    };
+    out.push_str(&format!("\nanswer: mmux answer {} {how}", s.id));
+    out
 }
 
 fn print_json(resp: &Response) {
@@ -759,6 +869,19 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
             if let Some(t) = &i.title {
                 println!("title: {t}");
             }
+            if let Some(n) = &i.needs_input {
+                let p = n.prompt.as_ref();
+                if let Some(q) = p.and_then(|p| p.question.as_deref()) {
+                    println!("asks: {q}");
+                }
+                if let Some(c) = p.filter(|p| !p.choices.is_empty()) {
+                    println!("choices: {}", crate::prompt::list(&c.choices));
+                }
+                if let Some(text) = &n.notification {
+                    println!("notification: {text}");
+                }
+                println!("answer: mmux answer {} <choice|yes|no|text>", i.id);
+            }
             if let Some(e) = &i.error {
                 println!("error: {e}");
             }
@@ -806,7 +929,7 @@ fn row(s: &SessionInfo) -> String {
         title = title.chars().take(59).collect::<String>() + "…";
     }
     format!(
-        "{:<5} {:<8} {:<20} {:<9} {}",
+        "{:<5} {:<8} {:<20} {:<11} {}",
         s.id,
         s.kind,
         s.name,
@@ -817,10 +940,14 @@ fn row(s: &SessionInfo) -> String {
     .to_string()
 }
 
-/// A session's state, with how long an agent has been quiet: `idle 42s`.
+/// A session's state, with how long an agent has been quiet (`idle 42s`) or waiting
+/// on an answer (`needs-input 42s`).
 fn state_word(s: &StatusInfo) -> String {
     let i = &s.session;
     let word = state(i);
+    if let Some(n) = &i.needs_input {
+        return format!("{word} {}", human(Duration::from_millis(n.since_ms)));
+    }
     match (i.kind.as_str(), i.working, i.idle_for_ms) {
         ("agent", false, Some(ms)) if i.status == "running" => {
             format!("{word} {}", human(Duration::from_millis(ms)))
@@ -829,10 +956,11 @@ fn state_word(s: &StatusInfo) -> String {
     }
 }
 
-/// A session's state in one word: an agent is `working` or `idle`; `!` marks one
-/// asking for attention.
+/// A session's state in one word: an agent is `working`, `needs-input` (blocked on a
+/// question or a notification) or `idle`; `!` marks one asking for attention.
 fn state(s: &SessionInfo) -> String {
     let word = match (s.status.as_str(), s.kind.as_str()) {
+        ("running", "agent") if s.needs_input.is_some() => "needs-input",
         ("running", "agent") if s.working => "working",
         ("running", "agent") => "idle",
         (status, _) => status,
@@ -861,6 +989,12 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     Up Down Left Right Home End PageUp PageDown
                                     Delete Insert F1-F12, C-x (Ctrl), M-x (Alt),
                                     S-x (Shift). Other words are typed.
+    mmux answer <t> <2|yes|no|text> Answer an agent that needs input: pick a choice
+                                    of the prompt on its screen by number, yes/no
+                                    or option text (moves its cursor, presses
+                                    Enter); y/n for a [y/n] line; with no prompt
+                                    on screen, the text is typed as a reply.
+                                    --dismiss clears its notification instead.
     mmux new agent [template] [-p project] [--prompt "<first prompt>"]
     mmux new terminal [-p project] [--cmd "<command>"]
     mmux start <t>                  Start a session that isn't running (processes too)
@@ -876,10 +1010,15 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     Block until the agent has finished working on
                                     what it was sent (--idle, the default), or
                                     with --exit until it ends. Exit 2 on timeout.
+                                    Exit 3 when it needs input instead (a question
+                                    or permission prompt, or a notification): it
+                                    prints the question, choices and screen —
+                                    `mmux answer` it, then wait again.
     mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>
                                     Start an agent (or use --to), give it the
                                     prompt, wait, print its reply. The agent stays
                                     in the sidebar unless --close. `-` = stdin.
+                                    Exits 3 like wait if it stops to ask.
                                     Long waits (ask/wait): run them as a
                                     background job if your shell tool can.
     mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
@@ -910,6 +1049,9 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     the workspace manifest) — the TUI's `R`. Run it
                                     after editing mmux.yaml; fails with the parse
                                     error if a config doesn't load.
+
+An agent's state is `working`, `idle`, or `needs-input`: blocked on a question,
+a permission prompt or a notification it raised, until input reaches it.
 
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get
@@ -1042,6 +1184,7 @@ mod tests {
             status: "running".into(),
             working,
             attention: false,
+            needs_input: None,
             title: None,
             error: None,
             idle_for_ms: Some(idle),
@@ -1074,6 +1217,68 @@ mod tests {
         let mut gone = agent(false, 0, Some(10), false);
         gone.status = "exited".into();
         assert!(is_idle(&gone, settle));
+    }
+
+    fn asking(since_ms: u64) -> SessionInfo {
+        let mut s = agent(false, since_ms, Some(9000), true);
+        s.needs_input = Some(crate::control::NeedsInput {
+            since_ms,
+            prompt: crate::prompt::parse(&[
+                "Do you want to proceed?".to_string(),
+                "❯ 1. Yes".to_string(),
+                "  2. No, and tell Claude what to do differently (esc)".to_string(),
+            ]),
+            notification: Some("Claude needs your permission to use Bash".into()),
+            screen: vec!["$ rm -rf build".into()],
+        });
+        s
+    }
+
+    #[test]
+    fn a_waiting_question_ends_wait_once_it_has_held() {
+        assert!(is_asking(&asking(800)));
+        // A menu that only just appeared may be passing through mid-turn.
+        assert!(!is_asking(&asking(100)));
+        assert!(!is_asking(&agent(false, 5000, None, false)));
+        let mut gone = asking(800);
+        gone.status = "exited".into();
+        assert!(!is_asking(&gone));
+        assert_eq!(state(&asking(800)), "needs-input");
+    }
+
+    #[test]
+    fn the_needs_input_report_says_what_and_how_to_answer() {
+        let report = needs_input_report(&asking(800));
+        assert!(report.starts_with("s1 Claude #1 needs input"), "{report}");
+        assert!(report.contains("asks: Do you want to proceed?"), "{report}");
+        assert!(report.contains("❯ 1. Yes"), "{report}");
+        assert!(report.contains("notification: Claude needs your permission"));
+        assert!(report.contains("$ rm -rf build"));
+        assert!(report.contains("mmux answer s1 1-2, yes/no"), "{report}");
+    }
+
+    #[test]
+    fn answer_takes_a_choice_text_or_dismiss() {
+        let a = parse(&args(&["answer", "s3", "don't", "ask", "again"])).unwrap();
+        assert_eq!(
+            build(&a).unwrap(),
+            Cmd::Answer {
+                target: "s3".into(),
+                answer: Some("don't ask again".into()),
+                dismiss: false,
+            }
+        );
+        let a = parse(&args(&["answer", "s3", "--dismiss"])).unwrap();
+        assert_eq!(
+            build(&a).unwrap(),
+            Cmd::Answer {
+                target: "s3".into(),
+                answer: None,
+                dismiss: true,
+            }
+        );
+        assert!(build(&parse(&args(&["answer", "s3"])).unwrap()).is_err());
+        assert!(build(&parse(&args(&["answer"])).unwrap()).is_err());
     }
 
     #[test]

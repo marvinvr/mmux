@@ -56,7 +56,8 @@ handles it). See [Installation](02-installation.md#from-source).
 
 `cargo test` covers the pure, easily-isolated pieces: `keymap::encode_key`, the `input.rs`
 event-boundary repair plus cell/selection geometry (`cell_at`, `Selection::ordered`), the
-`pane.rs` mouse-sequence encoding and top-aligned-scroll-region history regression,
+`pane.rs` mouse-sequence encoding, notification latch and top-aligned-scroll-region history
+regression, the `prompt.rs` menu/`[y/n]` detection and answer planning,
 the `picker.rs` fuzzy score, `notify.rs` escape formatting, the `config/` module (the
 project-over-global `merge` precedence in `config/mod.rs` and the comment-preserving YAML splicer in
 `config/yaml.rs`), `git::parse_change` porcelain parsing
@@ -137,8 +138,10 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
 - **Copy is drag-select only.** A keyboard copy-mode is still future. (Note: over a program that
   tracks the mouse, the drag goes to *it* — hold Shift to drag-select for the clipboard instead.)
 - **Agent activity is protocol-first.** `OSC 9;4` progress state is authoritative when present,
-  with animated terminal titles as the compatibility fallback. Attention notifications remain
-  separate and key off the bell or notification OSCs (9/777/99).
+  with animated terminal titles as the compatibility fallback. Needing input outranks both: a
+  menu or `[y/n]` prompt read off the screen, or a bell/notification OSC (9/777/99) no input has
+  answered. Prompt detection is a heuristic over the screen text (`prompt.rs`), so a menu drawn
+  without a cursor glyph or a selection hint isn't recognized — its notification still is.
 - **Workspace manifests are flat and structural.** They do not nest, and there is no limit on how
   many member folders they load. `R` adds and removes folders live; removal kills that member's panes and compacts runtime
   project indices without touching its Git worktree. Reordering members needs a reopen. Restore

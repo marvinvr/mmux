@@ -556,7 +556,14 @@ process itself.
   `worked_since_input` and `input_pending`. `wait` and `ask` are **client-side** loops polling
   `status` every 250 ms (`ctl.rs`): done = not working, nothing queued, quiet for the settle time,
   and it worked since the input (or never got any, or ignored it for 20 s — a reply too fast to be
-  seen working). For a Claude agent that was sent input, the transcript is a second gate
+  seen working). Before any of that, an agent that **needs input** (`Session::asking`, reported as
+  `needs_input`) ends the wait with exit 3 in either mode, once it has held for 0.5 s: blocked on a
+  question, it would otherwise never finish. `asking` is a prompt read off the live screen
+  (`prompt.rs`, sampled each tick by `Session::observe`) or the pane's notification latch, which
+  only input clears (`Pane::input`, the path every keystroke, paste, click and control write takes —
+  not wheel or motion forwarding, nor terminal replies). `observe` classifies a latch once, when it
+  first appears: from an agent quiet for 30 s it is a reminder, not a question. `busy()` is false
+  while asking, so the spinner, `working` and the close-confirmation all agree. For a Claude agent that was sent input, the transcript is a second gate
   (`agent::claude_turn`, read only once the screen says done): a record dated after the input must
   exist and the turn must be at rest — a final answer, an interruption, a local command's output, or
   a tool call (running or at a permission prompt, which `busy()` tells apart), not a bare prompt, a
@@ -635,7 +642,7 @@ process itself.
   reads it through
   `Session::subtitle/attention/working/take_notifications` (`working` prefers explicit progress
   state and falls back to title-change time, with Codex's `Action Required` title treated as an
-  explicit not-working signal). `Session::busy` (with a fixed ~2s title-fallback window) is the single
+  explicit not-working signal, and an agent asking for input never working). `Session::busy` (with a fixed ~2s title-fallback window) is the single
   "is this agent actively working" predicate — it's what both spins the sidebar glyph and gates the
   close-confirmation, so the prompt fires for exactly the agents that show a spinner.
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader
@@ -688,6 +695,7 @@ process itself.
 | Eviction on *start*, not on selection | An earlier build moved the stack after the cursor rested in a checkout. A process restarting because of where you navigated is surprising and unaskable-for; making the start gesture carry the eviction keeps the same ports-invariant with no timer, no thrash, and nothing happening behind your back. The drain phase is what keeps it correct. |
 | Reap only merged-or-pushed checkouts | Deleting a directory automatically is only defensible when its contents provably live somewhere else. `-d` (never `-D`) keeps the branch when git disagrees. |
 | Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
+| Needing input outranks working | An agent at a permission prompt can keep its progress or title animated; reported as working, a `wait` on it never returned. A question on screen or an unanswered notification means nothing moves until someone answers, so that state wins — and it's cleared by input, not by looking, because a question is still open until it's answered. |
 | `wait`/`ask`/`last` do their work in the client | Polling `status` and reading transcript files client-side keeps the server stateless and the UI thread free of blocking waits and file IO; the working signal is the sidebar's own, so "done" means what the user sees. |
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |

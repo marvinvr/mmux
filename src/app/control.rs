@@ -23,9 +23,10 @@ use super::nav::Nav;
 use super::session::{Kind, Session, Status};
 use super::{App, Focus};
 use crate::control::{
-    Cmd, CommitDone, CommitThen, Done, Hello, LastInfo, Listing, NewKind, ProjectInfo, ReadOut,
-    ReloadDone, Request, Response, SessionInfo, StatusInfo, WorktreeDone,
+    Cmd, CommitDone, CommitThen, Done, Hello, LastInfo, Listing, NeedsInput, NewKind, ProjectInfo,
+    ReadOut, ReloadDone, Request, Response, SessionInfo, StatusInfo, WorktreeDone,
 };
+use crate::prompt::Plan;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -37,6 +38,9 @@ const MAX_PER_TICK: usize = 16;
 const ENTER_DELAY: Duration = Duration::from_millis(150);
 /// Gap between named keys, so `Escape` then `i` isn't read as one `Alt+i`.
 const KEY_GAP: Duration = Duration::from_millis(30);
+/// Gap between the cursor moves and the Enter of an `answer` — wider than
+/// [`KEY_GAP`], so a menu has redrawn its selection before Enter reads it.
+const ANSWER_GAP: Duration = Duration::from_millis(80);
 /// `mmux new` refuses callers this deep: an agent may start agents that start agents,
 /// but no further (see [`Session::depth`]).
 const DEPTH_LIMIT: u32 = 3;
@@ -45,6 +49,9 @@ const STATUS_LINES: usize = 5;
 /// How far back the status line looks for those lines. Bounded, because `status` is
 /// what `mmux wait` polls several times a second.
 const STATUS_TAIL: usize = 60;
+/// How many non-empty screen lines come with a [`NeedsInput`] — enough for a
+/// permission prompt's command as well as its choices.
+const ASKING_LINES: usize = 15;
 /// The screen tail `last` falls back to when there's no transcript to read.
 const LAST_SCREEN_LINES: usize = 40;
 /// A first prompt typed into an agent (one that can't take it as a launch argument)
@@ -124,10 +131,12 @@ impl App {
         self.flush_deferred_input();
     }
 
-    /// Stamp every agent seen working this tick — the sidebar spinner's own predicate.
+    /// Stamp every agent seen working this tick — the sidebar spinner's own predicate —
+    /// after re-reading what each may be [asking](Session::asking).
     fn track_activity(&mut self) {
         let now = Instant::now();
         for s in &mut self.sessions {
+            s.observe();
             if s.kind == Kind::Agent && s.busy() {
                 s.last_working_at = Some(now);
             }
@@ -259,6 +268,14 @@ impl App {
             Cmd::Keys { target, keys } => {
                 let i = self.resolve_target(req, target)?;
                 self.control_keys(i, keys)
+            }
+            Cmd::Answer {
+                target,
+                answer,
+                dismiss,
+            } => {
+                let i = self.resolve_target(req, target)?;
+                self.control_answer(i, answer.as_deref(), *dismiss)
             }
             Cmd::New {
                 kind,
@@ -416,6 +433,12 @@ impl App {
             // The sidebar spinner's own predicate, so "working" means what you see.
             working,
             attention: s.attention(),
+            needs_input: s.asking().map(|a| NeedsInput {
+                since_ms: ms(a.since),
+                prompt: a.prompt,
+                notification: a.notification,
+                screen: screen_tail(s, ASKING_LINES),
+            }),
             title: s.pane.as_ref().map(|p| p.title()).filter(|t| !t.is_empty()),
             error: s.error.clone(),
             idle_for_ms: match working {
@@ -478,6 +501,66 @@ impl App {
         }
         self.sessions[i].last_input_at = Some(Instant::now());
         self.flush_deferred_input();
+    }
+
+    /// `answer`: pick from the prompt on the agent's screen (re-read now, not the
+    /// tick's copy, so the moves start from where its cursor is), answer its `[y/n]`
+    /// line, or type a reply when nothing is on screen to pick from. Either way it's
+    /// input the agent should act on, so `wait` afterwards waits for that work.
+    fn control_answer(&mut self, i: usize, answer: Option<&str>, dismiss: bool) -> Reply {
+        let s = &self.sessions[i];
+        let Some(pane) = s.pane.as_ref().filter(|p| p.is_running()) else {
+            return Err(format!("“{}” is not running — nothing to answer", s.name));
+        };
+        if s.kind != Kind::Agent {
+            return Err(format!(
+                "“{}” is not an agent — use `mmux send`/`mmux keys`",
+                s.name
+            ));
+        }
+        let (id, flags) = (s.id, pane.kitty_flags());
+        let prompt = crate::prompt::parse(&pane.screen_lines());
+        if dismiss {
+            pane.dismiss();
+            let verb = match prompt {
+                Some(_) => "dismissed the notification of (its prompt stays until answered)",
+                None => "dismissed the notification of",
+            };
+            return self.control_done(i, verb);
+        }
+        let answer = answer.map(str::trim).filter(|a| !a.is_empty()).ok_or(
+            "`mmux answer` needs an answer: a choice number, yes/no, an option's text, or --dismiss",
+        )?;
+        let plan = crate::prompt::plan(prompt.as_ref(), answer).map_err(|e| {
+            match prompt.as_ref().filter(|p| !p.choices.is_empty()) {
+                Some(p) => format!("{e} — choices: {}", crate::prompt::list(&p.choices)),
+                None => e,
+            }
+        })?;
+        let verb = match plan {
+            Plan::Select { moves, choice } => {
+                let key = if moves < 0 { "Up" } else { "Down" };
+                let mut gap = Duration::ZERO;
+                for _ in 0..moves.unsigned_abs() {
+                    let bytes = parse_key_name(key).map(|k| encode_key(&k, flags));
+                    self.queue_input(id, gap, bytes.unwrap_or_default());
+                    gap = ANSWER_GAP;
+                }
+                let enter = parse_key_name("Enter").map(|k| encode_key(&k, flags));
+                self.queue_input(id, gap, enter.unwrap_or_else(|| b"\r".to_vec()));
+                self.sessions[i].last_input_at = Some(Instant::now());
+                self.flush_deferred_input();
+                format!("picked “{}. {}” for", choice.n, choice.label)
+            }
+            Plan::Type(text) => {
+                self.type_input(i, &text, true);
+                match prompt {
+                    Some(_) => format!("answered “{text}” to"),
+                    None => format!("typed “{text}” (no prompt on screen) into"),
+                }
+            }
+        };
+        self.control_done(i, &verb)
     }
 
     fn control_keys(&mut self, i: usize, keys: &[String]) -> Reply {
@@ -977,7 +1060,7 @@ To go ahead, run the same command again with --confirm."
                 .find(|s| s.id == d.id)
                 .and_then(|s| s.pane.as_ref())
             {
-                p.send(d.bytes);
+                p.input(d.bytes);
             }
         }
     }
@@ -1183,6 +1266,11 @@ fn check_depth(req: &Request) -> Result<(), String> {
 /// The last few non-empty lines of a session's buffer — where an agent keeps its own
 /// status line and input box. Empty for a session with no pane.
 fn status_line(s: &Session) -> Vec<String> {
+    screen_tail(s, STATUS_LINES)
+}
+
+/// The last `n` non-empty lines of a session's buffer (looking back [`STATUS_TAIL`]).
+fn screen_tail(s: &Session, n: usize) -> Vec<String> {
     let text = s
         .pane
         .as_ref()
@@ -1193,7 +1281,7 @@ fn status_line(s: &Session) -> Vec<String> {
         .rev()
         .map(str::trim_end)
         .filter(|l| !l.trim().is_empty())
-        .take(STATUS_LINES)
+        .take(n)
         .map(str::to_string)
         .collect();
     lines.reverse();

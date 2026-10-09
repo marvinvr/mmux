@@ -43,6 +43,13 @@ pub struct PaneEvents {
     pub progress_active: Option<bool>,
     /// Latched on bell; cleared when the user views/interacts with the pane.
     pub bell: bool,
+    /// When the program first asked for someone — a bell or a notification OSC —
+    /// since input last reached it, with the latest notification's text. Unlike
+    /// [`bell`](Self::bell), looking at the pane doesn't clear it: only input does
+    /// ([`Pane::input`]), because a question is still open until it's answered.
+    pub asked: Option<(Instant, Option<String>)>,
+    /// When user or control input last reached the program (see [`Pane::input`]).
+    pub input_at: Option<Instant>,
     /// Notifications captured since the last drain — one per bell ring or
     /// notification OSC. Drained by the app each loop via `Pane::take_notifications`.
     pub notifications: Vec<Notify>,
@@ -61,6 +68,8 @@ impl PaneEvents {
             title_changed_at: None,
             progress_active: None,
             bell: false,
+            asked: None,
+            input_at: None,
             notifications: Vec::new(),
             kitty_flags: Vec::new(),
             replies: Some(replies),
@@ -69,6 +78,17 @@ impl PaneEvents {
 
     fn kitty_flags(&self) -> u8 {
         self.kitty_flags.last().copied().unwrap_or(0)
+    }
+
+    /// Record a captured notification, latching [`asked`](Self::asked): its time stays
+    /// the first one's, its text becomes the latest one that had any.
+    fn notify(&mut self, note: Notify) {
+        let text = note.body.clone().or_else(|| note.title.clone());
+        self.asked = Some(match self.asked.take() {
+            Some((at, prev)) => (at, text.or(prev)),
+            None => (Instant::now(), text),
+        });
+        self.notifications.push(note);
     }
 }
 
@@ -89,11 +109,11 @@ impl vt100::Callbacks for PaneEvents {
     }
     fn audible_bell(&mut self, _: &mut vt100::Screen) {
         self.bell = true;
-        self.notifications.push(Notify::default());
+        self.notify(Notify::default());
     }
     fn visual_bell(&mut self, _: &mut vt100::Screen) {
         self.bell = true;
-        self.notifications.push(Notify::default());
+        self.notify(Notify::default());
     }
     /// Terminal capability negotiation is terminal I/O rather than screen state.
     /// Answer the primary device-attributes query and Kitty's enhanced-keyboard
@@ -162,7 +182,7 @@ impl vt100::Callbacks for PaneEvents {
             Some(b"9") if params.len() == 2 => {
                 let body = text(params[1]);
                 if !body.is_empty() {
-                    self.notifications.push(Notify {
+                    self.notify(Notify {
                         title: None,
                         body: Some(body),
                     });
@@ -173,13 +193,13 @@ impl vt100::Callbacks for PaneEvents {
                 let title = Some(text(params[2])).filter(|t| !t.is_empty());
                 let body = params.get(3).map(|b| text(b)).filter(|b| !b.is_empty());
                 if title.is_some() || body.is_some() {
-                    self.notifications.push(Notify { title, body });
+                    self.notify(Notify { title, body });
                 }
             }
             // OSC 99 (kitty) — best-effort: surface the trailing payload as the body.
             Some(b"99") if params.len() >= 2 => {
                 if let Some(body) = params.last().map(|b| text(b)).filter(|b| !b.is_empty()) {
-                    self.notifications.push(Notify {
+                    self.notify(Notify {
                         title: None,
                         body: Some(body),
                     });
@@ -386,6 +406,39 @@ impl Pane {
 
     pub fn send(&self, bytes: Vec<u8>) {
         let _ = self.tx.send(Bytes::from(bytes));
+    }
+
+    /// [`send`](Self::send) for input someone typed or a control caller sent — keys, a
+    /// paste, a click — as opposed to a forwarded wheel or motion event. It answers
+    /// whatever the program [asked](Self::asked), so the latch clears.
+    pub fn input(&self, bytes: Vec<u8>) {
+        if let Ok(mut p) = self.parser.lock() {
+            let events = p.callbacks_mut();
+            events.asked = None;
+            events.input_at = Some(Instant::now());
+        }
+        self.send(bytes);
+    }
+
+    /// The program's open request for attention: when it first rang or notified since
+    /// the last input, and the latest notification text.
+    pub fn asked(&self) -> Option<(Instant, Option<String>)> {
+        self.parser
+            .lock()
+            .ok()
+            .and_then(|p| p.callbacks().asked.clone())
+    }
+
+    /// Clear [`asked`](Self::asked) without sending anything (`mmux answer --dismiss`).
+    pub fn dismiss(&self) {
+        if let Ok(mut p) = self.parser.lock() {
+            p.callbacks_mut().asked = None;
+        }
+    }
+
+    /// When [`input`](Self::input) last reached the program.
+    pub fn input_at(&self) -> Option<Instant> {
+        self.parser.lock().ok().and_then(|p| p.callbacks().input_at)
     }
 
     /// Active Kitty progressive-keyboard flags requested by this pane's program.
@@ -687,6 +740,20 @@ impl Pane {
         Some(out)
     }
 
+    /// The live screen's rows as text, top to bottom — what the program shows now,
+    /// whatever the user has scrolled the view to.
+    pub fn screen_lines(&self) -> Vec<String> {
+        let Ok(mut p) = self.parser.lock() else {
+            return Vec::new();
+        };
+        let saved = p.screen().scrollback();
+        p.screen_mut().set_scrollback(0);
+        let cols = p.screen().size().1;
+        let rows = p.screen().rows(0, cols).collect();
+        p.screen_mut().set_scrollback(saved);
+        rows
+    }
+
     /// The last `max` lines of the whole buffer — scrollback, then the live screen —
     /// as plain text, soft-wrapped rows joined and trailing blank lines dropped (`0`
     /// means everything). What `mmux read` returns; independent of where the user has
@@ -855,6 +922,28 @@ fn mouse_seq(
 mod tests {
     use super::*;
     use vt100::MouseProtocolEncoding::{Default as Legacy, Sgr};
+
+    /// A bell or notification OSC latches `asked` — first time kept, latest text won —
+    /// and progress reports don't.
+    #[test]
+    fn notifications_latch_asked_with_the_latest_text() {
+        let (tx, _rx) = mpsc::channel();
+        let mut parser = vt100::Parser::new_with_callbacks(2, 20, 0, PaneEvents::new(tx));
+        parser.process(b"\x1b]9;4;3\x07");
+        assert!(parser.callbacks().asked.is_none());
+        parser.process(b"\x07");
+        let (first, text) = parser.callbacks().asked.clone().unwrap();
+        assert_eq!(text, None);
+        parser.process(b"\x1b]9;Claude needs your permission to use Bash\x07");
+        let (at, text) = parser.callbacks().asked.clone().unwrap();
+        assert_eq!(at, first);
+        assert_eq!(
+            text.as_deref(),
+            Some("Claude needs your permission to use Bash")
+        );
+        parser.process(b"\x07");
+        assert!(parser.callbacks().asked.as_ref().unwrap().1.is_some());
+    }
 
     #[test]
     fn kitty_keyboard_negotiation_reports_only_supported_flags() {

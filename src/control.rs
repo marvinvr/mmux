@@ -100,6 +100,17 @@ pub enum Cmd {
     },
     /// Press named keys (`Enter`, `C-c`, `Escape`, `Up`, …); unknown words are typed.
     Keys { target: String, keys: Vec<String> },
+    /// Answer what an agent is asking: pick a choice of the prompt on its screen by
+    /// number, `yes`/`no` or its text (cursor keys + Enter), answer a `[y/n]` line, or —
+    /// with no prompt on screen — type `answer` as a reply. `dismiss` instead clears its
+    /// notification without typing anything.
+    Answer {
+        target: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        answer: Option<String>,
+        #[serde(default)]
+        dismiss: bool,
+    },
     /// Start a new agent (from a template) or terminal (optionally running `command`).
     New {
         kind: NewKind,
@@ -253,6 +264,10 @@ pub struct SessionInfo {
     pub working: bool,
     /// It rang the bell / raised a notification you haven't looked at.
     pub attention: bool,
+    /// An agent waiting on someone — a question or permission prompt on its screen, or
+    /// a notification no input has answered yet. Never `working` at the same time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_input: Option<NeedsInput>,
     /// The program's terminal title (the sidebar subtitle).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -287,6 +302,22 @@ pub struct SessionInfo {
 
 fn is_zero(n: &usize) -> bool {
     *n == 0
+}
+
+/// What an agent is waiting on: what `wait` stops for and `answer` answers.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct NeedsInput {
+    /// How long it has been waiting.
+    pub since_ms: u64,
+    /// The question on its screen and its choices, when mmux could read them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<crate::prompt::Prompt>,
+    /// The text of the notification it raised.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notification: Option<String>,
+    /// The last non-empty lines of its screen: the context the question comes with.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub screen: Vec<String>,
 }
 
 /// A project, as `ls` reports it.
@@ -658,6 +689,15 @@ mod tests {
         assert!(matches!(req.cmd, Cmd::Send { enter: true, .. }));
         let req: Request = serde_json::from_str(r#"{"cmd":"reload"}"#).unwrap();
         assert_eq!(req.cmd, Cmd::Reload);
+        let req: Request = serde_json::from_str(r#"{"cmd":"answer","target":"s1"}"#).unwrap();
+        assert_eq!(
+            req.cmd,
+            Cmd::Answer {
+                target: "s1".into(),
+                answer: None,
+                dismiss: false
+            }
+        );
         let req: Request = serde_json::from_str(r#"{"cmd":"new","kind":"terminal"}"#).unwrap();
         assert!(matches!(
             req.cmd,

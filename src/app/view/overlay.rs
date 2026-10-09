@@ -147,6 +147,7 @@ pub(crate) fn render_projects(
 
 fn project_status_line(app: &App, pi: usize) -> Line<'static> {
     let mut working = 0;
+    let mut asking = 0;
     let mut ready = 0;
     let mut failed = 0;
     for s in app
@@ -155,7 +156,9 @@ fn project_status_line(app: &App, pi: usize) -> Line<'static> {
         .filter(|s| s.project == pi && s.kind == Kind::Agent)
     {
         if s.is_running() {
-            if s.busy() {
+            if s.needs_input() {
+                asking += 1;
+            } else if s.busy() {
                 working += 1;
             } else {
                 ready += 1;
@@ -166,7 +169,7 @@ fn project_status_line(app: &App, pi: usize) -> Line<'static> {
     }
 
     let mut spans = vec![Span::raw("    ")];
-    if working + ready + failed == 0 {
+    if working + asking + ready + failed == 0 {
         spans.push(Span::styled(
             "agents —",
             Style::default().fg(Color::DarkGray),
@@ -180,6 +183,14 @@ fn project_status_line(app: &App, pi: usize) -> Line<'static> {
             spans.push(Span::styled(
                 format!("{}{}", app.spinner(), working),
                 Style::default().fg(Color::Gray),
+            ));
+        }
+        if asking > 0 {
+            spans.push(Span::styled(
+                format!(" ?{asking}"),
+                Style::default()
+                    .fg(super::theme::ASK)
+                    .add_modifier(Modifier::BOLD),
             ));
         }
         if ready > 0 {

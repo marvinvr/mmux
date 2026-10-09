@@ -18,6 +18,7 @@ use ratatui::Frame;
 #[derive(Default)]
 struct AgentActivity {
     working: usize,
+    asking: usize,
     ready: usize,
     failed: usize,
 }
@@ -254,7 +255,9 @@ impl App {
             .filter(|s| s.project == pi && s.kind == Kind::Agent)
         {
             if s.is_running() {
-                if s.busy() {
+                if s.needs_input() {
+                    activity.asking += 1;
+                } else if s.busy() {
                     activity.working += 1;
                 } else {
                     activity.ready += 1;
@@ -276,6 +279,17 @@ impl App {
             spans.push(Span::styled(
                 format!("{} {} working", self.spinner(), activity.working),
                 Style::default().fg(Color::Gray),
+            ));
+        }
+        if activity.asking > 0 {
+            if !spans.is_empty() {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                format!("? {} asking", activity.asking),
+                Style::default()
+                    .fg(super::theme::ASK)
+                    .add_modifier(Modifier::BOLD),
             ));
         }
         if activity.ready > 0 {
@@ -584,8 +598,8 @@ impl App {
                         width,
                     ),
                     // Agents/terminals: the leading glyph + name color carry the whole
-                    // state (busy → gray spinner, needs-you → green `●`, stopped → dim
-                    // `○`), so there's no separate trailing dot.
+                    // state (busy → gray spinner, asking → yellow `?`, needs-you → green
+                    // `●`, stopped → dim `○`), so there's no separate trailing dot.
                     //
                     // An *agent* "needs you" when its explicit progress state is clear,
                     // falling back to a title that has gone static for older agents. This
@@ -605,8 +619,14 @@ impl App {
                             Kind::Agent => self.spinner(),
                             _ => "·",
                         };
-                        let (glyph, base) =
-                            agent_glyph_style(s.status(), attn, s.error.is_some(), working);
+                        // An agent blocked on a question outranks every other state:
+                        // it stays `?` until input reaches it, even while viewed.
+                        let (glyph, base) = match s.kind == Kind::Agent && s.needs_input() {
+                            true => super::theme::asking_glyph_style(),
+                            false => {
+                                agent_glyph_style(s.status(), attn, s.error.is_some(), working)
+                            }
+                        };
                         // A session another one started sits a step in under its spawner.
                         let indent = "  ".repeat(self.nest_depth(i));
                         entry_line(

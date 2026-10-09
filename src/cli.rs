@@ -193,9 +193,10 @@ CONTROL (drive a running session from scripts/agents; add --json for JSON):
     mmux ls                     Projects and sessions with ids (s3), state, title
     mmux status|read <t>        A session's state + status line / its output
     mmux send <t> <text>        Type a prompt and press Enter  ·  mmux keys <t> C-c …
+    mmux answer <t> <2|yes|no|text>  Answer an agent's question/permission prompt
     mmux new agent|terminal     Start one (-p project, template, --prompt, --cmd)
     mmux start|stop|restart|close <t>
-    mmux wait|last <t>          Wait until an agent is done · print its last reply
+    mmux wait|last <t>          Wait until an agent is done (exit 3: needs input) · its reply
     mmux ask "<prompt>"         New agent (or --to <t>), wait, print its reply
     mmux worktree new|rm        Cut a worktree (+ --agent/--prompt) · remove one
     mmux reload                 Reload the config live, like R (after editing mmux.yaml)
@@ -406,9 +407,12 @@ CONTROL — drive a running session from scripts and agents
       mmux new agent claude          # start an agent (-p project) -> prints its id
       mmux send s12 "fix the failing test"   # type a prompt + Enter (`-` = stdin)
       mmux keys s12 Escape           # press keys: Enter C-c Up Tab …
+      mmux answer s12 2              # pick option 2 of its question/permission
+                                     #   prompt (yes/no/option text work too)
       mmux start|stop|restart "Dev server"   # stop on an agent/terminal = close
       mmux close s12 [--force]       # close an agent/terminal (busy ⇒ --force)
-      mmux wait s12                  # block until the agent has finished working
+      mmux wait s12                  # block until the agent has finished working;
+                                     #   exit 3 if it needs input instead
       mmux last s12                  # its last reply (from its transcript)
       mmux ask "why is CI red?"      # new agent -> wait -> print its reply; the
                                      #   agent stays in the sidebar (--close drops it,
@@ -419,9 +423,12 @@ CONTROL — drive a running session from scripts and agents
       mmux commit --in 2h --push                # like S; `mmux commit cancel`
       mmux reload                    # like R: apply an edited mmux.yaml live
 
-    An agent's state is `working` exactly when its sidebar row spins, `idle`
-    otherwise; `wait`/`ask` treat an agent as done once it stops working on
-    what it was sent. `new agent --prompt "…"` starts one with a first prompt.
+    An agent's state is `working` exactly when its sidebar row spins,
+    `needs-input` (a yellow `?`) when it waits on a question, a permission
+    prompt or a notification it raised — until input reaches it — and `idle`
+    otherwise. `wait`/`ask` treat an agent as done once it stops working on
+    what it was sent, and stop with exit 3 and the question, its choices and
+    the screen when it needs input; `mmux answer` picks a choice. `new agent --prompt "…"` starts one with a first prompt.
     Programs in mmux panes get MMUX_SOCKET, MMUX_SESSION (their own id),
     MMUX_PROJECT and MMUX_DEPTH; `mmux new` refuses at depth 3. Detected agents
     (Claude/Codex/Pi/Grok) get a short note appended to their system prompt

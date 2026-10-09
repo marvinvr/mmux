@@ -790,7 +790,7 @@ impl App {
 
     fn send_focused(&self, bytes: Vec<u8>) {
         if let Some(p) = self.focused_pane() {
-            p.send(bytes);
+            p.input(bytes);
         }
     }
 

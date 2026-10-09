@@ -7,6 +7,7 @@
 
 use crate::config::{AgentDef, ProcessDef};
 use crate::pane::{Notify, Pane};
+use crate::prompt::Prompt;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -26,6 +27,15 @@ const TITLE_IDLE: Duration = Duration::from_secs(2);
 /// How long after a launch an agent's activity is taken for start-up noise rather
 /// than work, as far as [`Session::idle_for`] is concerned.
 const STARTUP_GRACE: Duration = Duration::from_secs(30);
+
+/// How long a prompt still on screen after input is taken for the program not having
+/// redrawn yet, rather than for it asking again.
+const PROMPT_INPUT_GRACE: Duration = Duration::from_millis(750);
+
+/// A notification from an agent that had already been quiet this long is a reminder
+/// ("Claude is waiting for your input", a minute after it finished), not a question:
+/// it leaves the agent in the plain idle state.
+const REMINDER_AFTER: Duration = Duration::from_secs(30);
 
 /// Which sidebar bucket a session belongs to. Drives ordering, the badge, and
 /// the placeholder wording — never the lifecycle, which is identical for all.
@@ -176,6 +186,23 @@ pub struct Session {
     /// by the app when the row is created and refreshed on reload; ignored without
     /// [`agent`](Self::agent).
     pub mmux_note: Option<String>,
+    /// The question on this agent's screen ([`crate::prompt`]) and since when it has
+    /// been there. Re-read every tick by [`observe`](Self::observe).
+    pub prompt: Option<(Prompt, Instant)>,
+    /// The pane's open notification latch, as [`observe`](Self::observe) classified it
+    /// when it first appeared: its time, and whether it counts as a question (see
+    /// [`REMINDER_AFTER`]).
+    notice: Option<(Instant, bool)>,
+}
+
+/// What an agent is waiting on someone for — see [`Session::asking`].
+pub struct Asking {
+    /// When it started waiting.
+    pub since: Instant,
+    /// The question on its screen, when one could be read.
+    pub prompt: Option<Prompt>,
+    /// The text of the notification it raised, if it raised one with text.
+    pub notification: Option<String>,
 }
 
 impl Session {
@@ -205,6 +232,8 @@ impl Session {
             idle_carry: Duration::ZERO,
             first_prompt: None,
             mmux_note: None,
+            prompt: None,
+            notice: None,
         }
     }
 
@@ -367,12 +396,79 @@ impl Session {
         self.pane.as_ref().map(Pane::attention).unwrap_or(false)
     }
 
+    /// Sample what a running agent may be waiting on: re-read its screen for a
+    /// [prompt](crate::prompt), and classify a newly latched notification while
+    /// `last_working_at` still says when it last worked. Called every tick, before the
+    /// activity stamp (`track_activity`).
+    pub fn observe(&mut self) {
+        let pane = self
+            .pane
+            .as_ref()
+            .filter(|p| self.kind == Kind::Agent && p.is_running());
+        let Some(pane) = pane else {
+            self.prompt = None;
+            self.notice = None;
+            return;
+        };
+        let found = crate::prompt::parse(&pane.screen_lines());
+        self.prompt = match (found, self.prompt.take()) {
+            (Some(p), Some((_, since))) => Some((p, since)),
+            (Some(p), None) => Some((p, Instant::now())),
+            (None, _) => None,
+        };
+        let asked = pane.asked().map(|(at, _)| at);
+        self.notice = match (asked, self.notice) {
+            (None, _) => None,
+            (Some(at), Some(seen)) if seen.0 == at => Some(seen),
+            (Some(at), _) => Some((at, !reminder(at, self.last_working_at.or(self.launched_at)))),
+        };
+    }
+
+    /// What this agent is waiting on someone for, if anything: a question on its screen
+    /// (one input just answered gets [`PROMPT_INPUT_GRACE`] to go away), or a bell or
+    /// notification it raised that no input has answered yet — unless that was only a
+    /// reminder (see [`REMINDER_AFTER`]). Only agents ask; it overrides
+    /// [`working`](Self::working).
+    pub fn asking(&self) -> Option<Asking> {
+        let pane = self
+            .pane
+            .as_ref()
+            .filter(|p| self.kind == Kind::Agent && p.is_running())?;
+        let answered = pane
+            .input_at()
+            .is_some_and(|t| t.elapsed() < PROMPT_INPUT_GRACE);
+        let prompt = self.prompt.as_ref().filter(|_| !answered);
+        let notice = self
+            .notice
+            .filter(|&(_, question)| question)
+            .and_then(|_| pane.asked());
+        let since = match (prompt, &notice) {
+            (None, None) => return None,
+            (Some((_, a)), Some((b, _))) => (*a).min(*b),
+            (Some((_, a)), None) => *a,
+            (None, Some((b, _))) => *b,
+        };
+        Some(Asking {
+            since,
+            prompt: prompt.map(|(p, _)| p.clone()),
+            notification: notice.and_then(|(_, text)| text),
+        })
+    }
+
+    /// Whether this agent is [asking](Self::asking) for someone — the sidebar's `?`.
+    pub fn needs_input(&self) -> bool {
+        self.asking().is_some()
+    }
+
     /// Whether this session looks like it's actively working. OSC 9;4 progress is
     /// authoritative when the program emits it; animated terminal titles remain the
     /// fallback for older agents. Codex's `Action Required` title is an explicit idle
-    /// signal even if another activity signal just changed. See the sidebar's `nav_row`.
+    /// signal even if another activity signal just changed, and an agent
+    /// [asking](Self::asking) for someone isn't working whatever its progress or
+    /// title say — it's blocked on an answer. See the sidebar's `nav_row`.
     pub fn working(&self, within: Duration) -> bool {
         self.is_running()
+            && !self.needs_input()
             && self.pane.as_ref().is_some_and(|p| {
                 !p.title().contains("Action Required")
                     && p.progress_active()
@@ -417,6 +513,13 @@ impl Session {
             .map(Pane::take_notifications)
             .unwrap_or_default()
     }
+}
+
+/// Whether a notification raised at `at` by an agent last active at `active` (worked,
+/// or else launched) is a reminder rather than a question: it had been quiet for
+/// [`REMINDER_AFTER`] already.
+fn reminder(at: Instant, active: Option<Instant>) -> bool {
+    active.is_some_and(|t| at.saturating_duration_since(t) >= REMINDER_AFTER)
 }
 
 /// Resolve a config-relative `cwd` against the workspace `dir`.
@@ -502,6 +605,18 @@ mod tests {
         // So does input it was sent, even before it acts on it.
         s.last_input_at = Some(Instant::now());
         assert!(s.idle_for().unwrap() < Duration::from_secs(5));
+    }
+
+    /// A permission prompt notifies as the agent stops working; "still waiting" pings
+    /// come long after it went quiet.
+    #[test]
+    fn a_notification_long_after_the_last_work_is_a_reminder() {
+        let now = Instant::now();
+        let worked = now - Duration::from_secs(2);
+        assert!(!reminder(now, Some(worked)));
+        assert!(reminder(now, Some(now - Duration::from_secs(61))));
+        // Unknown activity: count it as a question.
+        assert!(!reminder(now, None));
     }
 
     #[test]

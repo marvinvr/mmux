@@ -10,6 +10,17 @@ use ratatui::text::{Line, Span};
 /// Red stays for genuine errors.
 pub(crate) const ATTN: Color = Color::Green;
 
+/// "Blocked on you" accent: an agent [asking](crate::app::session::Session::asking) a
+/// question, waiting at a permission prompt, or that raised a notification — louder
+/// than [`ATTN`]'s "done, ready for you", because nothing moves until someone answers.
+pub(crate) const ASK: Color = Color::Yellow;
+
+/// The leading glyph + style of an agent that needs input. It holds until input
+/// reaches the agent — viewing it doesn't clear it.
+pub(crate) fn asking_glyph_style() -> (&'static str, Style) {
+    ("?", Style::default().fg(ASK).add_modifier(Modifier::BOLD))
+}
+
 /// The git diff pager's palette. Added/removed lines carry a subtle full-row **tint**
 /// (dark enough that the syntax-highlit foreground stays legible on top) rather than
 /// flat green/red text, with the `+`/`-` kept as a saturated sign in the gutter — the
