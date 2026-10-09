@@ -96,6 +96,8 @@ struct Args {
     delay: Option<Duration>,
     /// `answer --dismiss`: clear the agent's notification without answering.
     dismiss: bool,
+    /// `answer --text`: type the answer as a reply, whatever is on screen.
+    text: bool,
     /// `worktree rm --confirm`: go through with removing the caller's own worktree.
     /// Deliberately left out of every help text, so an agent only learns it from the
     /// warning a first, unconfirmed attempt prints.
@@ -127,6 +129,7 @@ fn parse(args: &[String]) -> Result<Args> {
             "-f" | "--force" if flags => out.force = true,
             "--confirm" if flags => out.confirm = true,
             "--dismiss" if flags => out.dismiss = true,
+            "--text" if flags => out.text = true,
             "-p" | "--project" if flags => out.project = Some(value(a)?),
             "--cmd" if flags => out.command = Some(value(a)?),
             "--prompt" if flags => out.prompt = Some(value(a)?),
@@ -289,6 +292,8 @@ fn build(a: &Args) -> Result<Cmd> {
                 target: target()?,
                 answer: Some(answer).filter(|t| !t.trim().is_empty()),
                 dismiss: a.dismiss,
+                // `--force` reads as the same thing here: do it anyway.
+                text: a.text || a.force,
             }
         }
         "start" => Cmd::Start { target: target()? },
@@ -993,7 +998,10 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     of the prompt on its screen by number, yes/no
                                     or option text (moves its cursor, presses
                                     Enter); y/n for a [y/n] line; with no prompt
-                                    on screen, the text is typed as a reply.
+                                    on screen, the text is typed as a reply —
+                                    refused if it reads like a choice (2, yes,
+                                    an option label), with the screen shown.
+                                    --text (or --force) types it regardless;
                                     --dismiss clears its notification instead.
     mmux new agent [template] [-p project] [--prompt "<first prompt>"]
     mmux new terminal [-p project] [--cmd "<command>"]
@@ -1266,6 +1274,7 @@ mod tests {
                 target: "s3".into(),
                 answer: Some("don't ask again".into()),
                 dismiss: false,
+                text: false,
             }
         );
         let a = parse(&args(&["answer", "s3", "--dismiss"])).unwrap();
@@ -1275,8 +1284,11 @@ mod tests {
                 target: "s3".into(),
                 answer: None,
                 dismiss: true,
+                text: false,
             }
         );
+        let a = parse(&args(&["answer", "s3", "--text", "yes", "please"])).unwrap();
+        assert!(matches!(build(&a).unwrap(), Cmd::Answer { text: true, .. }));
         assert!(build(&parse(&args(&["answer", "s3"])).unwrap()).is_err());
         assert!(build(&parse(&args(&["answer"])).unwrap()).is_err());
     }

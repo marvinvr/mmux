@@ -145,7 +145,9 @@ impl App {
 
     /// Type each waiting first prompt once its agent's screen has drawn something and
     /// then held still for [`PROMPT_SETTLE`] (or [`PROMPT_MAX_WAIT`] has passed). A
-    /// prompt whose agent has gone or died is dropped.
+    /// prompt whose agent has gone or died is dropped; one whose agent opens on a menu
+    /// (a folder-trust dialog) waits for it to be answered and then starts over, since
+    /// its Enter would otherwise pick whatever the menu's cursor is on.
     fn deliver_pending_prompts(&mut self) {
         if self.prompts.is_empty() {
             return;
@@ -154,14 +156,16 @@ impl App {
         let mut ready: Vec<(u64, String)> = Vec::new();
         let sessions = &self.sessions;
         self.prompts.retain_mut(|p| {
-            let Some(pane) = sessions
-                .iter()
-                .find(|s| s.id == p.id)
-                .and_then(|s| s.pane.as_ref())
-                .filter(|pane| pane.is_running())
-            else {
+            let Some(s) = sessions.iter().find(|s| s.id == p.id) else {
                 return false;
             };
+            let Some(pane) = s.pane.as_ref().filter(|pane| pane.is_running()) else {
+                return false;
+            };
+            if s.prompt.is_some() {
+                (p.since, p.still_since) = (now, now);
+                return true;
+            }
             let screen = pane
                 .with_screen(|s| {
                     let text = s.contents();
@@ -273,9 +277,10 @@ impl App {
                 target,
                 answer,
                 dismiss,
+                text,
             } => {
                 let i = self.resolve_target(req, target)?;
-                self.control_answer(i, answer.as_deref(), *dismiss)
+                self.control_answer(i, answer.as_deref(), *dismiss, *text)
             }
             Cmd::New {
                 kind,
@@ -505,9 +510,16 @@ impl App {
 
     /// `answer`: pick from the prompt on the agent's screen (re-read now, not the
     /// tick's copy, so the moves start from where its cursor is), answer its `[y/n]`
-    /// line, or type a reply when nothing is on screen to pick from. Either way it's
-    /// input the agent should act on, so `wait` afterwards waits for that work.
-    fn control_answer(&mut self, i: usize, answer: Option<&str>, dismiss: bool) -> Reply {
+    /// line, or type a reply when nothing is on screen to pick from (`text`: whatever
+    /// is). Either way it's input the agent should act on, so `wait` afterwards waits
+    /// for that work.
+    fn control_answer(
+        &mut self,
+        i: usize,
+        answer: Option<&str>,
+        dismiss: bool,
+        text: bool,
+    ) -> Reply {
         let s = &self.sessions[i];
         let Some(pane) = s.pane.as_ref().filter(|p| p.is_running()) else {
             return Err(format!("“{}” is not running — nothing to answer", s.name));
@@ -531,10 +543,19 @@ impl App {
         let answer = answer.map(str::trim).filter(|a| !a.is_empty()).ok_or(
             "`mmux answer` needs an answer: a choice number, yes/no, an option's text, or --dismiss",
         )?;
-        let plan = crate::prompt::plan(prompt.as_ref(), answer).map_err(|e| {
-            match prompt.as_ref().filter(|p| !p.choices.is_empty()) {
-                Some(p) => format!("{e} — choices: {}", crate::prompt::list(&p.choices)),
-                None => e,
+        let plan = match text {
+            true => Ok(Plan::Type(answer.to_string())),
+            false => crate::prompt::plan(prompt.as_ref(), answer),
+        };
+        let plan = plan.map_err(|e| match prompt.as_ref() {
+            Some(p) if !p.choices.is_empty() => {
+                format!("{e} — choices: {}", crate::prompt::list(&p.choices))
+            }
+            Some(_) => e,
+            // Refused for want of a readable prompt: show what is there instead.
+            None => {
+                let screen = screen_tail(&self.sessions[i], ASKING_LINES).join("\n");
+                format!("{e}\n--- screen\n{screen}\n---")
             }
         })?;
         let verb = match plan {

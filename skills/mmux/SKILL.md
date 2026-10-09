@@ -160,7 +160,11 @@ mmux answer s14 "use the v2 API"     # no choices on screen: typed as a reply + 
 mmux wait s14 -t 30m && mmux last s14
 ```
 Text that matches no choice, or several, is refused with the list of choices (to type free text
-into a menu, use `send`). If the report says no choices could be read, look at its screen lines;
+into a menu, use `send`). Claude's folder-trust dialog (`❯ No, exit` / `Yes, I trust this folder`,
+shown before a new agent's first prompt in an unknown folder) has no numbers; its lines count as
+1, 2 — `mmux answer s14 2` trusts. With no prompt detected, an answer that reads like a pick (`2`,
+`yes`, an option's label) is refused and the screen printed instead of typed blindly — check it,
+then use `keys` (Up/Down, Enter) or `--text` to type it anyway. If the report says no choices could be read, look at its screen lines;
 if nothing is actually being asked, `mmux answer s14 --dismiss` clears the flag. `--json`: the
 report is `error`, and `data.needs_input` has `since_ms`, `prompt` (`question`, `choices[]` of
 `n`/`label`/`selected`, `yes_no`), `notification` and `screen[]`.

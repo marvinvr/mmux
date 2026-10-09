@@ -141,7 +141,9 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
   with animated terminal titles as the compatibility fallback. Needing input outranks both: a
   menu or `[y/n]` prompt read off the screen, or a bell/notification OSC (9/777/99) no input has
   answered. Prompt detection is a heuristic over the screen text (`prompt.rs`), so a menu drawn
-  without a cursor glyph or a selection hint isn't recognized — its notification still is.
+  without a cursor glyph or a selection hint isn't recognized — its notification still is. An
+  unnumbered menu's options are found by column, so one whose label wraps onto a second line reads
+  that line as another option.
 - **Workspace manifests are flat and structural.** They do not nest, and there is no limit on how
   many member folders they load. `R` adds and removes folders live; removal kills that member's panes and compacts runtime
   project indices without touching its Git worktree. Reordering members needs a reopen. Restore

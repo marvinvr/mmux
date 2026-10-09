@@ -193,7 +193,7 @@ CONTROL (drive a running session from scripts/agents; add --json for JSON):
     mmux ls                     Projects and sessions with ids (s3), state, title
     mmux status|read <t>        A session's state + status line / its output
     mmux send <t> <text>        Type a prompt and press Enter  ·  mmux keys <t> C-c …
-    mmux answer <t> <2|yes|no|text>  Answer an agent's question/permission prompt
+    mmux answer <t> <2|yes|no|text>  Answer an agent's question/permission prompt (--text: type it)
     mmux new agent|terminal     Start one (-p project, template, --prompt, --cmd)
     mmux start|stop|restart|close <t>
     mmux wait|last <t>          Wait until an agent is done (exit 3: needs input) · its reply

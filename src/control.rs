@@ -102,14 +102,17 @@ pub enum Cmd {
     Keys { target: String, keys: Vec<String> },
     /// Answer what an agent is asking: pick a choice of the prompt on its screen by
     /// number, `yes`/`no` or its text (cursor keys + Enter), answer a `[y/n]` line, or —
-    /// with no prompt on screen — type `answer` as a reply. `dismiss` instead clears its
-    /// notification without typing anything.
+    /// with no prompt on screen — type `answer` as a reply, unless it reads like a pick
+    /// (see [`crate::prompt::plan`]). `text` types it as a reply whatever is on screen;
+    /// `dismiss` instead clears its notification without typing anything.
     Answer {
         target: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         answer: Option<String>,
         #[serde(default)]
         dismiss: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        text: bool,
     },
     /// Start a new agent (from a template) or terminal (optionally running `command`).
     New {
@@ -695,7 +698,8 @@ mod tests {
             Cmd::Answer {
                 target: "s1".into(),
                 answer: None,
-                dismiss: false
+                dismiss: false,
+                text: false,
             }
         );
         let req: Request = serde_json::from_str(r#"{"cmd":"new","kind":"terminal"}"#).unwrap();

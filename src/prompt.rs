@@ -12,12 +12,24 @@
 //!    3. No, and tell Claude what to do differently (esc)
 //! ```
 //!
-//! The other is a plain `[y/N]` line. A numbered list alone is not a menu — an agent
-//! echoes a numbered prompt it was sent, and answers in numbered lists — so a menu also
-//! needs a cursor on one of its options, numbering that runs from 1, a selection hint
-//! (`Esc to cancel`, `Enter to select`, `(esc)`, …) and to sit at the bottom of the
-//! screen, where a prompt waiting for an answer is drawn. Pure functions over screen
-//! lines, so the heuristics are tested directly.
+//! Some menus aren't numbered — Claude Code's folder-trust dialog, shown before an
+//! agent in a folder it hasn't seen does anything else:
+//!
+//! ```text
+//!  ❯ No, exit
+//!    Yes, I trust this folder
+//!
+//!  Enter to confirm · Esc to cancel
+//! ```
+//!
+//! Those are read by column instead: the options are the lines aligned with the cursor
+//! line's label, numbered 1… in order. The other shape is a plain `[y/N]` line. A
+//! numbered list alone is not a menu — an agent echoes a numbered prompt it was sent,
+//! and answers in numbered lists — so a menu also needs a cursor on one of its options,
+//! numbering that runs from 1, a selection hint (`Esc to cancel`, `Enter to select`,
+//! `(esc)`, …) and to sit at the bottom of the screen, where a prompt waiting for an
+//! answer is drawn. Pure functions over screen lines, so the heuristics are tested
+//! directly.
 
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +55,10 @@ const WINDOW: usize = 40;
 const MAX_GAP: usize = 6;
 /// A menu's last option must be among this many non-empty lines at the bottom.
 const NEAR_BOTTOM: usize = 12;
+/// An unnumbered menu's selection hint must be among this many non-empty lines below
+/// its last option: with no numbering to go by, a hint further off (or none) leaves a
+/// multi-line message echoed after a `❯` looking just like one.
+const BARE_HINT_WITHIN: usize = 3;
 
 /// A question on an agent's screen.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -83,19 +99,33 @@ pub enum Plan {
 
 /// The prompt at the bottom of `lines` (the visible screen, top to bottom), if any.
 pub fn parse(lines: &[String]) -> Option<Prompt> {
-    let lines: Vec<&str> = lines.iter().map(|l| unbox(l)).collect();
-    let end = lines.iter().rposition(|l| !l.is_empty())?;
-    let lines = &lines[end.saturating_sub(WINDOW - 1)..=end];
-    menu(lines).or_else(|| yes_no(lines))
+    let rows: Vec<(usize, &str)> = lines.iter().map(|l| unbox(l)).collect();
+    let end = rows.iter().rposition(|(_, l)| !l.is_empty())?;
+    let rows = &rows[end.saturating_sub(WINDOW - 1)..=end];
+    let lines: Vec<&str> = rows.iter().map(|&(_, l)| l).collect();
+    menu(&lines)
+        .or_else(|| bare_menu(rows))
+        .or_else(|| yes_no(&lines))
 }
 
-/// A row with any box border stripped (`│ text │`), trimmed.
-fn unbox(line: &str) -> &str {
+/// A row with any box border stripped (`│ text │`), trimmed, and the column its text
+/// starts at — what lines an unnumbered menu's options up.
+fn unbox(line: &str) -> (usize, &str) {
     let borders: &[char] = &['│', '┃', '║'];
-    line.trim()
+    let text = line
+        .trim_start()
         .trim_start_matches(borders)
+        .trim_start()
+        .trim_end()
         .trim_end_matches(borders)
-        .trim()
+        .trim_end();
+    let indent = line[..line.len()
+        - line
+            .trim_start_matches(|c: char| c.is_whitespace() || borders.contains(&c))
+            .len()]
+        .chars()
+        .count();
+    (indent, text)
 }
 
 /// `❯ 2. Yes, and…` → `(true, 2, "Yes, and…")`.
@@ -182,9 +212,83 @@ fn menu(lines: &[&str]) -> Option<Prompt> {
     })
 }
 
+/// A menu without numbers (see the module docs): a cursor line, the lines lined up
+/// with its label above and below it (a deeper-indented description between them is
+/// skipped), and a selection hint right under the last one.
+fn bare_menu(rows: &[(usize, &str)]) -> Option<Prompt> {
+    // An option's label: text that starts with a letter or digit and isn't the hint.
+    let label = |text: &str| {
+        let lower = text.to_lowercase();
+        text.starts_with(char::is_alphanumeric) && !MENU_HINTS.iter().any(|h| lower.contains(h))
+    };
+    let (cursor, col) = rows
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(i, &(indent, text))| {
+            let rest = text.strip_prefix(CURSORS)?;
+            let name = rest.trim_start();
+            (rest.starts_with(' ') && label(name) && option(text).is_none())
+                .then(|| (i, indent + text.chars().count() - name.chars().count()))
+        })?;
+    let mut found = vec![cursor];
+    for step in [-1i64, 1] {
+        let mut i = cursor as i64 + step;
+        while let Some(&(indent, text)) = usize::try_from(i).ok().and_then(|i| rows.get(i)) {
+            match () {
+                _ if text.is_empty() || indent < col => break,
+                _ if indent > col => {}
+                _ if label(text) => found.push(i as usize),
+                _ => break,
+            }
+            i += step;
+        }
+    }
+    found.sort_unstable();
+    let (first, last) = (*found.first()?, *found.last()?);
+    if found.len() < 2 {
+        return None;
+    }
+    let below: Vec<&str> = rows[last + 1..]
+        .iter()
+        .map(|&(_, l)| l)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if below.len() >= NEAR_BOTTOM {
+        return None;
+    }
+    let hint = below.iter().take(BARE_HINT_WITHIN).any(|l| {
+        let l = l.to_lowercase();
+        MENU_HINTS.iter().any(|h| l.contains(h))
+    });
+    if !hint {
+        return None;
+    }
+    let choices = found
+        .iter()
+        .zip(1..)
+        .map(|(&i, n)| {
+            let text = rows[i].1;
+            Choice {
+                n,
+                label: text.trim_start_matches(CURSORS).trim().to_string(),
+                selected: i == cursor,
+            }
+        })
+        .collect();
+    let above: Vec<&str> = rows[..first].iter().map(|&(_, l)| l).collect();
+    Some(Prompt {
+        question: question_above(&above),
+        choices,
+        yes_no: false,
+    })
+}
+
 /// The line asking the question: the nearest one above the options ending in `?`
-/// (Codex puts the command between its question and the menu), else the nearest
-/// non-empty one that isn't just a border.
+/// (Codex puts the command between its question and the menu), else the nearest one
+/// with a question in it, up to its `?` (a question wrapped into the paragraph after
+/// it, as in Claude's trust dialog), else the nearest non-empty one that isn't just a
+/// border.
 fn question_above(lines: &[&str]) -> Option<String> {
     let text: Vec<&str> = lines
         .iter()
@@ -193,10 +297,13 @@ fn question_above(lines: &[&str]) -> Option<String> {
         .filter(|l| l.chars().any(char::is_alphanumeric))
         .take(8)
         .collect();
+    let asked = || text.iter().find_map(|l| l.find("? ").map(|at| &l[..=at]));
     text.iter()
         .find(|l| l.ends_with('?'))
-        .or(text.first())
-        .map(|l| l.to_string())
+        .copied()
+        .or_else(asked)
+        .or(text.first().copied())
+        .map(str::to_string)
 }
 
 fn yes_no(lines: &[&str]) -> Option<Prompt> {
@@ -219,13 +326,22 @@ fn yes_no(lines: &[&str]) -> Option<Prompt> {
 
 /// How to give `answer` to `prompt`: a choice number, `yes`/`no` (`y`/`n`), or text
 /// matching one option. A `[y/n]` line takes `y`/`n` (anything else is typed as is);
-/// with no prompt on screen, the answer is typed as a reply. Errors name the choices.
+/// with no prompt on screen, a reply is typed — but not an answer that only makes
+/// sense as a pick (see [`looks_like_a_pick`]): typed into a menu mmux couldn't read,
+/// its Enter would choose whatever the cursor is on. Errors name the choices.
 pub fn plan(prompt: Option<&Prompt>, answer: &str) -> Result<Plan, String> {
     let answer = answer.trim();
     let word = answer.to_lowercase();
     let yes = matches!(word.as_str(), "yes" | "y");
     let no = matches!(word.as_str(), "no" | "n");
     let Some(prompt) = prompt.filter(|p| p.yes_no || !p.choices.is_empty()) else {
+        if looks_like_a_pick(answer) {
+            return Err(format!(
+                "no prompt detected on screen, and “{answer}” reads like a choice — typed \
+blindly into a menu mmux can't read, its Enter would pick whatever the cursor is on. \
+Check the screen, then pick with `mmux keys` (Up/Down, Enter), or pass --text to type it anyway"
+            ));
+        }
         return Ok(Plan::Type(answer.to_string()));
     };
     if prompt.yes_no {
@@ -271,6 +387,20 @@ pub fn plan(prompt: Option<&Prompt>, answer: &str) -> Result<Plan, String> {
         moves: pick as i32 - at as i32,
         choice: choices[pick].clone(),
     })
+}
+
+/// Whether `answer` reads as picking an option rather than replying: a bare number, or
+/// one that opens with a menu word (`yes`, `No, exit`, `Allow`, `Yes, I trust this
+/// folder`).
+fn looks_like_a_pick(answer: &str) -> bool {
+    const PICKS: &[&str] = &[
+        "yes", "no", "y", "n", "ok", "okay", "allow", "deny", "accept", "decline", "reject",
+        "approve", "cancel", "proceed", "continue", "always", "never", "skip", "exit", "quit",
+        "trust", "don't", "dont",
+    ];
+    let lower = answer.trim().to_lowercase();
+    lower.len() <= 2 && !lower.is_empty() && lower.chars().all(|c| c.is_ascii_digit())
+        || PICKS.iter().any(|w| starts_with_word(&lower, w))
 }
 
 /// `label` begins with the whole word `word` (`No, and…` for `no`; not `None`).
@@ -340,6 +470,104 @@ mod tests {
 
  Enter to select · ↑/↓ to navigate · Esc to cancel
 ";
+
+    /// Claude Code's folder-trust dialog, as a `mmux new agent --prompt …` in a folder
+    /// it had never seen showed it: options without numbers, the cursor on "No".
+    const TRUST: &str = "\
+────────────────────────────────────────────────────────────────────────────────
+ Accessing workspace:
+
+ /Users/mvr/Development/Private/mealmate
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a
+ well-known open source project, or work from your team). If not, take a moment to review what's in
+ this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ Security guide
+
+ ❯ No, exit
+   Yes, I trust this folder
+
+ Enter to confirm · Esc to cancel
+
+
+
+
+
+
+
+
+
+";
+
+    #[test]
+    fn reads_claude_s_unnumbered_trust_dialog() {
+        let mut rows = screen(TRUST);
+        let p = parse(&rows).unwrap();
+        assert_eq!(
+            p.question.as_deref(),
+            Some("Quick safety check: Is this a project you created or one you trust?")
+        );
+        assert_eq!(
+            list(&p.choices),
+            "1. No, exit · 2. Yes, I trust this folder"
+        );
+        assert!(p.choices[0].selected && !p.choices[1].selected);
+        // The same dialog with its blank lines squeezed out, as pasted from a screen.
+        rows.retain(|l| !l.trim().is_empty());
+        assert_eq!(parse(&rows).unwrap().choices, p.choices);
+
+        for answer in ["Yes, I trust this folder", "2", "yes", "trust"] {
+            assert!(
+                matches!(plan(Some(&p), answer), Ok(Plan::Select { moves: 1, .. })),
+                "{answer}"
+            );
+        }
+        assert!(matches!(
+            plan(Some(&p), "No"),
+            Ok(Plan::Select { moves: 0, .. })
+        ));
+        // Once trusted, the cursor sits on "Yes".
+        let moved = TRUST
+            .replace(" ❯ No, exit", "   No, exit")
+            .replace("   Yes, I trust", " ❯ Yes, I trust");
+        let p = parse(&screen(&moved)).unwrap();
+        assert!(p.choices[1].selected);
+        assert!(matches!(
+            plan(Some(&p), "1"),
+            Ok(Plan::Select { moves: -1, .. })
+        ));
+    }
+
+    #[test]
+    fn an_echoed_message_is_not_an_unnumbered_menu() {
+        // A multi-line message shown after Claude's `❯`, with its idle footer below.
+        let echoed = "\
+❯ fix the parser
+  then update the docs
+⏺ Done.
+
+────────────────────
+❯
+────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)
+";
+        assert_eq!(parse(&screen(echoed)), None);
+        // …and the same with a hint too far below to belong to it.
+        let far = "\
+❯ fix the parser
+  then update the docs
+⏺ Done.
+one
+two
+Press enter to continue
+";
+        assert_eq!(parse(&screen(far)), None);
+        // A lone cursor line is no menu either.
+        assert_eq!(parse(&screen("❯ Yes\n\nEnter to confirm\n")), None);
+    }
 
     #[test]
     fn reads_claude_codex_and_question_menus() {
@@ -435,7 +663,22 @@ Press Enter to continue
         assert_eq!(plan(Some(&yn), "yes"), Ok(Plan::Type("y".into())));
         assert_eq!(plan(Some(&yn), "N"), Ok(Plan::Type("n".into())));
 
-        // Nothing on screen to pick from: the answer is typed as a reply.
+        // Nothing on screen to pick from: the answer is typed as a reply — unless it
+        // only makes sense as a pick, which typed into an unread menu picks blindly.
         assert_eq!(plan(None, " use A "), Ok(Plan::Type("use A".into())));
+        assert_eq!(
+            plan(None, "nothing yet"),
+            Ok(Plan::Type("nothing yet".into()))
+        );
+        for pick in [
+            "2",
+            "yes",
+            "N",
+            "Yes, I trust this folder",
+            "No, exit",
+            "allow",
+        ] {
+            assert!(plan(None, pick).is_err(), "{pick}");
+        }
     }
 }
