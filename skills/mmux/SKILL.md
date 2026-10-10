@@ -39,11 +39,13 @@ mmux answer s12 2                    # answer an agent that needs input: choice 
 mmux new agent codex -p api --prompt "…"   # start an agent (template by name or command; default: first)
 mmux new terminal --cmd "npm test"   # start a terminal, type a command into it (stays open)
 mmux start|restart "Dev server"      # start anything not running / (re)start any session
+mmux start TestFlight --wait --tail 40 -t 1h -C ~/project  # wait for a script's exit
 mmux stop "Dev server" [--force]     # process: stop in place (runs its stop: teardown)
 mmux close s12 [--force]             # agent/terminal: close for good (busy => refused without --force)
 mmux close self                      # close your own pane (no --force needed)
 mmux wait s12 [-t 10m] [--settle 1.5s] [--idle|--exit]   # until the agent is done (default) / ended
                                      #   exit 3 = it needs input (see "Answering an agent")
+mmux wait TestFlight --tail 40        # processes always wait for exit; 0 success, 4 failure
 mmux ask "why is CI red?"            # new agent -> wait -> print its reply
 mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
                                      # cut a git worktree (+ an agent in it)
@@ -143,6 +145,22 @@ mmux status s9                       # what is on its screen right now
 "Done" (for `wait`/`ask`) means the agent stopped working on what it was sent — for Claude, its
 transcript must also show that turn at rest. Input is `send`, a first prompt, `answer`, or `keys`
 that include `Enter`/`C-m`/`C-j`; input it never visibly starts on stops holding `wait` after 20 s.
+Persistent footer controls (`[stop]`, `esc to interrupt`, `Working (`) count as working even
+when progress escapes or animated titles are quiet during long tool calls or commentary.
+
+**Wait for a process/script**
+
+`mmux wait TestFlight -C ~/project -t 1h --tail 40` waits until the process exits and final output
+drains, even with `--idle`. `start` and `restart` accept `--wait` with the same flags; they wait
+on the returned id, including a start queued behind another checkout's teardown. The child's
+actual PTY exit status is printed: mmux returns `0` for success or `4` for any child failure,
+keeping timeout `2` distinct even if the child exits `2`. Signal exits use the PTY library's
+nonzero status (usually `1`). A timeout leaves the process running; the default is 10 minutes.
+A never-started/failed-spawn process, a removed target or a lost socket is an error (`1`).
+`--tail N` adds the last N output lines (`0` = all retained output; JSON: `data.output`).
+An exited process retains its status/output until restarted. Configure `cmd: scripts/testflight.sh`
+to run a relative executable from the process's effective cwd; workspace members and worktrees
+use their own project directories, and explicit `cwd` takes precedence.
 
 **Answering an agent that needs input**
 
@@ -178,12 +196,14 @@ usage errors (missing target or prompt, bad `--cmd`/`--prompt` use) included.
   was started.
 - A session: `id`, `kind`, `name`, `project`, `project_dir`, `status`, `working`, `attention`,
   `needs_input` (only while it needs input), `title`, `error`, `idle_for_ms`, `input_age_ms`,
-  `worked_since_input`, `input_pending`.
+  `worked_since_input`, `input_pending`, `start_pending`, `exit_code` (once reaped).
 - `status` adds `status_line[]`; `read` → `id`, `name`, `text`; `last`/`ask` → `id`, `name`,
   `reply`, `source` (`transcript` or `screen`); actions → the session plus `message`.
 
 Exit codes: `0` success · `1` error or refusal (bad target, not running, busy, depth limit…) ·
-`2` `wait`/`ask` timed out · `3` `wait`/`ask` stopped because the agent needs input.
+`2` `wait`/`ask` timed out · `3` `wait`/`ask` stopped because the agent needs input ·
+`4` process wait completed with child failure (actual status in `exit_code`). Process waits
+with `--json` retain status/output in `data` and set `ok: false` on child failure.
 
 ## Etiquette and safety
 

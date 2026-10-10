@@ -263,6 +263,12 @@ pub struct SessionInfo {
     pub project_dir: String,
     /// `running` | `stopped` | `exited` | `failed`.
     pub status: String,
+    /// The PTY child's exit status, once reaped; absent before it exits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<u32>,
+    /// A process start queued behind another checkout's teardown.
+    #[serde(default)]
+    pub start_pending: bool,
     /// An agent actively working — exactly when its sidebar row spins.
     pub working: bool,
     /// It rang the bell / raised a notification you haven't looked at.

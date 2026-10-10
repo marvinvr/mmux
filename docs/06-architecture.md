@@ -154,6 +154,10 @@ with a writer thread draining an input channel and a reaper thread waiting on th
 `Callbacks` impl captures the OSC window title (the sidebar subtitle), the bell, and notification
 OSCs, and answers terminal capability queries (primary device attributes and Kitty keyboard mode)
 through the pane's input queue. Scrollback is 5000 lines.
+Commands containing `/` are resolved against the recipe's effective cwd before reaching
+`portable-pty`, whose PATH search otherwise mistakes `scripts/task.sh` for a bare executable.
+`Pane::exit_code()` exposes the reaper's status independently of reader EOF: process waits need
+both to guarantee that the child has finished and final output has drained.
 
 ## Workspaces and Projects
 
@@ -578,6 +582,15 @@ process itself.
   quiet for 30 s, falls back to the screen. Keeping the loop in the client means no server-side waiters to expire and nothing
   blocking the UI thread. The status line walks only the buffer's tail (`text_tail(n)` starts `2n`
   rows back), so polling it stays cheap.
+- **Processes wait for exit.** The same client loop branches on the session's `kind`: for a process,
+  idle/settle heuristics are irrelevant. It waits for reader EOF and a reaped `exit_code`, and for
+  `start_pending` to clear when another checkout's teardown is holding the new start. That prevents
+  the previous run's status from finishing a new wait. A missing/stopped target or lost socket is
+  an error rather than success; timeout remains exit 2. The report carries the child's actual PTY
+  status, while the CLI maps success to 0 and child failure to 4 (preserving exits 1/2/3 for mmux).
+  `--tail` reads the drained buffer through `read`; `start/restart --wait` chain their existing
+  action to the loop, pinned to the returned session id. No per-kind lifecycle or server waiter
+  is added.
 - **Replies come from transcripts, read by the client.** `last` answers with the agent's tool,
   conversation id (what [restore](#session-restore) already tracks), launch cwd and transcript root,
   plus a screen tail; `ctl.rs` then reads the transcript itself via `agent::last_reply` — Claude's
@@ -645,9 +658,11 @@ process itself.
   including rows displaced by top-aligned scroll regions used by inline TUIs such as Codex; title
   + when it last changed, OSC 9;4 progress state, bell, notifications via `Callbacks`). The app
   reads it through
-  `Session::subtitle/attention/working/take_notifications` (`working` prefers explicit progress
-  state and falls back to title-change time, with Codex's `Action Required` title treated as an
-  explicit not-working signal, and an agent asking for input never working). `Session::busy` (with a fixed ~2s title-fallback window) is the single
+  `Session::subtitle/attention/working/take_notifications`. `observe` samples persistent live
+  footer controls (`[stop]`, `esc to interrupt`, `Working (`) alongside prompts. `working` counts
+  these controls even after a stale idle progress report or `Action Required` title; otherwise it
+  prefers explicit progress, falling back to title-change time, with `Action Required` idle.
+  An agent asking for input never works. `Session::busy` (with a fixed ~2s title-fallback window) is the single
   "is this agent actively working" predicate — it's what both spins the sidebar glyph and gates the
   close-confirmation, so the prompt fires for exactly the agents that show a spinner.
 - **Input:** key → `on_key` (overlay first, then global `Ctrl+P`, then the global `Ctrl-b` leader

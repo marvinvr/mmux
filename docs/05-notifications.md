@@ -18,7 +18,9 @@ are currently looking at (see `only_when_unfocused`).
 
 The bell also lights a **terminal** or **process** row **green** until you focus it. **Agent** rows
 use a different, more reliable cue for working/ready — explicit `OSC 9;4` progress state when the
-agent provides it, falling back to a quiet terminal title. Progress reports are state only; they do
+agent provides it, falling back to a quiet terminal title, with live footer controls (`[stop]`,
+`esc to interrupt`, `Working (`) keeping a long tool call working even after progress clears.
+Progress reports are state only; they do
 not emit desktop notifications. A bell or notification escape from an **agent**, though, marks it
 as **needing input** (a yellow `?`, never "working") until input reaches it — unless it had already
 been idle for 30 s, which makes it a reminder. That is also what stops `mmux wait` with exit `3`.

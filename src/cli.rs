@@ -195,8 +195,10 @@ CONTROL (drive a running session from scripts/agents; add --json for JSON):
     mmux send <t> <text>        Type a prompt and press Enter  ·  mmux keys <t> C-c …
     mmux answer <t> <2|yes|no|text>  Answer an agent's question/permission prompt (--text: type it)
     mmux new agent|terminal     Start one (-p project, template, --prompt, --cmd)
-    mmux start|stop|restart|close <t>
-    mmux wait|last <t>          Wait until an agent is done (exit 3: needs input) · its reply
+    mmux start|restart <t> [--wait]   Start/restart, optionally wait (-t, --tail N)
+    mmux stop|close <t>         Stop a process / close an agent or terminal
+    mmux wait <t> [--tail N]    Wait for agent work or process exit (0 success, 4 failure)
+    mmux last <t>              An agent's reply (wait: 2 timeout, 3 needs input)
     mmux ask "<prompt>"         New agent (or --to <t>), wait, print its reply
     mmux worktree new|rm        Cut a worktree (+ --agent/--prompt) · remove one
     mmux reload                 Reload the config live, like R (after editing mmux.yaml)
@@ -267,14 +269,14 @@ PROJECT FILE — ./mmux.yaml
         - name: Claude                 # label shown in the sidebar
           cmd: claude                  # executable on your PATH
           args: ["--dangerously-skip-permissions"]
-          # cwd: .                      # optional, relative to this file
+          # cwd: .                      # optional, relative to the project directory
           # env: {{ KEY: value }}        # optional environment overrides
 
       processes:
         - name: Dev server
           cmd: npm
           args: ["run", "dev"]
-          cwd: .                       # optional, relative to this file
+          cwd: .                       # optional, relative to the project directory
           autostart: false             # start automatically when mmux opens?
           # stop: docker compose down  # optional shell line, run in the dir on stop/quit
           # env: {{ NODE_ENV: development }}
@@ -413,6 +415,9 @@ CONTROL — drive a running session from scripts and agents
       mmux close s12 [--force]       # close an agent/terminal (busy ⇒ --force)
       mmux wait s12                  # block until the agent has finished working;
                                      #   exit 3 if it needs input instead
+      mmux start "TestFlight" --wait --tail 40 -t 1h -C ~/project
+                                     # wait for the script's exit and final output
+      mmux wait "TestFlight" --tail 40  # a process always waits until it exits
       mmux last s12                  # its last reply (from its transcript)
       mmux ask "why is CI red?"      # new agent -> wait -> print its reply; the
                                      #   agent stays in the sidebar (--close drops it,
@@ -429,6 +434,14 @@ CONTROL — drive a running session from scripts and agents
     otherwise. `wait`/`ask` treat an agent as done once it stops working on
     what it was sent, and stop with exit 3 and the question, its choices and
     the screen when it needs input; `mmux answer` picks a choice. `new agent --prompt "…"` starts one with a first prompt.
+    Persistent footer indicators ([stop], esc to interrupt, Working (...)) keep
+    Grok/Codex working during long tool calls and intermediate commentary.
+    Processes always wait for exit and drained output, even with --idle. The
+    child's actual exit status is printed (JSON: data.exit_code); mmux exits 0
+    for child success, 4 for child failure, 2 for timeout, or 1 for an error
+    (not started, removed, socket lost). --tail N adds the final N output lines
+    (0 = all, JSON: data.output). start/restart --wait use the same rules and
+    flags. A timeout leaves the process running. Waits default to 10 minutes.
     Programs in mmux panes get MMUX_SOCKET, MMUX_SESSION (their own id),
     MMUX_PROJECT and MMUX_DEPTH; `mmux new` refuses at depth 3. Detected agents
     (Claude/Codex/Pi/Grok) get a short note appended to their system prompt
@@ -463,7 +476,10 @@ FIELD REFERENCE
                 background and shows "restart to update"; a brew install shows "update
                 available" and runs `brew upgrade` on confirm. Off for source/dev builds
                 or with MMUX_NO_UPDATE=1)
-    (* required. cwd is relative to the file's directory. Omitted lists/maps are empty.)
+    (* required. cwd is relative to the project directory. Omitted lists/maps are empty.)
+    Bare cmd names use PATH. A cmd containing / resolves against its effective cwd:
+    scripts/testflight.sh works just like ./scripts/testflight.sh, in workspace
+    members and worktrees too. Absolute commands stay absolute.
 
 QUICK START
     cd ~/some/project

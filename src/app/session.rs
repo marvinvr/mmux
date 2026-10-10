@@ -193,6 +193,8 @@ pub struct Session {
     /// when it first appeared: its time, and whether it counts as a question (see
     /// [`REMINDER_AFTER`]).
     notice: Option<(Instant, bool)>,
+    /// Persistent activity indicators on the live screen, sampled by `observe`.
+    screen_working: bool,
 }
 
 /// What an agent is waiting on someone for — see [`Session::asking`].
@@ -234,6 +236,7 @@ impl Session {
             mmux_note: None,
             prompt: None,
             notice: None,
+            screen_working: false,
         }
     }
 
@@ -309,6 +312,9 @@ impl Session {
     /// (Re)spawn the recipe at the given inner size, replacing any existing pane.
     /// This is both "start" and "restart": callers decide *when* to call it.
     pub fn spawn(&mut self, rows: u16, cols: u16) {
+        self.screen_working = false;
+        self.prompt = None;
+        self.notice = None;
         if let Some(p) = self.pane.as_mut() {
             p.kill();
         }
@@ -412,9 +418,12 @@ impl Session {
         let Some(pane) = pane else {
             self.prompt = None;
             self.notice = None;
+            self.screen_working = false;
             return;
         };
-        let found = crate::prompt::parse(&pane.screen_lines());
+        let lines = pane.screen_lines();
+        self.screen_working = screen_working(&lines);
+        let found = crate::prompt::parse(&lines);
         self.prompt = match (found, self.prompt.take()) {
             (Some(p), Some((_, since))) => Some((p, since)),
             (Some(p), None) => Some((p, Instant::now())),
@@ -465,23 +474,26 @@ impl Session {
     }
 
     /// Whether this session looks like it's actively working. OSC 9;4 progress is
-    /// authoritative when the program emits it; animated terminal titles remain the
-    /// fallback for older agents. Codex's `Action Required` title is an explicit idle
-    /// signal even if another activity signal just changed, and an agent
+    /// used with persistent screen indicators; animated terminal titles remain the
+    /// fallback for older agents. A live busy indicator overrides stale idle progress
+    /// or an `Action Required` title, and an agent
     /// [asking](Self::asking) for someone isn't working whatever its progress or
     /// title say — it's blocked on an answer. See the sidebar's `nav_row`.
     pub fn working(&self, within: Duration) -> bool {
         self.is_running()
             && !self.needs_input()
             && self.pane.as_ref().is_some_and(|p| {
-                !p.title().contains("Action Required")
-                    && p.progress_active()
-                        .unwrap_or_else(|| p.title_active(within))
+                agent_working(
+                    &p.title(),
+                    p.progress_active(),
+                    p.title_active(within),
+                    self.screen_working,
+                )
             })
     }
 
     /// Whether this agent is *visibly* working right now — running with an active
-    /// progress report or still-changing title, i.e. exactly when its sidebar row
+    /// progress report, live busy control or still-changing title, exactly when its sidebar row
     /// shows the rotating spinner (see [`working`](Self::working) and the sidebar's
     /// `nav_row`). The close confirmation keys on this so it fires for the same agents that spin:
     /// an idle agent (running but quiet, showing the green `●`) reads as done and
@@ -524,6 +536,31 @@ impl Session {
 /// [`REMINDER_AFTER`] already.
 fn reminder(at: Instant, active: Option<Instant>) -> bool {
     active.is_some_and(|t| at.saturating_duration_since(t) >= REMINDER_AFTER)
+}
+
+fn agent_working(title: &str, progress: Option<bool>, title_active: bool, screen: bool) -> bool {
+    screen || (!title.contains("Action Required") && progress.unwrap_or(title_active))
+}
+
+/// Look at the live footer, not scrollback or old transcript lines. These controls
+/// persist throughout long tool calls even when titles and progress OSCs go quiet.
+fn screen_working(lines: &[String]) -> bool {
+    lines
+        .iter()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(8)
+        .any(|line| {
+            let line = line.trim().to_lowercase();
+            if line.starts_with(['>', '`', '"', '\'']) {
+                return false;
+            }
+            line.contains("[stop]")
+                || line.contains("esc to interrupt")
+                || line
+                    .trim_start_matches(|c: char| !c.is_alphanumeric())
+                    .starts_with("working (")
+        })
 }
 
 /// Resolve a config-relative `cwd` against the workspace `dir`.
@@ -570,6 +607,159 @@ fn on_path(bin: &str) -> bool {
 mod tests {
     use super::*;
     use crate::agent::{Resume, Tool, MMUX_NOTE};
+
+    #[test]
+    fn relative_process_commands_spawn_in_each_effective_cwd() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("mmux-process-{}", crate::agent::mint_uuid()));
+        for (project, cwd) in [
+            ("project", None),
+            ("workspace/member", None),
+            ("worktrees/feature", None),
+            ("project", Some("tools")),
+            ("project", Some(root.join("absolute-cwd").to_str().unwrap())),
+        ] {
+            let dir = root.join(project);
+            let effective = resolve(&dir, &cwd.map(str::to_string));
+            let scripts = effective.join("scripts");
+            std::fs::create_dir_all(&scripts).unwrap();
+            let script = scripts.join("testflight.sh");
+            std::fs::write(&script, "#!/bin/sh\nprintf 'cwd=%s arg=%s env=%s\\n' \"$PWD\" \"$1\" \"$MMUX_TEST_VALUE\"\nexit 7\n").unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let def = ProcessDef {
+                name: "TestFlight".into(),
+                cmd: "scripts/testflight.sh".into(),
+                args: vec!["argument with spaces".into()],
+                cwd: cwd.map(str::to_string),
+                env: BTreeMap::from([("MMUX_TEST_VALUE".into(), "recipe env".into())]),
+                autostart: false,
+                stop: None,
+            };
+            let recipe = Recipe::process(&def, &dir);
+            assert_eq!(recipe.cwd, effective);
+            for cmd in [
+                "scripts/testflight.sh".to_string(),
+                "./scripts/testflight.sh".into(),
+                script.to_string_lossy().into_owned(),
+            ] {
+                let mut recipe = recipe.clone();
+                recipe.cmd = cmd;
+                let mut s = Session::new("TestFlight".into(), Kind::Process, recipe, 0, &dir);
+                s.spawn(24, 160);
+                assert!(s.error.is_none(), "{:?}", s.error);
+                let pane = s.pane.as_ref().unwrap();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while pane.is_running() || pane.exit_code().is_none() {
+                    assert!(Instant::now() < deadline, "script did not finish");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                assert_eq!(pane.exit_code(), Some(7));
+                let output = pane.text_tail(10).unwrap();
+                let canonical = std::fs::canonicalize(&effective).unwrap();
+                assert!(
+                    output.contains(&format!(
+                        "cwd={} arg=argument with spaces env=recipe env",
+                        canonical.display()
+                    )),
+                    "{output}"
+                );
+                assert!(matches!(s.status(), Status::Failed));
+            }
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn live_busy_controls_override_stale_idle_signals_and_clear_on_redraw() {
+        for indicator in [
+            "• Working (15m 36s • esc to interrupt)",
+            "⠋ Thinking… [stop]",
+            "Run xcodebuild tests [stop]",
+            "• Working (15m 36s)",
+        ] {
+            let mut parser = tui_term::vt100::Parser::new(24, 100, 100);
+            parser.process(format!("intermediate commentary\r\n{indicator}").as_bytes());
+            let lines = parser.screen().rows(0, 100).collect::<Vec<_>>();
+            assert!(screen_working(&lines), "{indicator}");
+            assert!(agent_working(
+                "Action Required",
+                Some(false),
+                false,
+                screen_working(&lines)
+            ));
+            // The same marker in scrollback must not hold an idle agent busy.
+            parser.process(b"\x1b[2J\x1b[HFinished.\r\n> ");
+            let lines = parser.screen().rows(0, 100).collect::<Vec<_>>();
+            assert!(!screen_working(&lines), "{indicator}");
+            assert!(!agent_working(
+                "Codex",
+                Some(false),
+                false,
+                screen_working(&lines)
+            ));
+        }
+        assert!(!agent_working("Action Required", Some(true), true, false));
+        assert!(agent_working("Claude", Some(true), false, false));
+        assert!(agent_working("Agent", None, true, false));
+        assert!(!agent_working("Agent", Some(false), true, false));
+        let history = ["• Working (10s)".into()]
+            .into_iter()
+            .chain((0..9).map(|n| format!("finished output {n}")))
+            .collect::<Vec<_>>();
+        assert!(!screen_working(&history));
+        assert!(!screen_working(&[
+            "The phrase Working ( means activity.".into(),
+            "> quoted esc to interrupt".into()
+        ]));
+    }
+
+    #[test]
+    fn observe_keeps_static_codex_and_grok_busy_but_questions_win() {
+        for indicator in [
+            "• Working (15m 36s • esc to interrupt)",
+            "⠋ Thinking… [stop]",
+        ] {
+            let recipe = Recipe {
+                cmd: "sh".into(),
+                args: vec!["-c".into(), r#"printf '\033]0;Action Required\007\033]9;4;0\007%s\n' "$MMUX_TEST_INDICATOR"; read answer"#.into()],
+                cwd: std::env::temp_dir(),
+                env: BTreeMap::from([("MMUX_TEST_INDICATOR".into(), indicator.into())]),
+            };
+            let mut s = Session::new(
+                "fixture agent".into(),
+                Kind::Agent,
+                recipe,
+                0,
+                &std::env::temp_dir(),
+            );
+            s.spawn(24, 100);
+            assert!(s.error.is_none(), "{:?}", s.error);
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                s.observe();
+                if s.screen_working {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "agent fixture did not draw");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            // The screen's persistent marker matters even if the activity clocks
+            // say it last worked minutes ago, as during an unchanging tool call.
+            s.last_working_at = Some(Instant::now() - Duration::from_secs(360));
+            assert!(s.busy());
+            assert!(s.asking().is_none());
+            s.prompt = Some((
+                crate::prompt::parse(&["Proceed? [y/n]".into()]).unwrap(),
+                Instant::now(),
+            ));
+            assert!(s.needs_input());
+            assert!(
+                !s.busy(),
+                "a real permission question outranks the busy control"
+            );
+            s.kill();
+        }
+    }
 
     fn agent(cmd: &str, resume: Resume) -> Session {
         let recipe = Recipe {

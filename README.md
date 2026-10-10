@@ -132,6 +132,7 @@ agent and read the reply, or cut a worktree with its own agent — all visible i
 mmux ls                          # projects + sessions: id, kind, name, state
 mmux read "Dev server" -n 80     # the last 80 lines of its output
 mmux ask "why is CI red?"        # new agent → wait → print its reply
+mmux start "TestFlight" --wait --tail 40 -t 1h -C ~/project  # run a script and await its exit
 ```
 
 To teach your agent the whole CLI, paste this to it:

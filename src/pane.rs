@@ -39,7 +39,7 @@ pub struct PaneEvents {
     pub title_changed_at: Option<Instant>,
     /// Explicit working state from OSC 9;4 progress reports. `None` means the
     /// program has never emitted one, so agent activity falls back to the older
-    /// animated-title heuristic; once present, this signal is authoritative.
+    /// animated-title heuristic. Sessions also check persistent live busy controls.
     pub progress_active: Option<bool>,
     /// Latched on bell; cleared when the user views/interacts with the pane.
     pub bell: bool,
@@ -250,7 +250,14 @@ impl Pane {
             pixel_height: 0,
         })?;
 
-        let mut builder = CommandBuilder::new(cmd);
+        // portable-pty only treats ./ and ../ as cwd-relative. Shell semantics
+        // require every command containing a slash to bypass PATH lookup.
+        let executable = if cmd.contains('/') {
+            std::path::absolute(cwd.join(cmd))?
+        } else {
+            PathBuf::from(cmd)
+        };
+        let mut builder = CommandBuilder::new(executable);
         for a in args {
             builder.arg(a);
         }
@@ -388,6 +395,12 @@ impl Pane {
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
+    }
+
+    /// Present once the child has been reaped. A waiter must also wait for the
+    /// reader to drain the PTY (`is_running() == false`) before reading final output.
+    pub fn exit_code(&self) -> Option<u32> {
+        self.exit_code.lock().ok().and_then(|c| *c)
     }
 
     /// Whether the program exited abnormally *on its own* — a non-zero exit status

@@ -437,6 +437,13 @@ impl App {
             .to_string(),
             // The sidebar spinner's own predicate, so "working" means what you see.
             working,
+            exit_code: s.pane.as_ref().and_then(|p| p.exit_code()),
+            start_pending: s.kind == Kind::Process
+                && self.swap.as_ref().is_some_and(|swap| {
+                    swap.starts
+                        .iter()
+                        .any(|(p, n)| *p == s.project && *n == s.name)
+                }),
             attention: s.attention(),
             needs_input: s.asking().map(|a| NeedsInput {
                 since_ms: ms(a.since),

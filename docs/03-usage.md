@@ -68,9 +68,11 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - For an **agent**, an explicit `OSC 9;4` terminal-progress report drives the working/ready state
   when available (Claude Code and Pi emit indeterminate while working and clear it when done). For older
   agents, mmux falls back to the terminal title: once an animated title has been static for ~2s it
-  reads the agent as idle/awaiting you. A Codex title containing `Action Required` is an explicit
-  ready signal, so it stays green
-  even if that title has just changed. This reflects the agent's real state, so it holds even while
+  reads the agent as idle/awaiting you. Persistent controls in the live footer — `[stop]`,
+  `esc to interrupt`, or `Working (` — also count as working, including during long Grok tool
+  calls or between Codex commentary messages. They override a stale cleared progress report or
+  `Action Required` title; without those controls, that title is an explicit ready signal even
+  if it just changed. This reflects the agent's real state, so it holds even while
   you're viewing the pane: selecting an idle agent does not make it look busy. For a **terminal**
   (which has no such animation) the trigger is the bell instead, and — being a momentary ping — it
   *is* suppressed on the pane you're actively viewing. The bell / notification escape *separately*
@@ -587,17 +589,41 @@ mmux reload                        # what `R` does: apply an edited mmux.yaml li
 | `mmux keys <t> <key>…` | Presses keys, tmux-style: `Enter` `Escape` `Tab` `BTab` `BSpace` `Space` `Up`/`Down`/`Left`/`Right` `Home`/`End` `PageUp`/`PageDown` `Delete` `Insert` `F1`–`F12`, a single character, with `C-` (Ctrl), `M-` (Alt) and `S-` (Shift) prefixes (aliases like `Esc`, `Return`, `PgUp`, `Del` work too). Any other word is typed as text. |
 | `mmux new agent [template] [-p project] [--prompt "…"]` | Starts an agent from a template (by name or command, e.g. `claude`; default: the first), optionally with a first prompt (`-` reads it from stdin). |
 | `mmux new terminal [-p project] [--cmd "…"]` | Starts a terminal, optionally typing a command into it (the terminal stays open afterwards). `--cmd` is for terminals only, `--prompt` for agents only. |
-| `mmux start <t>` / `restart <t>` | Starts a session that isn't running (stopped, exited, or failed); restarts one regardless. Processes keep the [one-dev-stack](#worktrees) rule. |
+| `mmux start <t> [--wait]` / `restart <t> [--wait]` | Starts a session that isn't running (stopped, exited, or failed); restarts one regardless. Processes keep the [one-dev-stack](#worktrees) rule. `--wait` waits on the returned session id, with the same flags and exit codes as `wait`. |
 | `mmux stop <t> [--force]` | Stops a process in place (running its `stop:` teardown, like `x`); on an agent or terminal it is `close` — refused while busy unless `--force`. |
 | `mmux close <t> [--force]` | Closes an agent or terminal. Refused while an agent is working or a terminal is running, unless `--force` — except `mmux close self`, which closes the caller's own pane without it. |
 | `mmux last <t>` | The agent's last reply. Claude, Codex, Pi and Grok answers come from the agent's own transcript (just the words, no TUI chrome); anything else falls back to the last ~40 lines of its screen. `--json` says which (`"source": "transcript"` or `"screen"`). |
-| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest — which keeps a just-started agent from reading as done before it has begun. `--exit` waits for the session to end instead. Exits `2` on timeout, and `3` — in either mode — as soon as the agent [needs input](#answering-an-agent) (for at least 0.5 s), printing what it asks. |
+| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s] [--tail N]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest. `--exit` waits for the session to end instead. Processes always wait for exit and final output, and print the child's exit status. mmux returns `0` for success or `4` for failure. Exits `2` on timeout, and `3` when an agent [needs input](#answering-an-agent) for at least 0.5 s, printing what it asks. `--tail N` adds the final N output lines (`0` = all). |
 | `mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>` | [Ask an agent](#asking-an-agent) and print its answer. |
 | `mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]` | Cuts a [worktree](#worktrees) off the project's repository, like `w` (an existing branch is checked out; a new one branches from what the main checkout has out; no name = a generated one), without moving your view. Env files are copied and `worktrees.setup` runs as usual. With `--agent` or `--prompt` it also starts an agent in it (prints its id). Address the worktree afterwards by its branch: `-p <branch>`, `<branch>/<name>`. |
 | `mmux worktree rm <branch> [--force]` | Removes a worktree, like `X`: its sessions close, the checkout goes, and the branch is deleted only if it's merged (unmerged commits stay on the kept branch). Refused while it has uncommitted changes, an agent at work, or is the project in view — unless `--force`, which discards uncommitted changes. Run from inside the worktree being removed, the first try removes nothing: it explains that this closes the caller's own pane (and every other session there) and how to go through with it. |
 | `mmux commit [-p project] [-m "…"] [--push\|--merge] [--in 1h]` | Commits like the git panel's `c`: the staged changes, or everything when nothing is staged. With `-m` (`-` reads it from stdin) it commits right away and prints git's summary; without, an installed Claude/Codex CLI [writes the message](#generated-commit-messages) and the outcome lands in mmux's footer, since that can take a while. `--push` pushes afterwards; `--merge` (worktrees only) merges into the branch it came from, and is refused up front when that merge couldn't run. `--in` [schedules](#scheduled-commits) it instead, like `S` — up to a week ahead, staging everything when it fires, and replacing the project's previous schedule. `mmux ls` shows a pending one next to its project. |
 | `mmux commit cancel [-p project]` | Cancels the project's scheduled commit (or its message generation, if the timer already fired), like `S` then `x`. |
 | `mmux reload` | [Reloads the config live](04-configuration.md#live-reload), exactly like `R`: the global config, every project's `mmux.yaml`, and the workspace manifest. Prints the same summary the footer flashes. If a config fails to load, whatever did load is still applied, but the command fails (exit `1`) with each broken file's parse error — so an agent that just edited `mmux.yaml` learns right away whether it took. |
+
+### Waiting for a Process
+
+Use a configured process for a script you want to run to completion:
+
+```sh
+mmux start TestFlight --wait --tail 40 -t 1h -C ~/chesscam
+mmux restart TestFlight --wait --tail 40 -t 1h -C ~/chesscam
+mmux wait TestFlight --tail 40 -t 1h -C ~/chesscam  # already started
+```
+
+A process always waits for its child to exit and its final output to drain, even with `--idle`.
+The report includes the actual PTY exit status. mmux returns `0` for child success, `4` for any
+child failure, `2` for timeout, and `1` for an error (never started, spawn failed, removed, or lost
+socket). The failure mapping keeps a child's status `2` or `3` distinct from mmux's timeout or
+agent-input codes. Signal termination uses the PTY library's nonzero status, usually `1`.
+The default timeout is 10 minutes; timing out leaves the process running. A completed process
+keeps its status and output until it is restarted. A worktree start queued behind another
+checkout's teardown waits for the new run, rather than reporting the previous run's status.
+
+`--tail N` prints the last N output lines before the status (`0` = all retained output).
+With `--json`, the status has `data.exit_code`, `data.start_pending`, and, when requested,
+`data.output`. Child failure sets `ok: false` with an error and retains that status/output in
+`data`. `start/restart --wait` print only the wait result and pin it to the action's returned id.
 
 ### Asking an Agent
 
@@ -693,11 +719,13 @@ the candidates.
 spins, `needs-input` while it shows the yellow `?` (with how long: `needs-input 12s`), and `idle`
 otherwise (`idle 42s`); `!` marks a bell nobody has looked at. Other sessions read `running`,
 `stopped`, `exited` or `failed`. The JSON adds `needs_input`, `idle_for_ms`, `input_age_ms`,
-`worked_since_input` and `input_pending` — the pieces `mmux wait` decides with.
+`worked_since_input` and `input_pending` — the pieces `mmux wait` decides with — plus
+`exit_code` once a child has been reaped and `start_pending` during a process handover.
 
 **For scripts and agents.** Every command takes `--json` and then prints the raw response
 (`{"ok": true, "data": …}` or `{"ok": false, "error": "…"}`); failures exit non-zero either way.
-`wait` and `ask` exit `2` when they time out and `3` when the agent needs input. Flags may come before the verb (`mmux --json ls`,
+`wait` and `ask` exit `2` when they time out and `3` when the agent needs input; process waits
+return `4` for child failure, with the actual exit status in the report. Flags may come before the verb (`mmux --json ls`,
 `mmux -C ~/proj status s3`). An unknown command is an error, never a launch: bare `mmux` (which opens
 the TUI) refuses to run without an interactive terminal, so an agent can't accidentally start a
 session from its own shell. Programs in mmux panes get `MMUX_SOCKET`,

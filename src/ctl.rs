@@ -38,6 +38,8 @@ const EXIT_TIMEOUT: i32 = 2;
 /// Exit status for a `wait`/`ask` that stopped because the agent is asking for input —
 /// it is blocked, not finished.
 const EXIT_NEEDS_INPUT: i32 = 3;
+/// Process failure has its own code so child exits 2/3 cannot look like timeout/input.
+const EXIT_PROCESS_FAILED: i32 = 4;
 /// How long an agent must have been asking before `wait` stops for it, so a menu that
 /// only flashes past mid-turn doesn't end the wait.
 const ASK_SETTLE: Duration = Duration::from_millis(500);
@@ -79,6 +81,9 @@ struct Args {
     help: bool,
     /// `wait --exit`: until the session ends, not until it goes idle.
     exit: bool,
+    /// `start`/`restart --wait`: wait on the id returned by the action.
+    wait: bool,
+    tail: Option<usize>,
     timeout: Option<Duration>,
     settle: Option<Duration>,
     /// `ask --to <t>`: an existing agent instead of a new one.
@@ -135,6 +140,14 @@ fn parse(args: &[String]) -> Result<Args> {
             "--prompt" if flags => out.prompt = Some(value(a)?),
             "--idle" if flags => out.exit = false,
             "--exit" if flags => out.exit = true,
+            "--wait" if flags => out.wait = true,
+            "--tail" if flags => {
+                let v = value(a)?;
+                out.tail = Some(
+                    v.parse()
+                        .map_err(|_| anyhow::anyhow!("bad line count `{v}`"))?,
+                );
+            }
             "-t" | "--timeout" if flags => out.timeout = Some(duration(&value(a)?)?),
             "--settle" if flags => out.settle = Some(duration(&value(a)?)?),
             "--to" if flags => out.to = Some(value(a)?),
@@ -175,6 +188,15 @@ pub fn run(args: &[String]) -> Result<()> {
         print_help();
         return Ok(());
     }
+    if a.wait && !matches!(a.verb.as_str(), "start" | "restart") {
+        fail(&a, "`--wait` is for `start` or `restart`".into());
+    }
+    if a.tail.is_some() && a.verb != "wait" && !a.wait {
+        fail(
+            &a,
+            "`--tail` requires `wait` or `start`/`restart --wait`".into(),
+        );
+    }
     // The multi-step verbs check their own arguments; everything else is one request.
     let cmd = match a.verb.as_str() {
         "last" | "wait" | "ask" => None,
@@ -212,6 +234,13 @@ pub fn run(args: &[String]) -> Result<()> {
         Ok(r) => r,
         Err(e) => fail(&a, e),
     };
+    if a.wait {
+        if !resp.ok {
+            fail(&a, resp.error.unwrap_or_else(|| "failed".into()));
+        }
+        let done: Done = serde_json::from_value(resp.data)?;
+        return run_wait_target(&a, &ctx, &done.session.id);
+    }
     if a.json {
         println!("{}", serde_json::to_string_pretty(&resp)?);
         if !resp.ok {
@@ -480,6 +509,7 @@ impl Ctx {
 }
 
 /// How a `wait` ended.
+#[derive(Debug)]
 enum WaitEnd {
     /// The condition held; the session's last state (`None`: it's gone).
     Done(Option<StatusInfo>),
@@ -511,6 +541,20 @@ fn is_idle(s: &SessionInfo, settle: Duration) -> bool {
         Some(age) => s.worked_since_input || age >= INPUT_GRACE.as_millis() as u64,
     };
     quiet && answered
+}
+
+/// Processes finish only after their child is reaped and all output is drained.
+/// A queued worktree handover may still show the previous run's exit status.
+fn process_finished(s: &SessionInfo) -> bool {
+    !s.start_pending && s.status != "running" && s.exit_code.is_some()
+}
+
+fn process_result(s: &SessionInfo) -> i32 {
+    if s.exit_code == Some(0) {
+        0
+    } else {
+        EXIT_PROCESS_FAILED
+    }
 }
 
 /// The transcript half of "done", for a Claude agent that was sent input: its record
@@ -558,6 +602,7 @@ fn wait_for(
     let deadline = Instant::now().checked_add(timeout);
     let first = ctx.status(target)?;
     let id = first.session.id.clone();
+    let process = first.session.kind == "process";
     // Where an agent's transcript is: fixed for the session, so asked once. Only a
     // Claude agent's is read (see `turn_settled`); anything else ignores it.
     let transcript = match (exit, first.session.kind.as_str()) {
@@ -570,15 +615,29 @@ fn wait_for(
     let mut last = Some(first);
     loop {
         if let Some(s) = &last {
+            if process && !s.session.start_pending && s.session.status == "stopped" {
+                return Err(format!(
+                    "{id}: process is not started — `mmux start` it first{}",
+                    s.session
+                        .error
+                        .as_ref()
+                        .map(|e| format!(": {e}"))
+                        .unwrap_or_default()
+                ));
+            }
             // Blocked on a question, it will neither finish nor exit: say so, whichever
             // way the caller is waiting.
             if is_asking(&s.session) {
                 return Ok(WaitEnd::NeedsInput(s.clone()));
             }
-            let done = match exit {
-                true => s.session.status != "running",
-                false => {
-                    is_idle(&s.session, settle) && turn_settled(transcript.as_ref(), &s.session)
+            let done = if process {
+                process_finished(&s.session)
+            } else {
+                match exit {
+                    true => s.session.status != "running",
+                    false => {
+                        is_idle(&s.session, settle) && turn_settled(transcript.as_ref(), &s.session)
+                    }
                 }
             };
             if done {
@@ -592,7 +651,7 @@ fn wait_for(
         last = match ctx.status(&id) {
             Ok(s) => Some(s),
             // Closed, or mmux itself went away: for `--exit` that is the answer.
-            Err(_) if exit => return Ok(WaitEnd::Done(None)),
+            Err(_) if exit && !process => return Ok(WaitEnd::Done(None)),
             Err(e) => return Err(format!("{id}: {e}")),
         };
     }
@@ -611,9 +670,13 @@ fn run_last(a: &Args, ctx: &Ctx) -> Result<()> {
 }
 
 fn run_wait(a: &Args, ctx: &Ctx) -> Result<()> {
+    run_wait_target(a, ctx, &a.pos[0])
+}
+
+fn run_wait_target(a: &Args, ctx: &Ctx, target: &str) -> Result<()> {
     let timeout = a.timeout.unwrap_or(DEFAULT_TIMEOUT);
     let settle = a.settle.unwrap_or(DEFAULT_SETTLE);
-    let (state, timed_out) = match wait_for(ctx, &a.pos[0], a.exit, timeout, settle) {
+    let (state, timed_out) = match wait_for(ctx, target, a.exit, timeout, settle) {
         Ok(WaitEnd::Done(s)) => (s, false),
         Ok(WaitEnd::TimedOut(s)) => (s, true),
         Ok(WaitEnd::NeedsInput(s)) => needs_input_exit(a, &s, None),
@@ -623,18 +686,61 @@ fn run_wait(a: &Args, ctx: &Ctx) -> Result<()> {
         let who = state
             .as_ref()
             .map(|s| format!("{} {}", s.session.id, s.session.name))
-            .unwrap_or_else(|| a.pos[0].clone());
+            .unwrap_or_else(|| target.to_string());
         fail_with(
             a,
             format!("timed out after {} waiting on {who}", human(timeout)),
             EXIT_TIMEOUT,
         );
     }
+    let code = state
+        .as_ref()
+        .filter(|s| s.session.kind == "process")
+        .map(|s| process_result(&s.session))
+        .unwrap_or(0);
+    let output = match (a.tail, state.as_ref()) {
+        (Some(lines), Some(s)) => {
+            let data = ctx
+                .call(Cmd::Read {
+                    target: s.session.id.clone(),
+                    lines: Some(lines),
+                })
+                .unwrap_or_else(|e| fail(a, e));
+            Some(serde_json::from_value::<ReadOut>(data)?.text)
+        }
+        _ => None,
+    };
     match (a.json, state) {
-        (true, Some(s)) => print_json(&Response::ok(serde_json::to_value(&s)?)),
+        (true, Some(s)) => {
+            let mut data = serde_json::to_value(&s)?;
+            if let Some(output) = output {
+                data["output"] = output.into();
+            }
+            let mut response = Response::ok(data);
+            if code != 0 {
+                response.ok = false;
+                response.error = Some(format!(
+                    "process exited with status {}",
+                    s.session.exit_code.unwrap()
+                ));
+            }
+            print_json(&response);
+        }
         (true, None) => print_json(&Response::ok(serde_json::json!({ "status": "gone" }))),
-        (false, Some(s)) => println!("{} {} — {}", s.session.id, s.session.name, state_word(&s)),
-        (false, None) => println!("{} — gone", a.pos[0]),
+        (false, Some(s)) => {
+            if let Some(output) = output.filter(|s| !s.is_empty()) {
+                println!("{output}");
+            }
+            let status = match s.session.exit_code.filter(|_| s.session.kind == "process") {
+                Some(exit) => format!("{} (exit status {exit})", state_word(&s)),
+                None => state_word(&s),
+            };
+            println!("{} {} — {status}", s.session.id, s.session.name);
+        }
+        (false, None) => println!("{target} — gone"),
+    }
+    if code != 0 {
+        std::process::exit(code);
     }
     Ok(())
 }
@@ -1005,8 +1111,10 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     --dismiss clears its notification instead.
     mmux new agent [template] [-p project] [--prompt "<first prompt>"]
     mmux new terminal [-p project] [--cmd "<command>"]
-    mmux start <t>                  Start a session that isn't running (processes too)
-    mmux restart <t>                (Re)start a session whether or not it's running
+    mmux start <t> [--wait]         Start a session that isn't running (processes too)
+    mmux restart <t> [--wait]       (Re)start a session whether or not it's running;
+                                    --wait then waits on the returned session id
+                                    (also accepts -t, --settle, --exit, --tail N).
     mmux stop <t> [--force]         Stop a process in place (runs its stop: command);
                                     on an agent/terminal, the same as close
     mmux close <t> [--force]        Close an agent/terminal (refused while busy
@@ -1014,7 +1122,7 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     closes your own pane, no --force needed
     mmux last <t>                   An agent's last reply (Claude/Codex/Pi/Grok: from
                                     its transcript; others: the end of its screen)
-    mmux wait <t> [--idle|--exit] [-t 10m] [--settle 1.5s]
+    mmux wait <t> [--idle|--exit] [-t 10m] [--settle 1.5s] [--tail N]
                                     Block until the agent has finished working on
                                     what it was sent (--idle, the default), or
                                     with --exit until it ends. Exit 2 on timeout.
@@ -1022,6 +1130,11 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     or permission prompt, or a notification): it
                                     prints the question, choices and screen —
                                     `mmux answer` it, then wait again.
+                                    Processes always wait for exit + final output,
+                                    print the child's exit status, and return 0 on
+                                    success or 4 on failure (timeout stays 2).
+                                    --tail N adds the last N output lines (0 = all;
+                                    --json: data.output, data.exit_code).
     mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>
                                     Start an agent (or use --to), give it the
                                     prompt, wait, print its reply. The agent stays
@@ -1180,6 +1293,142 @@ mod tests {
         assert!(a.close);
         assert_eq!(a.pos, vec!["hi", "there"]);
         assert!(parse(&args(&["wait", "s1", "--exit"])).unwrap().exit);
+        for verb in ["start", "restart"] {
+            let a = parse(&args(&[
+                verb,
+                "TestFlight",
+                "--wait",
+                "--tail",
+                "40",
+                "-t",
+                "1h",
+            ]))
+            .unwrap();
+            assert!(a.wait);
+            assert_eq!(a.tail, Some(40));
+            assert_eq!(a.timeout, Some(Duration::from_secs(3600)));
+        }
+        assert!(parse(&args(&["wait", "s1", "--tail", "bad"])).is_err());
+    }
+
+    #[test]
+    fn processes_wait_for_reaping_output_and_pending_starts() {
+        let mut s = agent(false, 60_000, None, false);
+        s.kind = "process".into();
+        assert!(!process_finished(&s), "a quiet process is still running");
+        s.status = "exited".into();
+        assert!(!process_finished(&s), "reader EOF can precede the reaper");
+        s.exit_code = Some(0);
+        assert!(process_finished(&s));
+        assert_eq!(process_result(&s), 0);
+        s.status = "running".into();
+        assert!(
+            !process_finished(&s),
+            "reaper can finish before the output drains"
+        );
+        s.status = "failed".into();
+        for code in [1, 2, 3, 7, 137, 255] {
+            s.exit_code = Some(code);
+            assert_eq!(process_result(&s), EXIT_PROCESS_FAILED);
+        }
+        s.start_pending = true;
+        assert!(
+            !process_finished(&s),
+            "a worktree handover still has an old exit code"
+        );
+    }
+
+    /// Exercise the real polling loop over the wire without booting a TUI.
+    fn process_wait(
+        replies: Vec<Response>,
+        exit: bool,
+        timeout: Duration,
+    ) -> Result<WaitEnd, String> {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixListener;
+        let socket = PathBuf::from(format!("/tmp/mmux-wait-{}.sock", crate::agent::mint_uuid()));
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let server = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            for (n, response) in replies.into_iter().enumerate() {
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((s, _)) => break s,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "missing status request {n}");
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(e) => panic!("{e}"),
+                    }
+                };
+                // macOS inherits the listener's nonblocking mode on accept.
+                stream.set_nonblocking(false).unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut line = String::new();
+                BufReader::new(&stream).read_line(&mut line).unwrap();
+                let request: Request = serde_json::from_str(&line).unwrap();
+                assert_eq!(
+                    request.cmd,
+                    Cmd::Status {
+                        target: if n == 0 { "TestFlight" } else { "s1" }.into()
+                    }
+                );
+                writeln!(stream, "{}", serde_json::to_string(&response).unwrap()).unwrap();
+            }
+        });
+        let ctx = Ctx {
+            sock: socket.clone(),
+            caller: None,
+            cwd: Some("/outside/project".into()),
+            depth: 0,
+        };
+        let result = wait_for(&ctx, "TestFlight", exit, timeout, Duration::ZERO);
+        server.join().unwrap();
+        std::fs::remove_file(socket).unwrap();
+        result
+    }
+
+    #[test]
+    fn process_wait_polls_until_exit_and_does_not_call_idle_done() {
+        let mut s = agent(false, 60_000, None, false);
+        s.kind = "process".into();
+        let response = |s: &SessionInfo| {
+            Response::ok(
+                serde_json::to_value(StatusInfo {
+                    session: s.clone(),
+                    status_line: vec![],
+                })
+                .unwrap(),
+            )
+        };
+        let running = response(&s);
+        s.status = "exited".into();
+        let draining = response(&s);
+        s.exit_code = Some(7);
+        let exited = response(&s);
+        assert!(
+            matches!(process_wait(vec![running.clone(), draining, exited], false, Duration::from_secs(3)).unwrap(),
+            WaitEnd::Done(Some(s)) if s.session.exit_code == Some(7))
+        );
+        assert!(matches!(
+            process_wait(vec![running.clone()], false, Duration::ZERO).unwrap(),
+            WaitEnd::TimedOut(_)
+        ));
+        assert!(process_wait(
+            vec![running, Response::err("removed")],
+            true,
+            Duration::from_secs(3)
+        )
+        .unwrap_err()
+        .contains("removed"));
+        s.status = "stopped".into();
+        s.exit_code = None;
+        assert!(process_wait(vec![response(&s)], false, Duration::ZERO)
+            .unwrap_err()
+            .contains("not started"));
     }
 
     fn agent(working: bool, idle: u64, input_age: Option<u64>, worked: bool) -> SessionInfo {
@@ -1190,6 +1439,8 @@ mod tests {
             project: "p".into(),
             project_dir: "/p".into(),
             status: "running".into(),
+            exit_code: None,
+            start_pending: false,
             working,
             attention: false,
             needs_input: None,

@@ -58,12 +58,15 @@ handles it). See [Installation](02-installation.md#from-source).
 event-boundary repair plus cell/selection geometry (`cell_at`, `Selection::ordered`), the
 `pane.rs` mouse-sequence encoding, notification latch and top-aligned-scroll-region history
 regression, the `prompt.rs` menu/`[y/n]` detection and answer planning,
+the `session.rs` relative executable spawning across effective project/cwd variants and live busy-control detection,
+`ctl.rs` process completion/mapping plus polling over a mock control socket,
 the `picker.rs` fuzzy score, `notify.rs` escape formatting, the `config/` module (the
 project-over-global `merge` precedence in `config/mod.rs` and the comment-preserving YAML splicer in
 `config/yaml.rs`), `git::parse_change` porcelain parsing
 plus the changed-files tree, `tmux::session_name` hashing, `agent.rs` session-id parsing,
 `update.rs` version comparison + release-redirect parsing, and the `wizard.rs` YAML builders. The
-PTY/TUI layers are verified by hand by the maintainer — with one automated exception below.
+interactive TUI is verified by hand by the maintainer — with the CI boot exception below;
+the relative-command regression spawns only short fixture scripts in isolated PTYs.
 
 ## Continuous Integration
 
@@ -137,8 +140,9 @@ locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
   single file that would change.
 - **Copy is drag-select only.** A keyboard copy-mode is still future. (Note: over a program that
   tracks the mouse, the drag goes to *it* — hold Shift to drag-select for the clipboard instead.)
-- **Agent activity is protocol-first.** `OSC 9;4` progress state is authoritative when present,
-  with animated terminal titles as the compatibility fallback. Needing input outranks both: a
+- **Agent activity combines protocol and live controls.** `OSC 9;4` progress state takes precedence
+  over animated titles, while footer controls (`[stop]`, `esc to interrupt`, `Working (`) keep
+  Grok/Codex busy even if progress has cleared or the title is static. Needing input outranks all: a
   menu or `[y/n]` prompt read off the screen, or a bell/notification OSC (9/777/99) no input has
   answered. Prompt detection is a heuristic over the screen text (`prompt.rs`), so a menu drawn
   without a cursor glyph or a selection hint isn't recognized — its notification still is. An

@@ -34,6 +34,10 @@ The project file is layered on top of the global one, and **project values win**
 - A relative `cwd` always resolves against the **project** directory — even for an agent or
   process defined in the global config. So a global `claude` agent runs in whatever project you
   opened, not in `$HOME`.
+- A `cmd` containing `/` resolves against that effective **cwd**, bypassing `PATH`:
+  `scripts/testflight.sh` and `./scripts/testflight.sh` both run from the process's
+  directory. Absolute commands stay absolute; bare names such as `npm` use `PATH`.
+  This applies equally to workspace members and worktrees, including an explicit `cwd`.
 
 ## Local Overrides — `mmux.local.yml`
 
@@ -136,9 +140,9 @@ session goes away.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `name` | string, **required** | Label shown in the sidebar. |
-| `cmd` | string, **required** | Executable on your `PATH`. |
+| `cmd` | string, **required** | Executable: bare names use `PATH`; paths containing `/` resolve against the effective `cwd` (absolute paths stay absolute). |
 | `args` | list of strings | Defaults to `[]`. |
-| `cwd` | string | Relative to the config file's directory; defaults to the project directory. |
+| `cwd` | string | Relative to the project directory, including global definitions, workspace members and worktrees; absolute paths stay absolute. Defaults to the project directory. |
 | `env` | map | Environment overrides. |
 
 **Built-in presets.** mmux ships presets for the common harnesses — **Claude** (`claude`),
