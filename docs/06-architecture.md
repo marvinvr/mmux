@@ -286,6 +286,9 @@ and every commit already merged into its base **or** pushed to its upstream
 a candidate whose clock has run out costs the handful of `git` forks that decide whether it's
 really finished, and that scan is paced at `REAP_SCAN_EVERY`.
 
+"Running" means a live program (`holds_checkout`), not a row with a pane: a crashed agent keeps
+its red row and a finished process keeps its output, but neither holds the checkout open.
+
 The invariant that makes automatic deletion defensible: **it only ever removes a checkout whose
 contents already exist somewhere else.** Branch deletion uses `-d`, never `-D`, so an unmerged
 branch is kept and the checkout alone goes. The same `Integration` reading drives the manual `X`

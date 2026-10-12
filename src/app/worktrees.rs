@@ -50,6 +50,14 @@ pub(super) fn human_duration(d: Duration) -> String {
     }
 }
 
+/// Whether `s` keeps its worktree from going idle: only a program that is still
+/// alive. A row whose program has ended — a crashed agent, kept red on purpose, or a
+/// process that ran to completion — still holds its pane for the scrollback, but
+/// nothing is running in the checkout any more, so it mustn't pin it forever.
+fn holds_checkout(s: &Session) -> bool {
+    s.is_running()
+}
+
 /// A worktree just cut by [`App::cut_worktree`].
 pub(crate) struct Cut {
     /// Its project.
@@ -616,7 +624,7 @@ impl App {
                 || self
                     .sessions
                     .iter()
-                    .any(|s| s.project == pi && s.pane.is_some());
+                    .any(|s| s.project == pi && holds_checkout(s));
             if busy {
                 if let Some(wt) = self.projects[pi].worktree.as_mut() {
                     wt.last_busy = now;
@@ -836,5 +844,73 @@ impl App {
         if !notes.is_empty() {
             self.flash(notes.join(" · "));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn spawned(kind: Kind, script: &str) -> Session {
+        let dir = std::env::temp_dir();
+        let recipe = Recipe {
+            cmd: "sh".into(),
+            args: vec!["-c".into(), script.into()],
+            cwd: dir.clone(),
+            env: BTreeMap::new(),
+        };
+        let mut s = Session::new("row".into(), kind, recipe, 0, &dir);
+        s.spawn(24, 80);
+        assert!(s.error.is_none(), "{:?}", s.error);
+        s
+    }
+
+    fn wait_exit(s: &Session) {
+        let pane = s.pane.as_ref().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while pane.is_running() || pane.exit_code().is_none() {
+            assert!(Instant::now() < deadline, "program did not exit");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// The reaper's "nothing running" test. An ended program keeps its pane (a crashed
+    /// agent stays as a red row, a finished process keeps its output), and that pane
+    /// alone used to count as busy — so one crash pinned a merged worktree for good.
+    #[test]
+    fn only_live_programs_hold_a_worktree() {
+        let mut live = spawned(Kind::Agent, "sleep 30");
+        assert!(holds_checkout(&live));
+
+        let crashed = spawned(Kind::Agent, "exit 1");
+        wait_exit(&crashed);
+        assert!(crashed.pane.is_some());
+        assert!(matches!(
+            crashed.status(),
+            crate::app::session::Status::Failed
+        ));
+        assert!(!holds_checkout(&crashed));
+
+        let finished = spawned(Kind::Process, "true");
+        wait_exit(&finished);
+        assert!(finished.pane.is_some());
+        assert!(!holds_checkout(&finished));
+
+        let never_started = Session::new(
+            "row".into(),
+            Kind::Agent,
+            Recipe {
+                cmd: "sh".into(),
+                args: Vec::new(),
+                cwd: std::env::temp_dir(),
+                env: BTreeMap::new(),
+            },
+            0,
+            &std::env::temp_dir(),
+        );
+        assert!(!holds_checkout(&never_started));
+
+        live.stop();
     }
 }
