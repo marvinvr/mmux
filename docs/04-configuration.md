@@ -238,7 +238,8 @@ brings more than you want. Note the same rule applies to a bare `node_modules`: 
 nested one, so spell out the path if you only meant the root.
 
 `reap` only removes a checkout whose contents already live somewhere else. **All** of these must
-hold: nothing running in the worktree (no agent, terminal, or process), a clean working tree, and
+hold: nothing running in the worktree (no live agent, terminal, or process — a crashed agent's red
+row or a finished process doesn't count), a clean working tree, and
 every commit either merged into its base branch or pushed to its upstream. A branch with work that
 exists nowhere else is never touched, and an unmerged branch survives even when its checkout is
 removed. The one thing a reaped checkout doesn't preserve is edits to *gitignored* files made
