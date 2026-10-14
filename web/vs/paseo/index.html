@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<!--
+  mmux vs Paseo. Built from web/vs/_template; see web/vs/README.md.
+  Relative paths (../../styles.css) are deliberate: they work over file:// and
+  in nginx, and the Docker build fingerprints them. Do not make them absolute.
+  The page must stay inline-script/style free (strict CSP).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Paseo: terminal multiplexer or agent daemon with apps</title>
+  <meta name="description" content="mmux keeps coding agents in a persistent terminal TUI you reach over SSH. Paseo runs them from a daemon with desktop, mobile, web and CLI clients. Compared.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/paseo/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Paseo: terminal multiplexer or agent daemon with apps">
+  <meta property="og:description" content="mmux keeps coding agents in a persistent terminal TUI you reach over SSH. Paseo runs them from a daemon with desktop, mobile, web and CLI clients. Compared.">
+  <meta property="og:url" content="https://mmux.org/vs/paseo/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Paseo: terminal multiplexer or agent daemon with apps">
+  <meta name="twitter:description" content="mmux keeps coding agents in a persistent terminal TUI you reach over SSH. Paseo runs them from a daemon with desktop, mobile, web and CLI clients. Compared.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep the FAQPage in sync with the visible FAQ section. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Paseo",
+    "url": "https://mmux.org/vs/paseo/",
+    "description": "mmux keeps coding agents in a persistent terminal TUI you reach over SSH. Paseo runs them from a daemon with desktop, mobile, web and CLI clients. Compared.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Paseo", "url": "https://paseo.sh/", "sameAs": "https://github.com/getpaseo/paseo" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Paseo", "item": "https://mmux.org/vs/paseo/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Paseo free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Paseo is open source under Apache-2.0 and needs no account. The optional hosted Paseo Hub, which starts agents from GitHub, Slack and Discord events, has a Free plan (one seat, 50 agent runs a month) and a Pro plan at $15 per seat per month. A self-hosted Hub has no plans or billing. mmux is free and GPLv3." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use mmux from my phone like Paseo?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Only through an SSH app. mmux has no mobile, web or desktop app. When the terminal is narrower than 60 columns, as in an SSH client on a phone, mmux switches to a single-column layout with a sidebar drawer and a git panel you open from the footer. Paseo ships native iOS and Android apps that connect to its daemon, which is the better fit if your phone is a main way you check on agents." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Paseo show the real Claude Code interface?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Paseo runs the official claude CLI through the Claude Agent SDK and shows the conversation in its own interface. Its docs also say you can open a terminal in a Paseo workspace and run claude there as usual. mmux always runs the agent CLI in a terminal pane, so you see and type into the tool's own TUI." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do agents keep running when I close the window?",
+        "acceptedAnswer": { "@type": "Answer", "text": "In both. Paseo's daemon owns the running agents, and clients connect to it and disconnect from it. mmux runs inside an invisible per-directory tmux session that survives closing the terminal or dropping SSH. After a full quit or a restart to update, mmux reopens the agents and terminals you had, and Claude, Codex, Pi and Grok agents resume their conversation." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which one runs on Windows?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Paseo publishes Windows installers for x64 and arm64 next to its macOS and Linux builds. mmux ships prebuilt binaries for macOS on Apple Silicon and for Linux on arm64 and x86_64, and needs tmux on the PATH. There is no native Windows build of mmux." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Paseo</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Paseo</h1>
+      <p class="vs-lede">mmux is a terminal multiplexer for coding agents: one Rust binary that shows each agent's own TUI in a persistent tmux session you reach from any terminal, including over SSH. Paseo is an open source agentic development environment: a daemon that runs your agent CLIs, with desktop, iOS, Android, web and CLI clients connecting to it. The real difference is where you work: inside a terminal, or in apps on every device.</p>
+      <p class="vs-updated">Last checked against Paseo 0.11.2 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Paseo if</strong> you want a graphical workspace (chat timeline, editor, diffs, pull requests and a built-in browser), native phone apps, Windows support, voice input, plugins, or agents started from GitHub, Slack and Discord through Paseo Hub.</p>
+      <p><strong>Pick mmux if</strong> you live in the terminal and over SSH, want each agent's real CLI in a pane rather than a reimplemented chat view, and want agents, dev processes and a git panel in one keyboard-driven TUI with nothing to run but a single binary and tmux.</p>
+      <p>Both are free and open source, both give each agent its own git worktree, and both can be scripted so agents start and talk to other agents.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Paseo 0.11.2, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Paseo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">How you use it</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>TUI in any terminal</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Desktop, mobile and web apps plus a CLI, all clients of one daemon</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent shown as its own CLI TUI</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Every agent runs in a terminal pane</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Chat view via adapters; you can also run the CLI in its terminal</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents keep running after you close the client</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>tmux session survives; quit restores and resumes agents</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>The daemon owns running agents</td>
+            </tr>
+            <tr>
+              <th scope="row">Native phone apps</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>No app; single-column layout for SSH from a phone</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>iOS and Android, with an optional E2E-encrypted relay</td>
+            </tr>
+            <tr>
+              <th scope="row">Desktop platforms</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS (Apple Silicon) and Linux binaries</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS, Windows and Linux builds</td>
+            </tr>
+            <tr>
+              <th scope="row">Which agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Any command you configure</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Built-in adapters for major CLIs, plus ACP agents</td>
+            </tr>
+            <tr>
+              <th scope="row">Git worktree per task</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>One key; copies <code>.env</code> files, merges back with <code>M</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Setup and teardown hooks in <code>paseo.json</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers and scripts</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Processes in the sidebar; one checkout runs a process at a time</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Services get their own port and a reverse proxy</td>
+            </tr>
+            <tr>
+              <th scope="row">Git and review UI</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Git panel: stage, commit, push, diff preview</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Diffs, pull requests and file editor</td>
+            </tr>
+            <tr>
+              <th scope="row">Built-in browser, voice, plugins</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>None of these</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Browser on desktop, local voice, plugin registry</td>
+            </tr>
+            <tr>
+              <th scope="row">Scripting and agent-to-agent</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux</code> CLI: ask, send, wait, worktree, commit</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>CLI, TypeScript SDK, MCP tools and skills</td>
+            </tr>
+            <tr>
+              <th scope="row">What you install</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>One Rust binary plus tmux</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Electron desktop app, or the npm CLI, or a Docker image</td>
+            </tr>
+            <tr>
+              <th scope="row">License and price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3, free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Apache-2.0, free; hosted Hub has a paid Pro plan</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Paseo facts from its README, public docs, changelog and the v0.11.2 release assets on GitHub. mmux facts from its docs.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Paseo?</h2>
+      <p>Paseo describes itself as "an open source agentic development environment for desktop, mobile, web, and CLI" [1]. It does not ship its own model: it runs the agent CLIs you already have installed and signed in. Claude Code, Codex, OpenCode, Pi, Antigravity and Muse Code have bundled adapters, and any agent that speaks the Agent Client Protocol works through a generic adapter, with a catalog of more than 25 one-click installs including Cursor, Gemini and GitHub Copilot [3]. Claude Code runs through the official <code>claude</code> CLI using the Claude Agent SDK and counts against your normal Claude plan [4].</p>
+      <p>The core is a daemon that owns the agents and workspaces. The Electron desktop app for macOS, Windows and Linux starts it automatically; on a server you install it with <code>npm install -g @getpaseo/cli</code> or run the Docker image [1][2]. The native iOS and Android apps, the web app and the CLI connect to the same daemon over SSH, Tailscale or an optional end-to-end encrypted relay that is off until you enable it [6][7]. Each task can get its own git worktree with setup and teardown hooks and supervised services [5].</p>
+      <p>On top of that come a file editor, diff and pull request review, a built-in browser on desktop, local voice input, plugins, a TypeScript SDK and MCP tools [1][2]. Paseo Hub, a separate service, starts agents on your daemons from GitHub, Slack and Discord events; you can self-host it or use the managed one [8][9]. It has been licensed Apache-2.0 since version 0.7.0 [10][11].</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Paseo is better</h2>
+      <ul>
+        <li><strong>Phones and other devices.</strong> Paseo has native iOS and Android apps that show agents, files, terminals and diffs, and a web app. mmux can only be reached from a phone through an SSH client.</li>
+        <li><strong>A graphical workspace.</strong> Conversation, editor, terminals, diffs, pull requests and a browser sit in split panes in one window. mmux has a git panel and opens files in your <code>$EDITOR</code>, but no editor, PR view or browser of its own.</li>
+        <li><strong>Windows.</strong> Paseo publishes Windows installers for x64 and arm64. mmux ships prebuilt binaries for macOS on Apple Silicon and for Linux only.</li>
+        <li><strong>Remote access without network setup.</strong> The relay lets your phone reach a daemon behind NAT with no open ports, and the relay cannot read the traffic. With mmux you bring your own SSH access.</li>
+        <li><strong>Extension and triggers.</strong> Plugins add screens, panels, slash commands and providers on every client; a TypeScript SDK and MCP tools cover automation; Hub starts agents from GitHub, Slack and Discord. mmux has none of these.</li>
+        <li><strong>Voice.</strong> Paseo transcribes speech on-device and sends it to the agent as text. mmux has no voice input.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>The agent's own interface.</strong> Every agent, Claude Code or anything else, runs as itself in a terminal pane. You see its prompts, menus and status exactly as the CLI draws them, and any command works as an agent without an adapter.</li>
+        <li><strong>Terminal and SSH first.</strong> mmux is a TUI, so it runs wherever a terminal does: a local tab, an SSH session, a tmux client. Closing the terminal or dropping SSH only detaches. Run <code>mmux</code> again, or <code>mmux attach</code> from anywhere, to rejoin.</li>
+        <li><strong>Notifications that cross SSH.</strong> When an agent rings the bell or emits a notification escape, mmux writes the notification as a terminal escape sequence, so the popup appears on the machine your terminal runs on, not on the remote host.</li>
+        <li><strong>Small footprint.</strong> A single Rust binary plus tmux, with no daemon port, no account and no Electron app. A script install keeps itself up to date and restores your session after the restart.</li>
+        <li><strong>One sidebar for agents, shells and dev processes.</strong> Processes from <code>mmux.yaml</code> start, stop and stream next to the agents, and only one checkout of a repository runs a given process at a time, so worktrees reuse the same ports. A workspace manifest puts several repositories in one sidebar.</li>
+        <li><strong>Keyboard-driven git.</strong> The git panel stages, commits and pushes with keys, can write the commit message with an installed Claude or Codex CLI, and can schedule a commit for later.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Paseo when</h3>
+          <ul>
+            <li>You want to start, follow and answer agents from a phone app.</li>
+            <li>You prefer a GUI with an editor, diff review and a browser over a terminal.</li>
+            <li>You work on Windows.</li>
+            <li>Your team wants agents started from GitHub issues, Slack or Discord.</li>
+            <li>You want to build on agents with a TypeScript SDK or plugins.</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>Your day happens in a terminal, often over SSH on a remote machine.</li>
+            <li>You want to see and type into each agent's real CLI.</li>
+            <li>You want dev servers, shells and agents for several repos in one keyboard-driven view.</li>
+            <li>You want nothing to install beyond one binary and tmux.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from Paseo to mmux</h2>
+      <ol>
+        <li>Install mmux on the machine where your agents run (the Paseo daemon host), and make sure your agent CLIs are signed in there, as they already are for Paseo.</li>
+        <li>List the agents you use in <code>~/.mmux/config.yaml</code>. Any command works, not only the ones Paseo has adapters for.</li>
+        <li>Move the scripts and services from <code>paseo.json</code> into <code>processes</code> in the project's <code>mmux.yaml</code>, and the worktree <code>setup</code> line into <code>worktrees.setup</code>. mmux copies <code>.env</code> files into new worktrees by default.</li>
+        <li>Run <code>mmux</code> in the project. Press <code>w</code> for a worktree, and use <code>mmux ask</code> or <code>mmux worktree new</code> where agents used Paseo's orchestration tools.</li>
+      </ol>
+      <pre><code># ~/.mmux/config.yaml
+agents:
+  - name: Claude
+    cmd: claude
+  - name: Codex
+    cmd: codex
+
+# ./mmux.yaml
+name: my-app
+processes:
+  - name: Dev server
+    cmd: npm
+    args: ["run", "dev"]
+worktrees:
+  setup: npm ci</code></pre>
+      <p>mmux does not import Paseo's chat history. For some agents, such as OpenCode and Pi, Paseo can copy a resume command so you can continue a session in a terminal [11].</p>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Paseo free?</summary>
+        <div class="vs-faq-a"><p>Yes. Paseo is open source under Apache-2.0 and needs no account. The optional hosted Paseo Hub, which starts agents from GitHub, Slack and Discord events, has a Free plan (one seat, 50 agent runs a month) and a Pro plan at $15 per seat per month. A self-hosted Hub has no plans or billing. mmux is free and GPLv3.</p></div>
+      </details>
+      <details>
+        <summary>Can I use mmux from my phone like Paseo?</summary>
+        <div class="vs-faq-a"><p>Only through an SSH app. mmux has no mobile, web or desktop app. When the terminal is narrower than 60 columns, as in an SSH client on a phone, mmux switches to a single-column layout with a sidebar drawer and a git panel you open from the footer. Paseo ships native iOS and Android apps that connect to its daemon, which is the better fit if your phone is a main way you check on agents.</p></div>
+      </details>
+      <details>
+        <summary>Does Paseo show the real Claude Code interface?</summary>
+        <div class="vs-faq-a"><p>Paseo runs the official <code>claude</code> CLI through the Claude Agent SDK and shows the conversation in its own interface. Its docs also say you can open a terminal in a Paseo workspace and run <code>claude</code> there as usual. mmux always runs the agent CLI in a terminal pane, so you see and type into the tool's own TUI.</p></div>
+      </details>
+      <details>
+        <summary>Do agents keep running when I close the window?</summary>
+        <div class="vs-faq-a"><p>In both. Paseo's daemon owns the running agents, and clients connect to it and disconnect from it. mmux runs inside an invisible per-directory tmux session that survives closing the terminal or dropping SSH. After a full quit or a restart to update, mmux reopens the agents and terminals you had, and Claude, Codex, Pi and Grok agents resume their conversation.</p></div>
+      </details>
+      <details>
+        <summary>Which one runs on Windows?</summary>
+        <div class="vs-faq-a"><p>Paseo publishes Windows installers for x64 and arm64 next to its macOS and Linux builds. mmux ships prebuilt binaries for macOS on Apple Silicon and for Linux on arm64 and x86_64, and needs tmux on the PATH. There is no native Windows build of mmux.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://github.com/getpaseo/paseo/blob/main/README.md">Paseo README (getpaseo/paseo)</a></li>
+        <li><a href="https://paseo.sh/docs/why">Paseo documentation: Why Paseo?</a></li>
+        <li><a href="https://paseo.sh/docs/providers">Paseo documentation: Providers</a></li>
+        <li><a href="https://paseo.sh/docs/claude-code">Paseo documentation: Claude Code</a></li>
+        <li><a href="https://paseo.sh/docs/worktrees">Paseo documentation: Git worktrees</a></li>
+        <li><a href="https://paseo.sh/docs/connectivity">Paseo documentation: Connectivity</a></li>
+        <li><a href="https://paseo.sh/docs/security">Paseo documentation: Security</a></li>
+        <li><a href="https://paseo.sh/docs/hub">Paseo documentation: Hub</a></li>
+        <li><a href="https://paseo.sh/hub">Paseo Hub plans and pricing</a></li>
+        <li><a href="https://github.com/getpaseo/paseo/blob/main/LICENSE">Paseo LICENSE (Apache-2.0)</a></li>
+        <li><a href="https://github.com/getpaseo/paseo/blob/main/CHANGELOG.md">Paseo changelog</a></li>
+        <li><a href="https://github.com/getpaseo/paseo/releases/tag/v0.11.2">Paseo v0.11.2 release (platform builds)</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
