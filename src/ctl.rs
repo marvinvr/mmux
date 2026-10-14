@@ -81,6 +81,9 @@ struct Args {
     help: bool,
     /// `wait --exit`: until the session ends, not until it goes idle.
     exit: bool,
+    /// `wait`/`ask --no-background`: done at an idle prompt, even with background
+    /// work still running (see [`crate::background`]).
+    no_background: bool,
     /// `start`/`restart --wait`: wait on the id returned by the action.
     wait: bool,
     tail: Option<usize>,
@@ -140,6 +143,7 @@ fn parse(args: &[String]) -> Result<Args> {
             "--prompt" if flags => out.prompt = Some(value(a)?),
             "--idle" if flags => out.exit = false,
             "--exit" if flags => out.exit = true,
+            "--no-background" if flags => out.no_background = true,
             "--wait" if flags => out.wait = true,
             "--tail" if flags => {
                 let v = value(a)?;
@@ -190,6 +194,9 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     if a.wait && !matches!(a.verb.as_str(), "start" | "restart") {
         fail(&a, "`--wait` is for `start` or `restart`".into());
+    }
+    if a.no_background && !matches!(a.verb.as_str(), "wait" | "ask") {
+        fail(&a, "`--no-background` is for `wait` or `ask`".into());
     }
     if a.tail.is_some() && a.verb != "wait" && !a.wait {
         fail(
@@ -528,14 +535,18 @@ fn is_asking(s: &SessionInfo) -> bool {
 
 /// Whether an agent has finished with what it was given: quiet (not working, nothing
 /// queued for it) for at least `settle`, and it either worked since the last input,
-/// was never sent any, or ignored it for longer than [`INPUT_GRACE`]. A session that
-/// is no longer running is finished too — it won't do anything more.
-fn is_idle(s: &SessionInfo, settle: Duration) -> bool {
+/// was never sent any, or ignored it for longer than [`INPUT_GRACE`]. With
+/// `background`, quiet also means no background work for `settle` — it would wake
+/// the agent, and the gap before the turn that starts shouldn't read as done. A
+/// session that is no longer running is finished too — it won't do anything more.
+fn is_idle(s: &SessionInfo, settle: Duration, background: bool) -> bool {
     if s.status != "running" {
         return true;
     }
-    let quiet =
-        !s.working && !s.input_pending && s.idle_for_ms.unwrap_or(0) >= settle.as_millis() as u64;
+    let settle = settle.as_millis() as u64;
+    let unwoken = !background
+        || (s.background.is_none() && s.background_idle_ms.is_none_or(|ms| ms >= settle));
+    let quiet = !s.working && !s.input_pending && unwoken && s.idle_for_ms.unwrap_or(0) >= settle;
     let answered = match s.input_age_ms {
         None => true,
         Some(age) => s.worked_since_input || age >= INPUT_GRACE.as_millis() as u64,
@@ -589,7 +600,8 @@ fn turn_settled(info: Option<&LastInfo>, s: &SessionInfo) -> bool {
 }
 
 /// Poll `target` until it is idle (or, with `exit`, until it stops running or goes
-/// away), or `timeout` passes. The target is pinned to its id first, so a name can't
+/// away), or `timeout` passes. Idle includes no background work unless `background`
+/// is off (`--no-background`). The target is pinned to its id first, so a name can't
 /// drift to another session midway.
 fn wait_for(
     ctx: &Ctx,
@@ -597,6 +609,7 @@ fn wait_for(
     exit: bool,
     timeout: Duration,
     settle: Duration,
+    background: bool,
 ) -> Result<WaitEnd, String> {
     // An absurd `-t` overflows the clock: that is simply no deadline.
     let deadline = Instant::now().checked_add(timeout);
@@ -636,7 +649,8 @@ fn wait_for(
                 match exit {
                     true => s.session.status != "running",
                     false => {
-                        is_idle(&s.session, settle) && turn_settled(transcript.as_ref(), &s.session)
+                        is_idle(&s.session, settle, background)
+                            && turn_settled(transcript.as_ref(), &s.session)
                     }
                 }
             };
@@ -676,7 +690,8 @@ fn run_wait(a: &Args, ctx: &Ctx) -> Result<()> {
 fn run_wait_target(a: &Args, ctx: &Ctx, target: &str) -> Result<()> {
     let timeout = a.timeout.unwrap_or(DEFAULT_TIMEOUT);
     let settle = a.settle.unwrap_or(DEFAULT_SETTLE);
-    let (state, timed_out) = match wait_for(ctx, target, a.exit, timeout, settle) {
+    let background = !a.no_background;
+    let (state, timed_out) = match wait_for(ctx, target, a.exit, timeout, settle, background) {
         Ok(WaitEnd::Done(s)) => (s, false),
         Ok(WaitEnd::TimedOut(s)) => (s, true),
         Ok(WaitEnd::NeedsInput(s)) => needs_input_exit(a, &s, None),
@@ -687,9 +702,14 @@ fn run_wait_target(a: &Args, ctx: &Ctx, target: &str) -> Result<()> {
             .as_ref()
             .map(|s| format!("{} {}", s.session.id, s.session.name))
             .unwrap_or_else(|| target.to_string());
+        let held = state
+            .as_ref()
+            .filter(|_| background && !a.exit)
+            .map(|s| background_hint(&s.session))
+            .unwrap_or_default();
         fail_with(
             a,
-            format!("timed out after {} waiting on {who}", human(timeout)),
+            format!("timed out after {} waiting on {who}{held}", human(timeout)),
             EXIT_TIMEOUT,
         );
     }
@@ -795,7 +815,8 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
     );
     let timeout = a.timeout.unwrap_or(DEFAULT_TIMEOUT);
     let settle = a.settle.unwrap_or(DEFAULT_SETTLE);
-    match wait_for(ctx, &id, false, timeout, settle) {
+    let background = !a.no_background;
+    match wait_for(ctx, &id, false, timeout, settle, background) {
         Ok(WaitEnd::Done(_)) => {}
         Ok(WaitEnd::NeedsInput(s)) => needs_input_exit(
             a,
@@ -804,11 +825,14 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
                 "then `mmux wait {id}` and `mmux last {id}` for its reply"
             )),
         ),
-        Ok(WaitEnd::TimedOut(_)) => fail_with(
+        Ok(WaitEnd::TimedOut(s)) => fail_with(
             a,
             format!(
-                "{id} is still working after {} — `mmux wait {id}` then `mmux last {id}`",
-                human(timeout)
+                "{id} is still working after {}{} — `mmux wait {id}` then `mmux last {id}`",
+                human(timeout),
+                s.filter(|_| background)
+                    .map(|s| background_hint(&s.session))
+                    .unwrap_or_default()
             ),
             EXIT_TIMEOUT,
         ),
@@ -1051,13 +1075,30 @@ fn row(s: &SessionInfo) -> String {
     .to_string()
 }
 
-/// A session's state, with how long an agent has been quiet (`idle 42s`) or waiting
-/// on an answer (`needs-input 42s`).
+/// Why a `wait` that ran out of time was still holding on, when it was background
+/// work at an otherwise idle prompt — and how not to wait for it.
+fn background_hint(s: &SessionInfo) -> String {
+    match &s.background {
+        Some(bg) if !s.working => format!(
+            " — its prompt is idle, but background work is still running ({}); \
+             `--no-background` returns at the idle prompt",
+            bg.describe()
+        ),
+        _ => String::new(),
+    }
+}
+
+/// A session's state, with how long an agent has been quiet (`idle 42s`), waiting on
+/// an answer (`needs-input 42s`), or what background work holds it
+/// (`working (background: 2 agents, 1 shell)`).
 fn state_word(s: &StatusInfo) -> String {
     let i = &s.session;
     let word = state(i);
     if let Some(n) = &i.needs_input {
         return format!("{word} {}", human(Duration::from_millis(n.since_ms)));
+    }
+    if let Some(bg) = i.background.filter(|_| i.status == "running") {
+        return format!("{word} (background: {})", bg.describe());
     }
     match (i.kind.as_str(), i.working, i.idle_for_ms) {
         ("agent", false, Some(ms)) if i.status == "running" => {
@@ -1067,12 +1108,13 @@ fn state_word(s: &StatusInfo) -> String {
     }
 }
 
-/// A session's state in one word: an agent is `working`, `needs-input` (blocked on a
-/// question or a notification) or `idle`; `!` marks one asking for attention.
+/// A session's state in one word: an agent is `working` (in its turn, or with
+/// background work that will wake it), `needs-input` (blocked on a question or a
+/// notification) or `idle`; `!` marks one asking for attention.
 fn state(s: &SessionInfo) -> String {
     let word = match (s.status.as_str(), s.kind.as_str()) {
         ("running", "agent") if s.needs_input.is_some() => "needs-input",
-        ("running", "agent") if s.working => "working",
+        ("running", "agent") if s.working || s.background.is_some() => "working",
         ("running", "agent") => "idle",
         (status, _) => status,
     };
@@ -1122,10 +1164,14 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     closes your own pane, no --force needed
     mmux last <t>                   An agent's last reply (Claude/Codex/Pi/Grok: from
                                     its transcript; others: the end of its screen)
-    mmux wait <t> [--idle|--exit] [-t 10m] [--settle 1.5s] [--tail N]
+    mmux wait <t> [--idle|--exit] [-t 10m] [--settle 1.5s] [--tail N] [--no-background]
                                     Block until the agent has finished working on
                                     what it was sent (--idle, the default), or
                                     with --exit until it ends. Exit 2 on timeout.
+                                    A Claude agent with background work running
+                                    (sub-agents, shells, monitors it will be woken
+                                    by) isn't done until that's gone too;
+                                    --no-background stops at its idle prompt.
                                     Exit 3 when it needs input instead (a question
                                     or permission prompt, or a notification): it
                                     prints the question, choices and screen —
@@ -1139,7 +1185,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     Start an agent (or use --to), give it the
                                     prompt, wait, print its reply. The agent stays
                                     in the sidebar unless --close. `-` = stdin.
-                                    Exits 3 like wait if it stops to ask.
+                                    Exits 3 like wait if it stops to ask;
+                                    --no-background as for wait.
                                     Long waits (ask/wait): run them as a
                                     background job if your shell tool can.
     mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
@@ -1385,7 +1432,7 @@ mod tests {
             cwd: Some("/outside/project".into()),
             depth: 0,
         };
-        let result = wait_for(&ctx, "TestFlight", exit, timeout, Duration::ZERO);
+        let result = wait_for(&ctx, "TestFlight", exit, timeout, Duration::ZERO, true);
         server.join().unwrap();
         std::fs::remove_file(socket).unwrap();
         result
@@ -1448,6 +1495,8 @@ mod tests {
             error: None,
             idle_for_ms: Some(idle),
             input_age_ms: input_age,
+            background: None,
+            background_idle_ms: None,
             worked_since_input: worked,
             input_pending: false,
             parent: None,
@@ -1459,23 +1508,74 @@ mod tests {
     fn idle_means_quiet_after_working_on_the_input() {
         let settle = Duration::from_millis(1500);
         // Worked on it, now quiet long enough: done.
-        assert!(is_idle(&agent(false, 2000, Some(9000), true), settle));
+        assert!(is_idle(&agent(false, 2000, Some(9000), true), settle, true));
         // Still working, or not quiet for long enough yet.
-        assert!(!is_idle(&agent(true, 0, Some(9000), true), settle));
-        assert!(!is_idle(&agent(false, 500, Some(9000), true), settle));
+        assert!(!is_idle(&agent(true, 0, Some(9000), true), settle, true));
+        assert!(!is_idle(&agent(false, 500, Some(9000), true), settle, true));
         // Sent input it hasn't started on: not done — until the grace runs out.
-        assert!(!is_idle(&agent(false, 60_000, Some(3000), false), settle));
-        assert!(is_idle(&agent(false, 60_000, Some(25_000), false), settle));
+        assert!(!is_idle(
+            &agent(false, 60_000, Some(3000), false),
+            settle,
+            true
+        ));
+        assert!(is_idle(
+            &agent(false, 60_000, Some(25_000), false),
+            settle,
+            true
+        ));
         // Never given input: quiet is enough.
-        assert!(is_idle(&agent(false, 2000, None, false), settle));
+        assert!(is_idle(&agent(false, 2000, None, false), settle, true));
         // Queued input still counts as busy.
         let mut pending = agent(false, 5000, None, false);
         pending.input_pending = true;
-        assert!(!is_idle(&pending, settle));
+        assert!(!is_idle(&pending, settle, true));
         // An agent that exited won't do more.
         let mut gone = agent(false, 0, Some(10), false);
         gone.status = "exited".into();
-        assert!(is_idle(&gone, settle));
+        assert!(is_idle(&gone, settle, true));
+    }
+
+    /// An idle prompt with background work running isn't done: the work wakes the
+    /// agent when it finishes. `--no-background` takes the prompt at its word.
+    #[test]
+    fn background_work_holds_wait_until_it_and_its_wake_up_have_passed() {
+        use crate::background::Background;
+        let settle = Duration::from_millis(1500);
+        let mut s = agent(false, 60_000, Some(90_000), true);
+        s.background = Some(Background {
+            agents: 2,
+            shells: 1,
+            ..Background::default()
+        });
+        s.background_idle_ms = Some(0);
+        assert!(!is_idle(&s, settle, true));
+        assert!(is_idle(&s, settle, false));
+        assert_eq!(state(&s), "working");
+        let status = StatusInfo {
+            session: s.clone(),
+            status_line: vec![],
+        };
+        assert_eq!(
+            state_word(&status),
+            "working (background: 2 agents, 1 shell)"
+        );
+        assert!(background_hint(&s).contains("(2 agents, 1 shell)"));
+        // It just finished: the turn it wakes hasn't started yet.
+        s.background = None;
+        s.background_idle_ms = Some(400);
+        assert!(!is_idle(&s, settle, true));
+        assert_eq!(state(&s), "idle");
+        // Quiet for the settle since: done.
+        s.background_idle_ms = Some(2000);
+        assert!(is_idle(&s, settle, true));
+        // A real question still wins over background work.
+        let mut q = asking(800);
+        q.background = Some(Background {
+            shells: 1,
+            ..Background::default()
+        });
+        assert!(is_asking(&q));
+        assert_eq!(state(&q), "needs-input");
     }
 
     fn asking(since_ms: u64) -> SessionInfo {

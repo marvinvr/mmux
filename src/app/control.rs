@@ -140,6 +140,9 @@ impl App {
             if s.kind == Kind::Agent && s.busy() {
                 s.last_working_at = Some(now);
             }
+            if s.background.is_some() {
+                s.last_background_at = Some(now);
+            }
         }
     }
 
@@ -458,6 +461,11 @@ impl App {
                 false => quiet_since.map(ms),
             },
             input_age_ms: s.last_input_at.map(ms),
+            background: s.background.filter(|_| s.kind == Kind::Agent),
+            background_idle_ms: match s.background {
+                Some(_) => Some(0),
+                None => s.last_background_at.map(ms),
+            },
             worked_since_input: match (s.last_input_at, s.last_working_at) {
                 (Some(input), Some(work)) => work > input,
                 _ => false,

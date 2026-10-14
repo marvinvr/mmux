@@ -582,7 +582,13 @@ process itself.
   tool result or a lone thinking block. The working signal alone is fooled by a boot-time title
   flash before a launch-argument prompt is underway. A missing transcript (a new agent writes it
   when its prompt lands) counts as "not yet", within the 20 s grace; an unreadable one, or an agent
-  quiet for 30 s, falls back to the screen. Keeping the loop in the client means no server-side waiters to expire and nothing
+  quiet for 30 s, falls back to the screen. A Claude agent's **background work** is a third gate:
+  `observe` reads the footer under its input box each tick (`background.rs`: the task pill and the
+  sub-agent tree) into `Session::background`, `track_activity` stamps `last_background_at`, and
+  `SessionInfo` reports `background` and `background_idle_ms`. Unless `--no-background`, done also
+  needs no background work for the settle time — the gap between the last task finishing and the
+  turn its notification starts. It stays out of `busy()`, so the spinner, close confirmation and
+  idle closer are unchanged. Keeping the loop in the client means no server-side waiters to expire and nothing
   blocking the UI thread. The status line walks only the buffer's tail (`text_tail(n)` starts `2n`
   rows back), so polling it stays cheap.
 - **Processes wait for exit.** The same client loop branches on the session's `kind`: for a process,
@@ -719,6 +725,7 @@ process itself.
 | Reap only merged-or-pushed checkouts | Deleting a directory automatically is only defensible when its contents provably live somewhere else. `-d` (never `-D`) keeps the branch when git disagrees. |
 | Notifications as terminal escapes | The same code path works locally and over SSH — the popup renders wherever the terminal runs, not where mmux lives. |
 | Needing input outranks working | An agent at a permission prompt can keep its progress or title animated; reported as working, a `wait` on it never returned. A question on screen or an unanswered notification means nothing moves until someone answers, so that state wins — and it's cleared by input, not by looking, because a question is still open until it's answered. |
+| Background work read off Claude's footer, not its transcript | The transcript can't say what is still running: a sub-agent's notification says "completed" while it still waits on work of its own (and notifies again later), a shell killed from `/tasks` or lost with its process records no end, and the `turn_duration` record's `pendingBackgroundAgentCount` is a turn-end snapshot without shells. The footer is redrawn from Claude's live task registry. Only exact pill wordings and glyph-led tree rows below the input box count, so the transcript above it and a custom statusline can't fake it. |
 | `wait`/`ask`/`last` do their work in the client | Polling `status` and reading transcript files client-side keeps the server stateless and the UI thread free of blocking waits and file IO; the working signal is the sidebar's own, so "done" means what the user sees. |
 | Native git panel (not embedded lazygit) | A panel mmux draws itself integrates with the layout, follows the active project, and needs no external dependency. |
 | Positional `sel` confined to `nav.rs` | Keeps the planned move to selection-by-identity a single-file change. |

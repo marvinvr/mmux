@@ -5,6 +5,8 @@
 //! [`Pane`]. [`Session`] owns the spawn/stop lifecycle so the rest of the app
 //! never has to special-case "is this an agent or a process".
 
+use crate::agent::Tool;
+use crate::background::Background;
 use crate::config::{AgentDef, ProcessDef};
 use crate::pane::{Notify, Pane};
 use crate::prompt::Prompt;
@@ -195,6 +197,12 @@ pub struct Session {
     notice: Option<(Instant, bool)>,
     /// Persistent activity indicators on the live screen, sampled by `observe`.
     screen_working: bool,
+    /// The background work (sub-agents, shells, monitors) a Claude agent's footer
+    /// shows running, sampled by [`observe`](Self::observe). See [`crate::background`].
+    pub background: Option<Background>,
+    /// When background work was last seen running, stamped every tick — so `mmux wait`
+    /// can tell "it just finished, the turn it wakes is about to start" from quiet.
+    pub last_background_at: Option<Instant>,
 }
 
 /// What an agent is waiting on someone for — see [`Session::asking`].
@@ -237,6 +245,8 @@ impl Session {
             prompt: None,
             notice: None,
             screen_working: false,
+            background: None,
+            last_background_at: None,
         }
     }
 
@@ -313,6 +323,8 @@ impl Session {
     /// This is both "start" and "restart": callers decide *when* to call it.
     pub fn spawn(&mut self, rows: u16, cols: u16) {
         self.screen_working = false;
+        self.background = None;
+        self.last_background_at = None;
         self.prompt = None;
         self.notice = None;
         if let Some(p) = self.pane.as_mut() {
@@ -419,10 +431,15 @@ impl Session {
             self.prompt = None;
             self.notice = None;
             self.screen_working = false;
+            self.background = None;
             return;
         };
         let lines = pane.screen_lines();
         self.screen_working = screen_working(&lines);
+        // Only Claude wakes itself when background work finishes, and the footer read
+        // is in its wording.
+        let claude = self.agent.as_ref().is_some_and(|r| r.tool == Tool::Claude);
+        self.background = claude.then(|| crate::background::parse(&lines)).flatten();
         let found = crate::prompt::parse(&lines);
         self.prompt = match (found, self.prompt.take()) {
             (Some(p), Some((_, since))) => Some((p, since)),
