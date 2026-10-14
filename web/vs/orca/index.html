@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<!-- mmux vs Orca. Built from web/vs/_template; rules in web/vs/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Orca: parallel agents in worktrees, local or SSH</title>
+  <meta name="description" content="Orca is a desktop agent IDE with an editor, browser and SSH worktrees. mmux is a terminal multiplexer that keeps agents and dev servers running in tmux.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/orca/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Orca: parallel agents in worktrees, local or SSH">
+  <meta property="og:description" content="Orca is a desktop agent IDE with an editor, browser and SSH worktrees. mmux is a terminal multiplexer that keeps agents and dev servers running in tmux.">
+  <meta property="og:url" content="https://mmux.org/vs/orca/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Orca: parallel agents in worktrees, local or SSH">
+  <meta name="twitter:description" content="Orca is a desktop agent IDE with an editor, browser and SSH worktrees. mmux is a terminal multiplexer that keeps agents and dev servers running in tmux.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Keep the FAQPage in sync with the visible FAQ. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Orca",
+    "url": "https://mmux.org/vs/orca/",
+    "description": "Orca is a desktop agent IDE with an editor, browser and SSH worktrees. mmux is a terminal multiplexer that keeps agents and dev servers running in tmux.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Orca", "url": "https://www.onorca.dev/", "sameAs": "https://github.com/stablyai/orca" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Orca", "item": "https://mmux.org/vs/orca/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Orca free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Orca is MIT-licensed and its site describes it as free and open source for macOS, Windows and Linux. You bring your own agent subscriptions. There is also an enterprise offering for team rollouts and self-hosting, with no published price. mmux is free as well, under GPLv3-or-later." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do my agents keep running when I close Orca or mmux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "In both, yes, with limits. Orca runs local agents under a background daemon, so they keep running when you quit the app, but not across a reboot; after one, tabs, splits and scrollback come back and you re-run the agent. mmux runs inside a tmux session, so agents keep running when you close the terminal or drop SSH. If you quit mmux, or after a crash or reboot, reopening the directory restores your agents and terminals, and Claude, Codex, Pi and Grok agents resume their conversation." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which one is better for running agents on a remote server?",
+        "acceptedAnswer": { "@type": "Answer", "text": "It depends on where you want the interface. Orca keeps its desktop app on your machine and connects over SSH: it sets up its own server on the host and gives you editing, git, terminals and port forwarding there. Detached remote sessions are kept for a grace period, 5 minutes by default and configurable per host, and Remote Orca Servers (beta) keep agents running while the client is away. mmux runs on the server itself, so you reach it from any SSH client, including a phone, and the session stays until you quit it. Its desktop notifications travel as terminal escapes, so they reach your local machine over SSH." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does mmux have a code editor or a browser like Orca?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. mmux has no built-in editor and no embedded browser. Ctrl+P opens a file picker that hands the file to your $EDITOR, and links in a pane open in your normal browser. If you want an editor, diff annotations and a browser in the same window as your agents, Orca covers that and mmux does not." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use Orca and mmux together?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. mmux is a terminal program, so it runs in any terminal, including an Orca terminal pane on a local or SSH worktree. A common split is to keep long-lived agents and dev servers in an mmux session on the server and use Orca for editing, diff review and port forwarding. Let one of the two create worktrees for a given repository, so you do not end up with two sets of checkouts." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Orca</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Orca</h1>
+      <p class="vs-lede">Orca is a desktop app (it calls itself an agent development environment) that runs coding agents side by side, each in its own git worktree, with an editor, a browser and SSH worktrees built in. mmux is a terminal multiplexer that does the same job for agents, terminals and dev servers inside a tmux session, so it runs anywhere a terminal does. The real difference is where the interface lives: in a desktop window, or in the terminal on the machine doing the work.</p>
+      <p class="vs-updated">Last checked against Orca v1.4.224 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Orca if</strong> you want one desktop window with your agents, a VS Code-style editor, an embedded Chromium browser, diff annotations that go back to the agent, GitHub and Linear tasks, native Windows support and iOS and Android companion apps. For remote work it connects from your laptop to a host over SSH and forwards ports for you.</p>
+      <p><strong>Pick mmux if</strong> you live in the terminal, often work on a server over SSH, and want agents, shells and dev servers in one keyboard-driven sidebar that keeps running on that server until you quit it. It is a single binary plus tmux, and it reaches you from any SSH client, phone included.</p>
+      <p>They are not exclusive: mmux runs fine in an Orca terminal pane. See <a href="#together">using both</a>.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Orca v1.4.224, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Orca</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Interface</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>TUI in any terminal, keyboard and mouse</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Desktop app with tabs, splits and panels</td>
+            </tr>
+            <tr>
+              <th scope="row">Parallel agents, one git worktree each</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>w</code> opens a worktree as its own project with its own agents</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>A worktree per task; one prompt can fan out to several agents</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents keep running when you close the UI</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>tmux session survives closing the terminal or dropping SSH</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>A local daemon keeps agents alive across an app quit</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents on a remote machine</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Run mmux on the host, attach from any SSH client</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>SSH worktrees from the desktop app, with editing, git and terminals</td>
+            </tr>
+            <tr>
+              <th scope="row">Detached remote sessions kept</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Until you quit mmux on the host</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>5 minute grace period by default, configurable per host</td>
+            </tr>
+            <tr>
+              <th scope="row">Port forwarding</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Use <code>ssh -L</code> yourself</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Detects listening ports on the host, one-click forward</td>
+            </tr>
+            <tr>
+              <th scope="row">Editor and browser</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>File picker opens files in your <code>$EDITOR</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>VS Code-style editor, Chromium browser with Design Mode</td>
+            </tr>
+            <tr>
+              <th scope="row">Git and review</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Git panel: stage, commit, push, merge a worktree back</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Diff review with comments to the agent, PRs, GitHub and Linear</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers as managed processes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Declared in <code>mmux.yaml</code>, one checkout runs each at a time</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Not described in the docs checked (unverified); run them in a terminal</td>
+            </tr>
+            <tr>
+              <th scope="row">From a phone</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Single-column layout in a narrow SSH terminal</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>iOS and Android companion apps</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS (Apple Silicon), Linux arm64 and x86_64; needs tmux</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS (Apple Silicon and Intel), Windows, Linux</td>
+            </tr>
+            <tr>
+              <th scope="row">License and price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3-or-later, free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT, free; enterprise offering without a public price</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Orca facts from its README, docs and site as of release v1.4.224. Orca ships almost daily, so check its changelog for anything newer.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Orca?</h2>
+      <p>Orca is an open-source desktop app from Stably AI for running a fleet of coding agents in parallel. Its GitHub repository describes it as "the ADE for working with a fleet of parallel agents". You run Codex, Claude Code, OpenCode, Pi or any other CLI agent with your own subscription, each in its own git worktree, and track them in one place <a href="#src-2">[2]</a>. It is MIT-licensed and available for macOS, Windows and Linux, with a mobile companion app for iOS and Android <a href="#src-1">[1]</a> <a href="#src-2">[2]</a>.</p>
+      <p>Around the agents it bundles an IDE: terminal splits with scrollback that survives restarts, a VS Code-style editor, an embedded Chromium browser whose Design Mode sends a clicked element's HTML, CSS and a screenshot to the agent, diff review with comments that go back to the agent, GitHub and Linear integration, usage tracking for Claude and Codex accounts, and an <code>orca</code> CLI that agents can use to drive the app <a href="#src-2">[2]</a>. Locally, a background daemon keeps agents running when you quit the app <a href="#src-5">[5]</a>.</p>
+      <p>For remote work, SSH worktrees run agents on another machine: Orca sets up its own server on the host on first connect, reconnects after a drop and forwards ports <a href="#src-4">[4]</a>. Remote Orca Servers (beta) let one computer hold projects and agent sessions while a desktop or mobile client connects to it, typically over Tailscale <a href="#src-6">[6]</a>.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Orca is better</h2>
+      <ul>
+        <li><strong>An editor and a browser next to the agents.</strong> Orca has a VS Code-style editor, drag-and-drop of files into a prompt, Markdown and PDF previews, and a per-worktree Chromium browser with Design Mode. mmux has none of that; it hands files to your <code>$EDITOR</code> and links to your browser.</li>
+        <li><strong>Review that talks back to the agent.</strong> In Orca you comment on diff lines and the comments go to the agent, and you can browse and review GitHub PRs and Linear issues in the app. The mmux git panel commits, pushes and merges, but has no PR or issue tracker view.</li>
+        <li><strong>Remote work from a local window.</strong> Orca's SSH worktrees give you editing, git and terminals on a remote host from your desktop, with automatic reconnect and port forwarding that scans the host for listening ports. With mmux you run it on the host and handle port forwarding with your own SSH setup.</li>
+        <li><strong>Fanning one task out.</strong> Orca can send one prompt to several agents, each in its own worktree, so you compare results and merge the best one. In mmux you start each worktree and agent yourself, or script it with <code>mmux worktree new --prompt</code>.</li>
+        <li><strong>Phones and Windows.</strong> Orca has native iOS and Android apps that notify you when an agent finishes, plus a native Windows build and Intel Mac support. mmux reaches a phone only through an SSH client, and has no native Windows or Intel Mac build.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>The whole environment lives on the server.</strong> mmux runs on the machine doing the work, inside a per-directory tmux session. Closing the terminal or dropping SSH detaches, and the agents keep running until you quit mmux there. There is no grace period to tune and no desktop app needed on the client: any terminal with SSH, including one on a phone, is enough.</li>
+        <li><strong>Dev servers as first-class processes.</strong> Processes such as a dev server are declared in <code>mmux.yaml</code>, started and stopped from the sidebar, and can define a <code>stop:</code> command that runs on quit. Only one checkout of a repository runs a given process at a time, so a worktree reuses the same ports and <code>localhost:3000</code> is always the branch you last started it in.</li>
+        <li><strong>Worktrees that clean up after themselves.</strong> A new worktree gets your <code>.env</code> files copied across at every depth and an optional <code>setup:</code> command. <code>M</code> merges it back into the branch it came from, and a finished worktree (clean, idle, merged or pushed) is removed after 30 minutes by default.</li>
+        <li><strong>Session restore after a quit, crash or reboot.</strong> Reopening a directory brings back the agents and terminals you had open, and Claude, Codex, Pi and Grok agents resume their conversation. Orca restores layout and scrollback after a reboot, but you re-run the agent.</li>
+        <li><strong>Small footprint.</strong> mmux is one Rust binary plus tmux. It keeps itself up to date when installed with the script, and you configure it with two YAML files you can check into a repository.</li>
+        <li><strong>Notifications over SSH.</strong> mmux raises desktop notifications through terminal escape sequences, so an agent that finishes on a remote host pops up on the machine your terminal runs on.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Orca when</h3>
+          <ul>
+            <li>You want an editor, a browser and agent review in one desktop window</li>
+            <li>You work on Windows, or want native mobile apps for checking on agents</li>
+            <li>You prefer driving a remote box from your laptop, with ports forwarded for you</li>
+            <li>Your team tracks work in GitHub and Linear and wants that inside the tool</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>You already work in a terminal and want to stay there</li>
+            <li>Your agents run on a server you reach over SSH, and should keep running there indefinitely</li>
+            <li>You run dev servers next to the agents and want them managed per worktree</li>
+            <li>You want a small, scriptable tool with plain YAML config</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using Orca and mmux together</h2>
+      <p>mmux is a terminal program, so it runs in any terminal, including an Orca terminal pane on a local or SSH worktree. One way to split the work:</p>
+      <ol>
+        <li>On the server, start mmux in the project. Agents and dev servers live in its tmux session from now on.</li>
+        <li>Connect Orca to the same host as an SSH target and use it for editing, diff review and port forwarding.</li>
+        <li>In an Orca terminal on that host, run <code>mmux attach</code> to open the session. If Orca disconnects and its remote session expires, the mmux session is still running; attach again.</li>
+        <li>Let one of the two create worktrees for a given repository, so you do not end up with two sets of checkouts.</li>
+      </ol>
+      <pre><code>cd ~/project
+mmux           # on the server: open or reattach
+mmux attach    # from any terminal on that host: pick a running session</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Orca free?</summary>
+        <div class="vs-faq-a"><p>Yes. Orca is MIT-licensed and its site describes it as free and open source for macOS, Windows and Linux. You bring your own agent subscriptions. There is also an enterprise offering for team rollouts and self-hosting, with no published price. mmux is free as well, under GPLv3-or-later.</p></div>
+      </details>
+      <details>
+        <summary>Do my agents keep running when I close Orca or mmux?</summary>
+        <div class="vs-faq-a"><p>In both, yes, with limits. Orca runs local agents under a background daemon, so they keep running when you quit the app, but not across a reboot; after one, tabs, splits and scrollback come back and you re-run the agent. mmux runs inside a tmux session, so agents keep running when you close the terminal or drop SSH. If you quit mmux, or after a crash or reboot, reopening the directory restores your agents and terminals, and Claude, Codex, Pi and Grok agents resume their conversation.</p></div>
+      </details>
+      <details>
+        <summary>Which one is better for running agents on a remote server?</summary>
+        <div class="vs-faq-a"><p>It depends on where you want the interface. Orca keeps its desktop app on your machine and connects over SSH: it sets up its own server on the host and gives you editing, git, terminals and port forwarding there. Detached remote sessions are kept for a grace period, 5 minutes by default and configurable per host, and Remote Orca Servers (beta) keep agents running while the client is away. mmux runs on the server itself, so you reach it from any SSH client, including a phone, and the session stays until you quit it. Its desktop notifications travel as terminal escapes, so they reach your local machine over SSH.</p></div>
+      </details>
+      <details>
+        <summary>Does mmux have a code editor or a browser like Orca?</summary>
+        <div class="vs-faq-a"><p>No. mmux has no built-in editor and no embedded browser. <code>Ctrl+P</code> opens a file picker that hands the file to your <code>$EDITOR</code>, and links in a pane open in your normal browser. If you want an editor, diff annotations and a browser in the same window as your agents, Orca covers that and mmux does not.</p></div>
+      </details>
+      <details>
+        <summary>Can I use Orca and mmux together?</summary>
+        <div class="vs-faq-a"><p>Yes. mmux is a terminal program, so it runs in any terminal, including an Orca terminal pane on a local or SSH worktree. A common split is to keep long-lived agents and dev servers in an mmux session on the server and use Orca for editing, diff review and port forwarding. Let one of the two create worktrees for a given repository, so you do not end up with two sets of checkouts.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://www.onorca.dev/">Orca website: features, platforms, mobile apps, "free and open source"</a></li>
+        <li id="src-2"><a href="https://github.com/stablyai/orca">Orca README on GitHub (stablyai/orca): features, supported agents, MIT license</a></li>
+        <li id="src-3"><a href="https://www.onorca.dev/docs/model/worktrees">Orca docs: worktrees (creation, <code>orca.yaml</code>, cleanup)</a></li>
+        <li id="src-4"><a href="https://www.onorca.dev/docs/ssh">Orca docs: SSH worktrees (managed server, reconnect, grace period, port forwarding)</a></li>
+        <li id="src-5"><a href="https://www.onorca.dev/docs/model/session-restore">Orca docs: session restore (daemon, behavior after a reboot)</a></li>
+        <li id="src-6"><a href="https://www.onorca.dev/docs/remote-servers">Orca docs: Remote Orca Servers (beta)</a></li>
+        <li id="src-7"><a href="https://www.onorca.dev/enterprise">Orca enterprise page</a></li>
+        <li id="src-8"><a href="https://github.com/stablyai/orca/releases/tag/v1.4.224">Orca release v1.4.224 (2026-10-10)</a></li>
+        <li id="src-9"><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation (usage, configuration, notifications)</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
