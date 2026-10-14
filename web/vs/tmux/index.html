@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<!-- mmux vs tmux. Built from web/vs/_template; see web/vs/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs tmux: a tmux for AI coding agents, compared</title>
+  <meta name="description" content="tmux is a general terminal multiplexer. mmux runs on tmux and adds an agent sidebar, idle alerts, desktop notifications, a git panel and session restore.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/tmux/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs tmux: a tmux for AI coding agents, compared">
+  <meta property="og:description" content="tmux is a general terminal multiplexer. mmux runs on tmux and adds an agent sidebar, idle alerts, desktop notifications, a git panel and session restore.">
+  <meta property="og:url" content="https://mmux.org/vs/tmux/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs tmux: a tmux for AI coding agents, compared">
+  <meta name="twitter:description" content="tmux is a general terminal multiplexer. mmux runs on tmux and adds an agent sidebar, idle alerts, desktop notifications, a git panel and session restore.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs tmux",
+    "url": "https://mmux.org/vs/tmux/",
+    "description": "tmux is a general terminal multiplexer. mmux runs on tmux and adds an agent sidebar, idle alerts, desktop notifications, a git panel and session restore.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "tmux", "url": "https://github.com/tmux/tmux/wiki", "sameAs": "https://github.com/tmux/tmux" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs tmux", "item": "https://mmux.org/vs/tmux/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is mmux a replacement for tmux?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. mmux needs tmux and runs inside a tmux session, one per project directory. It replaces the part of a tmux setup where you juggle coding agents, a dev server and git in panes, not tmux itself."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I just run Claude Code or Codex in a tmux pane?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, and it works well: the agent keeps running after you detach. What tmux does not do is tell you which agent is done or waiting on you, send a desktop notification when it is, or resume the conversation after the tmux server stops. mmux adds those on top of the same tmux persistence."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I run mmux inside my existing tmux session?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. mmux unsets TMUX when it attaches, so it works when launched inside another tmux. Both use Ctrl-b by default and the outer tmux receives it first, so press Ctrl-b twice to reach mmux, or change your outer tmux prefix."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does tmux restore sessions after a reboot?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Not by itself. tmux sessions live in the tmux server process and end when it stops. The third-party tmux-resurrect plugin saves and restores sessions, windows, pane layouts and a default list of programs such as vim and less. mmux restores its own agents and terminals after a quit or crash, and Claude, Codex, Pi and Grok agents resume their conversation."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What about GNU Screen?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "GNU Screen is the older terminal multiplexer, with detach, reattach and scrollback per window; its latest release is 5.0.2 from July 2026. The comparison on this page applies to it in broad strokes. mmux is built on tmux, so it needs tmux installed even if you use Screen."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Are tmux and mmux free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Both are free and open source. tmux is ISC licensed; mmux is GPLv3 or later."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs tmux</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> tmux</h1>
+      <p class="vs-lede">tmux is a general-purpose terminal multiplexer: sessions, windows and panes that you arrange and configure yourself. mmux is a terminal UI for AI coding agents and dev processes that runs inside an invisible tmux session, one per project directory. The difference is scope: tmux gives you building blocks for any workflow, mmux gives you one fixed layout built around agents.</p>
+      <p class="vs-updated">Last checked against tmux 3.8 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick tmux if</strong> you want a general multiplexer you shape yourself: split and floating panes, many windows, your own key bindings and status line, scripting, and every platform tmux supports, including the BSDs and Solaris. It has been developed since 2007, and binary packages exist for many platforms.</p>
+      <p><strong>Pick mmux if</strong> your terminal mostly holds coding agents, a dev server and git, and you want them in one sidebar per project that shows which agent is waiting on you, sends a desktop notification when one finishes, and brings Claude or Codex conversations back after a quit or crash.</p>
+      <p>It is not either/or: mmux needs tmux and runs on top of it, and you can launch mmux from inside your own tmux session.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and tmux 3.8, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">tmux</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Sessions survive closing the terminal or an SSH drop</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Runs inside a tmux session per directory</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Detach and reattach is its core feature</td>
+            </tr>
+            <tr>
+              <th scope="row">Split panes, windows, custom layouts</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Fixed layout: sidebar, one program in the main pane, git panel</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Tiled and floating panes, windows, layouts</td>
+            </tr>
+            <tr>
+              <th scope="row">Shows which agent is waiting on you</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Idle agents turn green, a blocked question shows <code>?</code></td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Activity, silence and bell alerts per window, not agent-aware</td>
+            </tr>
+            <tr>
+              <th scope="row">Desktop notifications</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Native popup on bell or notification escapes, also over SSH</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Alerts in the status line; no desktop notifications of its own</td>
+            </tr>
+            <tr>
+              <th scope="row">Restore after quit, crash or reboot</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Reopens agents and terminals; Claude, Codex, Pi and Grok resume their conversation</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Not built in; third-party plugins such as tmux-resurrect</td>
+            </tr>
+            <tr>
+              <th scope="row">Named dev processes from a config file</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>processes:</code> with start, stop, restart and a <code>stop:</code> teardown</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Any command in any pane, wired up via config or shell scripts</td>
+            </tr>
+            <tr>
+              <th scope="row">Built-in git UI</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Git panel: stage, commit, branches, push, worktrees</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Run git or a git TUI in a pane</td>
+            </tr>
+            <tr>
+              <th scope="row">Scripting and remote control</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux ls</code>, <code>read</code>, <code>send</code>, <code>ask</code>, <code>wait</code>, aimed at agents</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Full command language, hooks, control mode (used by iTerm2)</td>
+            </tr>
+            <tr>
+              <th scope="row">Custom key bindings and options</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Fixed keys; YAML configures agents, processes, workspaces</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Every binding, option and status line in <code>~/.tmux.conf</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS (Apple Silicon) and Linux arm64/x86_64 binaries</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>OpenBSD, FreeBSD, NetBSD, Linux, macOS, Solaris</td>
+            </tr>
+            <tr>
+              <th scope="row">Dependencies</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>tmux (git for the git panel)</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>libevent 2.x, ncurses</td>
+            </tr>
+            <tr>
+              <th scope="row">Price and license</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Free, GPLv3 or later</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Free, ISC</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">tmux facts from its README, CHANGES, man page and wiki at tag 3.8 (released 2026-09-09). mmux facts from its docs at 0.13.13.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is tmux?</h2>
+      <p>tmux describes itself as "a terminal multiplexer: it enables a number of terminals to be created, accessed, and controlled from a single screen", which "may be detached from a screen and continue running in the background, then later reattached" <a href="#s1">[1]</a>. Every terminal lives in a pane, panes live in windows, and windows are grouped into sessions; commands are reached through a prefix key, <code>Ctrl-b</code> by default, and the server reads <code>~/.tmux.conf</code> at startup <a href="#s4">[4]</a>.</p>
+      <p>The project started in 2007 <a href="#s2">[2]</a>, is written in C, is ISC licensed <a href="#s3">[3]</a>, and runs on OpenBSD, FreeBSD, NetBSD, Linux, macOS and Solaris <a href="#s1">[1]</a>. Version 3.8, released on 2026-09-09, extended floating and modal panes, added built-in light and dark themes, and added monitor hooks that fire when a format changes <a href="#s2">[2]</a> <a href="#s7">[7]</a>. Control mode lets other programs drive tmux over a text protocol; iTerm2 uses it to show tmux panes as native windows <a href="#s5">[5]</a>.</p>
+      <p>GNU Screen is the older tool in the same category: it multiplexes one terminal between several processes, keeps a scrollback buffer per window, and keeps programs running while the session is detached <a href="#s9">[9]</a>. Its latest release is 5.0.2 (July 2026) <a href="#s10">[10]</a>. Everything on this page about tmux versus mmux applies to Screen in broad strokes, with one difference: mmux is built on tmux, so it needs tmux installed even if you use Screen for everything else.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where tmux is better</h2>
+      <ul>
+        <li><strong>Layout freedom.</strong> tmux splits a window into as many panes as you like, tiled or floating, across as many windows as you like, so you can watch several programs side by side. mmux shows one program at a time in its main pane.</li>
+        <li><strong>It fits any workflow.</strong> tmux knows nothing about agents, projects or git, which is the point: the same tool works for a database console, a log tail on a server, or a pair session with several clients attached to one session <a href="#s4">[4]</a>.</li>
+        <li><strong>Configuration depth.</strong> Every key binding, option, hook and status line element is yours to change, and third-party plugins such as tmux-resurrect build on it <a href="#s8">[8]</a>. mmux's keys are fixed; its YAML only describes agents, processes and workspaces.</li>
+        <li><strong>Scripting depth.</strong> tmux has a full command language and control mode, which terminals like iTerm2 build on <a href="#s5">[5]</a>. mmux's CLI is narrower and aimed at listing, reading and prompting its own sessions.</li>
+        <li><strong>Platforms and footprint.</strong> tmux runs on the BSDs and Solaris as well as Linux and macOS, and binary packages exist for many of them <a href="#s1">[1]</a>. mmux ships binaries for macOS on Apple Silicon and Linux, and itself depends on tmux.</li>
+        <li><strong>Maturity.</strong> tmux has been developed since 2007 <a href="#s2">[2]</a>. mmux is a young project at version 0.13.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>It knows which agent needs you.</strong> A working agent shows a gray spinner, an agent that finished or waits on you turns green, and one blocked on a question shows a yellow <code>?</code>. tmux can flag activity or silence in a window, but it has no notion of an agent's state.</li>
+        <li><strong>Desktop notifications, also over SSH.</strong> When a program rings the bell or emits a notification escape (Claude Code does when it is done), mmux raises a native desktop notification on the machine your terminal runs on.</li>
+        <li><strong>Sessions come back after a quit.</strong> After <code>q</code>, a crash or a restart-to-update, reopening the directory restores the agents and terminals you had open. Claude, Codex, Pi and Grok agents resume their conversation; terminals reopen in the directory you left them in as fresh shells.</li>
+        <li><strong>Dev processes as named rows.</strong> Processes from <code>mmux.yaml</code> start, stop and restart from the sidebar, can autostart, and can carry a <code>stop:</code> teardown such as <code>docker compose down</code> that runs on stop or quit.</li>
+        <li><strong>Git and worktrees built in.</strong> A git panel stages, commits (with an AI-suggested message), switches branches and pushes. <code>w</code> opens a git worktree as another project in the same sidebar with its own agents, and <code>M</code> merges it back.</li>
+        <li><strong>One session per directory, no setup.</strong> <code>mmux</code> in a project opens or reattaches that project's session, and <code>mmux attach</code> picks from every running session and recent directory. With tmux you name and track sessions yourself.</li>
+        <li><strong>Agents can drive it.</strong> <code>mmux ask</code> starts an agent, waits and prints its reply; <code>mmux read</code> returns a dev server's recent output. Each action shows up in your sidebar.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose tmux when</h3>
+          <ul>
+            <li>you want several programs visible at once in split panes</li>
+            <li>you work on servers, BSDs or anywhere a single package install is the limit</li>
+            <li>you already have a tuned <code>~/.tmux.conf</code> and want to keep every binding</li>
+            <li>your work is not centered on coding agents</li>
+            <li>you need several people attached to the same session</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>you run several coding agents per project and lose track of which one is done</li>
+            <li>you want a notification when an agent finishes, even on a remote box</li>
+            <li>you want agent conversations back after a quit, crash or update</li>
+            <li>a dev server, its logs and git belong next to the agents</li>
+            <li>you work across several worktrees or projects in parallel</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using tmux and mmux together</h2>
+      <p>mmux already uses tmux underneath: each project directory gets an invisible tmux session with its status bar and prefix turned off. Those options are set on mmux's sessions only; the one server-level change is enabling extended-key support. You can keep tmux for everything else and use mmux for agent work:</p>
+      <ol>
+        <li>Install mmux. tmux must be on your <code>PATH</code>, which it already is if you use it.</li>
+        <li>In any tmux pane, <code>cd</code> into a project and run <code>mmux</code>. It unsets <code>TMUX</code> when it attaches, so it works inside another tmux.</li>
+        <li>Both tools use <code>Ctrl-b</code> by default, and your outer tmux sees it first. Press <code>Ctrl-b</code> twice to pass it through to mmux (tmux's default <code>send-prefix</code> binding <a href="#s6">[6]</a>), or give your outer tmux a different prefix.</li>
+        <li>Inside mmux, <code>Ctrl-b b</code> sends a literal <code>Ctrl-b</code> to the focused program, for a tmux running in an mmux terminal.</li>
+        <li>Put your agents in <code>~/.mmux/config.yaml</code> and the project's processes in <code>mmux.yaml</code>. Closing the outer tmux pane only detaches mmux; run <code>mmux</code> again to reattach.</li>
+      </ol>
+      <pre><code># ~/.mmux/config.yaml
+agents:
+  - name: Claude
+    cmd: claude
+
+# ./mmux.yaml
+processes:
+  - name: Dev server
+    cmd: npm
+    args: ["run", "dev"]</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is mmux a replacement for tmux?</summary>
+        <div class="vs-faq-a"><p>No. mmux needs tmux and runs inside a tmux session, one per project directory. It replaces the part of a tmux setup where you juggle coding agents, a dev server and git in panes, not tmux itself.</p></div>
+      </details>
+      <details>
+        <summary>Can I just run Claude Code or Codex in a tmux pane?</summary>
+        <div class="vs-faq-a"><p>Yes, and it works well: the agent keeps running after you detach. What tmux does not do is tell you which agent is done or waiting on you, send a desktop notification when it is, or resume the conversation after the tmux server stops. mmux adds those on top of the same tmux persistence.</p></div>
+      </details>
+      <details>
+        <summary>Can I run mmux inside my existing tmux session?</summary>
+        <div class="vs-faq-a"><p>Yes. mmux unsets TMUX when it attaches, so it works when launched inside another tmux. Both use Ctrl-b by default and the outer tmux receives it first, so press Ctrl-b twice to reach mmux, or change your outer tmux prefix.</p></div>
+      </details>
+      <details>
+        <summary>Does tmux restore sessions after a reboot?</summary>
+        <div class="vs-faq-a"><p>Not by itself. tmux sessions live in the tmux server process and end when it stops. The third-party tmux-resurrect plugin saves and restores sessions, windows, pane layouts and a default list of programs such as vim and less. mmux restores its own agents and terminals after a quit or crash, and Claude, Codex, Pi and Grok agents resume their conversation.</p></div>
+      </details>
+      <details>
+        <summary>What about GNU Screen?</summary>
+        <div class="vs-faq-a"><p>GNU Screen is the older terminal multiplexer, with detach, reattach and scrollback per window; its latest release is 5.0.2 from July 2026. The comparison on this page applies to it in broad strokes. mmux is built on tmux, so it needs tmux installed even if you use Screen.</p></div>
+      </details>
+      <details>
+        <summary>Are tmux and mmux free?</summary>
+        <div class="vs-faq-a"><p>Both are free and open source. tmux is ISC licensed; mmux is GPLv3 or later.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="s1"><a href="https://github.com/tmux/tmux/blob/3.8/README">tmux README at tag 3.8</a></li>
+        <li id="s2"><a href="https://github.com/tmux/tmux/blob/3.8/CHANGES">tmux CHANGES at tag 3.8 (3.8 changes, and the 2007 initial import at the end)</a></li>
+        <li id="s3"><a href="https://github.com/tmux/tmux/blob/master/COPYING">tmux COPYING (ISC license)</a></li>
+        <li id="s4"><a href="https://github.com/tmux/tmux/wiki/Getting-Started">tmux wiki: Getting Started</a></li>
+        <li id="s5"><a href="https://github.com/tmux/tmux/wiki/Control-Mode">tmux wiki: Control Mode</a></li>
+        <li id="s6"><a href="https://github.com/tmux/tmux/blob/3.8/tmux.1">tmux man page at tag 3.8 (default key bindings)</a></li>
+        <li id="s7"><a href="https://github.com/tmux/tmux/releases/tag/3.8">tmux 3.8 release, 2026-09-09</a></li>
+        <li id="s8"><a href="https://github.com/tmux-plugins/tmux-resurrect">tmux-resurrect (third-party plugin) README</a></li>
+        <li id="s9"><a href="https://www.gnu.org/software/screen/">GNU Screen homepage</a></li>
+        <li id="s10"><a href="https://ftp.gnu.org/gnu/screen/">GNU Screen release downloads (screen-5.0.2, 2026-07-11)</a></li>
+        <li id="s11"><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
