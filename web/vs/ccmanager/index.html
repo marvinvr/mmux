@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<!-- mmux vs CCManager. Built from web/vs/_template; rules in web/vs/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs CCManager: agent session managers with worktrees</title>
+  <meta name="description" content="CCManager and mmux both run Claude Code, Codex and other agent CLIs across git worktrees. How they differ on persistence, tmux, Windows, git and scripting.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/ccmanager/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs CCManager: agent session managers with worktrees">
+  <meta property="og:description" content="CCManager and mmux both run Claude Code, Codex and other agent CLIs across git worktrees. How they differ on persistence, tmux, Windows, git and scripting.">
+  <meta property="og:url" content="https://mmux.org/vs/ccmanager/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs CCManager: agent session managers with worktrees">
+  <meta name="twitter:description" content="CCManager and mmux both run Claude Code, Codex and other agent CLIs across git worktrees. How they differ on persistence, tmux, Windows, git and scripting.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. The FAQPage mirrors the visible FAQ 1:1 (plain text). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs CCManager",
+    "url": "https://mmux.org/vs/ccmanager/",
+    "description": "CCManager and mmux both run Claude Code, Codex and other agent CLIs across git worktrees. How they differ on persistence, tmux, Windows, git and scripting.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "CCManager", "url": "https://github.com/kbwo/ccmanager", "sameAs": "https://www.npmjs.com/package/ccmanager" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs CCManager", "item": "https://mmux.org/vs/ccmanager/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Does CCManager need tmux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. CCManager is self-contained and runs each agent in its own pseudo-terminal, so tmux is not required. mmux does need tmux on your PATH, because it runs inside an invisible tmux session per directory. Homebrew installs tmux for you." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do my agents keep running when I close the terminal?",
+        "acceptedAnswer": { "@type": "Answer", "text": "In mmux, yes: closing the terminal or dropping SSH detaches, and running mmux again in the directory reattaches to the same agents. In CCManager, closing the app ends the agent processes it started. On the next launch it offers to start those sessions again, which reruns their commands but does not restore the conversation or the terminal output." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does CCManager or mmux run on Windows?",
+        "acceptedAnswer": { "@type": "Answer", "text": "CCManager publishes prebuilt binaries for Windows x64 as well as macOS and Linux. mmux supports macOS and Linux only." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which agent CLIs do they support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "CCManager documents Claude Code, Gemini CLI, Codex CLI, Cursor Agent, Copilot CLI, Cline CLI, OpenCode, Kimi CLI and MiniMax Code, each with its own state detection. mmux ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, and any command can be configured as an agent. mmux resumes the conversation of Claude, Codex, Pi and Grok agents after a restart." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use CCManager and mmux together?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. CCManager is a terminal program, so you can start it in an mmux terminal row. Because that row lives in mmux's tmux session, CCManager and its agents then keep running when you detach or lose SSH." }
+      },
+      {
+        "@type": "Question",
+        "name": "Are CCManager and mmux free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Both are free and open source. CCManager is MIT licensed and installed from npm. mmux is GPLv3-or-later and installed as a single binary. Neither repository mentions a paid tier." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs CCManager</span></li>
+      </ol>
+    </nav>
+
+    <!-- title + lede -->
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> CCManager</h1>
+      <p class="vs-lede">CCManager is a TUI for running several coding agent CLIs in parallel across git worktrees and projects, without tmux. mmux covers similar ground from inside a per-directory tmux session, so agents outlive the terminal, and adds shells, dev processes and a git panel next to them.</p>
+      <p class="vs-updated">Last checked against CCManager 4.4.6 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <!-- TL;DR -->
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick CCManager if</strong> you want an agent switcher with no tmux dependency, you work on Windows, you run agents inside a devcontainer, or you want to carry a Claude Code conversation into a new worktree. It installs with one <code>npm install -g</code>.</p>
+      <p><strong>Pick mmux if</strong> agents should keep running after you close the terminal or lose SSH, you want dev servers and shells in the same sidebar as the agents, or you want a git panel and a command line that scripts and other agents can drive.</p>
+      <p>The two are not exclusive: CCManager runs fine inside an mmux terminal row, see below.</p>
+    </section>
+
+    <!-- comparison table -->
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and CCManager 4.4.6, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">CCManager</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Agents survive closing the terminal or SSH</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>runs in a tmux session; detach and reattach</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>closing it ends the agents it started</td>
+            </tr>
+            <tr>
+              <th scope="row">Sessions after a quit or crash</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Claude, Codex, Pi and Grok resume their conversation</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>reruns each session's command; conversation not restored</td>
+            </tr>
+            <tr>
+              <th scope="row">Runs without tmux</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>needs tmux on <code>PATH</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>self-contained</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS and Linux</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS, Linux and Windows x64</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent state in the list</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>working, needs input, idle</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>busy, waiting, idle, detected per CLI</td>
+            </tr>
+            <tr>
+              <th scope="row">Create, merge and remove worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>plus cleanup of finished worktrees</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>plus creation in the background</td>
+            </tr>
+            <tr>
+              <th scope="row">Carry a Claude Code conversation into a new worktree</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not built in</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>copies the session data on creation</td>
+            </tr>
+            <tr>
+              <th scope="row">Shells and dev servers beside the agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Terminals and Processes rows</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>built around agent sessions</td>
+            </tr>
+            <tr>
+              <th scope="row">Git view</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>panel with diffs, commit, push</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>per-worktree line counts, ahead/behind</td>
+            </tr>
+            <tr>
+              <th scope="row">Command line for scripts and agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux ls</code>, <code>read</code>, <code>ask</code>, <code>wait</code></td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>interactive TUI only</td>
+            </tr>
+            <tr>
+              <th scope="row">Devcontainer integration</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not built in</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>agents in the container, manager on the host</td>
+            </tr>
+            <tr>
+              <th scope="row">License, language, install</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3, Rust, single binary</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT, TypeScript, npm</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">CCManager facts from its README, docs and source at tag v4.4.6. mmux facts from its docs at 0.13.13.</p>
+    </section>
+
+    <!-- What is X -->
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is CCManager?</h2>
+      <p>CCManager describes itself as a CLI application for managing multiple AI coding assistant sessions across git worktrees and projects <a href="#src-1">[1]</a>. It started as a Claude Code manager and now documents Claude Code, Gemini CLI, Codex CLI, Cursor Agent, Copilot CLI, Cline CLI, OpenCode, Kimi CLI and MiniMax Code, with a state detection strategy per tool that marks each session busy, waiting or idle <a href="#src-1">[1]</a>. It is written in TypeScript, MIT licensed, and installed with <code>npm install -g ccmanager</code> or run with <code>npx ccmanager</code>; the npm package pulls in a prebuilt binary for macOS (arm64, x64), Linux (arm64, x64) or Windows x64 <a href="#src-2">[2]</a>. The latest release at the time of writing is v4.4.6 from 2026-10-10 <a href="#src-8">[8]</a>.</p>
+      <p>The interface is a menu: pick a worktree, work with its agent, press <code>Ctrl+E</code> to return to the menu <a href="#src-1">[1]</a>. From that menu you create, merge and delete worktrees; a multi-project mode (<code>--multi-project</code> with <code>CCMANAGER_MULTI_PROJECT_ROOT</code>) discovers every git repository under a root directory <a href="#src-6">[6]</a>. Settings live in <code>~/.config/ccmanager/config.json</code> with a per-repository <code>.ccmanager.json</code> on top <a href="#src-1">[1]</a>.</p>
+      <p>CCManager deliberately avoids tmux. Each agent runs in a pseudo-terminal owned by the CCManager process, so the README notes that closing CCManager kills the processes it started. It records the open sessions and offers to start them again on the next launch, which reruns each command in its worktree but does not bring back the conversation or the terminal output <a href="#src-1">[1]</a>.</p>
+    </section>
+
+    <!-- Where X is better -->
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where CCManager is better</h2>
+      <ul>
+        <li><strong>No tmux.</strong> CCManager needs nothing besides itself. mmux requires tmux on your <code>PATH</code>, which is one more dependency and one more thing to keep apart if you already have a tmux setup.</li>
+        <li><strong>Windows.</strong> CCManager ships a Windows x64 binary <a href="#src-2">[2]</a>. mmux runs on macOS and Linux only.</li>
+        <li><strong>Devcontainers.</strong> With <code>--devc-up-command</code> and <code>--devc-exec-command</code>, CCManager stays on the host and runs the agents inside a container, so a flag like <code>--dangerously-skip-permissions</code> only reaches the sandbox <a href="#src-5">[5]</a>. mmux has no equivalent built in.</li>
+        <li><strong>Conversation context in new worktrees.</strong> When it creates a worktree, CCManager can copy the Claude Code session data from <code>~/.claude/projects</code> of the source checkout, so the new branch starts with the existing conversation <a href="#src-1">[1]</a>. A new mmux worktree starts its agents fresh.</li>
+        <li><strong>Status hooks.</strong> CCManager runs a command of your choice whenever a session changes between idle, busy and waiting, with the old and new state and the worktree in environment variables <a href="#src-3">[3]</a>. That makes it easy to post to Slack or log time per state. mmux notifications are triggered by the bell or a notification escape from the program, not by every state change.</li>
+        <li><strong>Wider list of detected agents.</strong> CCManager has state detection for Cursor Agent, Copilot CLI, Cline CLI, Kimi CLI and MiniMax Code, none of which mmux ships a preset for <a href="#src-1">[1]</a>.</li>
+        <li><strong>Experimental auto approval.</strong> CCManager can ask a model (Claude Haiku by default, or your own command) whether a permission prompt is safe and approve it, falling back to manual approval on errors <a href="#src-4">[4]</a>. mmux leaves approval to each agent's own permission modes.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Agents outlive the terminal.</strong> mmux runs inside an invisible tmux session per directory. Close the terminal window or drop SSH and every agent keeps working; run <code>mmux</code> again, or <code>mmux attach</code> from anywhere, to rejoin.</li>
+        <li><strong>Conversations come back after a quit.</strong> After a quit, a crash or a restart to update, reopening the directory resumes the conversations of Claude, Codex, Pi and Grok agents, not just their commands. Terminals reopen in the directory you left them in.</li>
+        <li><strong>More than agents.</strong> The sidebar also holds Terminals and Processes (dev servers, scripts) defined in <code>mmux.yaml</code>, with optional <code>stop:</code> teardown commands. Across worktrees only one checkout runs a given process at a time, so <code>localhost:3000</code> is always the branch you last started it in.</li>
+        <li><strong>A git panel.</strong> A native panel shows changes, branches and commits, a live diff preview, commits with an AI-suggested message, scheduled commits and push. CCManager shows line counts and ahead/behind numbers per worktree.</li>
+        <li><strong>Scriptable from outside.</strong> <code>mmux ls</code>, <code>mmux read</code>, <code>mmux ask</code>, <code>mmux wait</code> and <code>mmux start</code> let a script or another agent list sessions, read a dev server's output, hand a prompt to a new agent and wait for its answer. CCManager's CLI accepts only startup flags and requires an interactive terminal <a href="#src-7">[7]</a>.</li>
+        <li><strong>Worktrees that tidy up.</strong> A worktree opens as its own project box, with gitignored files such as <code>.env</code> copied at every depth and an optional <code>setup:</code> command. A finished worktree (clean, merged or pushed, idle) is removed after 30 minutes by default.</li>
+        <li><strong>Notifications over SSH without setup.</strong> A bell or notification escape from any session becomes a native desktop notification on the machine your terminal runs on, even when mmux runs on a remote box.</li>
+      </ul>
+    </section>
+
+    <!-- When to use which -->
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose CCManager when</h3>
+          <ul>
+            <li>you do not want tmux installed or involved</li>
+            <li>you work on Windows</li>
+            <li>agents should run inside a devcontainer while the manager stays on the host</li>
+            <li>you branch a Claude Code conversation into several worktrees</li>
+            <li>you use Cursor Agent, Copilot CLI, Cline CLI or Kimi CLI and want their state detected</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>you work over SSH and agents must keep running when the connection drops</li>
+            <li>you want agent conversations resumed after a quit or a crash</li>
+            <li>dev servers and shells should live next to the agents, per worktree</li>
+            <li>you want to stage, commit and push without leaving the TUI</li>
+            <li>scripts or other agents should be able to start, read and wait on sessions</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Migration / using both -->
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from CCManager to mmux</h2>
+      <ol>
+        <li>Install mmux and make sure tmux is on your <code>PATH</code> (Homebrew installs it for you).</li>
+        <li>Run <code>mmux init</code> in a project, or <code>mmux init workspace</code> in the parent folder to get several repositories in one sidebar, similar to CCManager's multi-project mode.</li>
+        <li>Move your command presets to <code>agents:</code> in <code>~/.mmux/config.yaml</code>: each entry has a <code>name</code>, <code>cmd</code> and <code>args</code>.</li>
+        <li>Your <code>.worktreeinclude</code> entries map to <code>worktrees.copy</code>, and a post-creation worktree hook maps to <code>worktrees.setup</code> in <code>mmux.yaml</code>.</li>
+        <li>Press <code>w</code> to create a worktree, <code>M</code> to merge it back, <code>X</code> to remove it.</li>
+      </ol>
+      <pre><code># ~/.mmux/config.yaml
+agents:
+  - name: Claude
+    cmd: claude
+  - name: Codex
+    cmd: codex
+
+# ./mmux.yaml
+worktrees:
+  copy: [.env, .env.local]
+  setup: pnpm install</code></pre>
+      <p>To keep CCManager and still get persistence, open a terminal row in mmux and run <code>npx ccmanager</code> there. The row lives in mmux's tmux session, so CCManager and its agents keep running when you detach.</p>
+    </section>
+
+    <!-- FAQ: mirrored 1:1 in the FAQPage JSON-LD in <head>. -->
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Does CCManager need tmux?</summary>
+        <div class="vs-faq-a"><p>No. CCManager is self-contained and runs each agent in its own pseudo-terminal, so tmux is not required. mmux does need tmux on your <code>PATH</code>, because it runs inside an invisible tmux session per directory. Homebrew installs tmux for you.</p></div>
+      </details>
+      <details>
+        <summary>Do my agents keep running when I close the terminal?</summary>
+        <div class="vs-faq-a"><p>In mmux, yes: closing the terminal or dropping SSH detaches, and running <code>mmux</code> again in the directory reattaches to the same agents. In CCManager, closing the app ends the agent processes it started. On the next launch it offers to start those sessions again, which reruns their commands but does not restore the conversation or the terminal output.</p></div>
+      </details>
+      <details>
+        <summary>Does CCManager or mmux run on Windows?</summary>
+        <div class="vs-faq-a"><p>CCManager publishes prebuilt binaries for Windows x64 as well as macOS and Linux. mmux supports macOS and Linux only.</p></div>
+      </details>
+      <details>
+        <summary>Which agent CLIs do they support?</summary>
+        <div class="vs-faq-a"><p>CCManager documents Claude Code, Gemini CLI, Codex CLI, Cursor Agent, Copilot CLI, Cline CLI, OpenCode, Kimi CLI and MiniMax Code, each with its own state detection. mmux ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, and any command can be configured as an agent. mmux resumes the conversation of Claude, Codex, Pi and Grok agents after a restart.</p></div>
+      </details>
+      <details>
+        <summary>Can I use CCManager and mmux together?</summary>
+        <div class="vs-faq-a"><p>Yes. CCManager is a terminal program, so you can start it in an mmux terminal row. Because that row lives in mmux's tmux session, CCManager and its agents then keep running when you detach or lose SSH.</p></div>
+      </details>
+      <details>
+        <summary>Are CCManager and mmux free?</summary>
+        <div class="vs-faq-a"><p>Both are free and open source. CCManager is MIT licensed and installed from npm. mmux is GPLv3-or-later and installed as a single binary. Neither repository mentions a paid tier.</p></div>
+      </details>
+    </section>
+
+    <!-- Sources -->
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/README.md">CCManager README at v4.4.6</a></li>
+        <li id="src-2"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/package.json">CCManager package.json at v4.4.6: license and platform binaries</a></li>
+        <li id="src-3"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/docs/status-hooks.md">CCManager docs: status change hooks</a></li>
+        <li id="src-4"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/docs/auto-approval.md">CCManager docs: auto approval</a></li>
+        <li id="src-5"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/docs/devcontainer.md">CCManager docs: devcontainer integration</a></li>
+        <li id="src-6"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/docs/multi-project.md">CCManager docs: multi-project mode</a></li>
+        <li id="src-7"><a href="https://github.com/kbwo/ccmanager/blob/v4.4.6/src/cli.tsx">CCManager source: src/cli.tsx (flags and TTY check)</a></li>
+        <li id="src-8"><a href="https://github.com/kbwo/ccmanager/releases/tag/v4.4.6">CCManager release v4.4.6</a></li>
+        <li><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
