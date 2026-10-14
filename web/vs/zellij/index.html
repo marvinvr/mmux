@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Zellij: terminal multiplexers for coding agents</title>
+  <meta name="description" content="mmux vs Zellij: an agent sidebar with git panel and worktrees on top of tmux, or a terminal workspace with panes, layouts, plugins and a web client.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/zellij/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Zellij: terminal multiplexers for coding agents">
+  <meta property="og:description" content="mmux vs Zellij: an agent sidebar with git panel and worktrees on top of tmux, or a terminal workspace with panes, layouts, plugins and a web client.">
+  <meta property="og:url" content="https://mmux.org/vs/zellij/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Zellij: terminal multiplexers for coding agents">
+  <meta name="twitter:description" content="mmux vs Zellij: an agent sidebar with git panel and worktrees on top of tmux, or a terminal workspace with panes, layouts, plugins and a web client.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Zellij",
+    "url": "https://mmux.org/vs/zellij/",
+    "description": "mmux vs Zellij: an agent sidebar with git panel and worktrees on top of tmux, or a terminal workspace with panes, layouts, plugins and a web client.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Zellij", "url": "https://zellij.dev/", "sameAs": "https://github.com/zellij-org/zellij" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Zellij", "item": "https://mmux.org/vs/zellij/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is mmux built on Zellij?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. mmux runs its own Rust TUI inside an invisible, per-directory tmux session and needs tmux on your PATH. Zellij is a separate multiplexer with its own server and does not use tmux."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I run mmux inside Zellij?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. mmux is a program in a terminal, so it runs in a Zellij pane. Zellij's default config binds Ctrl b to its tmux mode, which overlaps mmux's Ctrl-b leader, so lock Zellij with Ctrl g while you work in mmux."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which one restores my session after a quit or crash?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Both, in different ways. Zellij saves the layout and the command in each pane every second and recreates them, with each command waiting for Enter before it runs again. mmux restores your agents and terminals: Claude, Codex, Pi and Grok agents resume their conversation, terminals reopen as fresh shells in the directory you left, and processes come back through autostart or a click."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Zellij run on Windows? Does mmux?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Zellij runs natively on Windows since 0.44.0 (March 2026) and publishes Windows builds with each release. mmux publishes builds for macOS on Apple Silicon and for Linux on arm64 and x86_64."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is Zellij free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Zellij is MIT licensed and free. Its maintainers also run Zellij.online, a paid hosted session sharing service with a free tier, in closed beta as of October 2026, and state that Zellij itself stays free and open source. mmux is free under the GPLv3."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Zellij</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Zellij</h1>
+      <p class="vs-lede">Both are terminal multiplexers written in Rust. Zellij is a general terminal workspace with tiled, floating and stacked panes, tabs, layouts, plugins and a web client. mmux is narrower: a sidebar of coding agents, terminals and dev processes per project directory, with a built-in git panel, running inside an invisible tmux session.</p>
+      <p class="vs-updated">Last checked against Zellij 0.45.1 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Zellij if</strong> you want a general multiplexer: split, floating and stacked panes, tabs, KDL layouts, WebAssembly plugins, a browser client with session sharing, or native Windows support. As a terminal workspace it does far more than mmux.</p>
+      <p><strong>Pick mmux if</strong> your terminal mostly hosts coding agents next to a dev server and git: a sidebar that shows which agent is working, ready or waiting on a question, agents that resume their conversation after a quit, a native git panel, and git worktrees as their own projects.</p>
+      <p>They are not exclusive. mmux is a program in a terminal, so it runs fine inside a Zellij pane. See <a href="#together">using both</a>.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Zellij 0.45.1, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Zellij</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Sessions survive closing the terminal or dropping SSH</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>runs in a per-directory tmux session</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>its own server; detach and reattach</td>
+            </tr>
+            <tr>
+              <th scope="row">Restore after a quit or crash</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Claude, Codex, Pi and Grok agents resume their conversation; terminals reopen as fresh shells</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>layout and pane commands restored; commands wait for Enter; viewport and scrollback opt-in</td>
+            </tr>
+            <tr>
+              <th scope="row">Split, floating and stacked panes, tabs</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>one focused program in the main pane</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>tiled, floating, stacked and pinned panes, tabs</td>
+            </tr>
+            <tr>
+              <th scope="row">Declarative setup file</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span><code>mmux.yaml</code> lists agents and processes, not a pane layout</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>KDL layouts with panes, tabs, commands and plugins</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent state at a glance (working, ready, needs input)</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>spinner, green ready, yellow <code>?</code> on a question</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>not agent-aware; marks bells from unfocused panes and tabs</td>
+            </tr>
+            <tr>
+              <th scope="row">Desktop notifications from programs</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>bell and OSC 9, 777, 99, also over SSH</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>forwards OSC 9, 777 and 99 to the host terminal</td>
+            </tr>
+            <tr>
+              <th scope="row">Git panel and worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>native panel; each worktree opens as its own project</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not part of Zellij itself</td>
+            </tr>
+            <tr>
+              <th scope="row">Scripting from the command line</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux ls</code>, <code>read</code>, <code>wait</code>, <code>ask</code>, with agent states</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>zellij run --blocking</code>, <code>list-panes --json</code>, <code>subscribe</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Plugins</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>none</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>WebAssembly plugins, first-class Rust API</td>
+            </tr>
+            <tr>
+              <th scope="row">Browser access and session sharing</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>terminal only; a narrow layout for SSH from a phone</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>built-in web client, HTTPS attach, read-only tokens</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms and dependencies</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS (Apple Silicon), Linux arm64 and x86_64; needs tmux</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Linux, macOS (Intel and Apple Silicon), native Windows; no tmux</td>
+            </tr>
+            <tr>
+              <th scope="row">License and cost</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3, free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT, free; optional paid hosted sharing (Zellij.online, beta)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Zellij facts from its documentation, release notes and default config at v0.45.1; mmux facts from its docs at 0.13.13. Both are written in Rust.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Zellij?</h2>
+      <p>Zellij describes itself as "a terminal workspace with batteries included" <a href="#src-1">[1]</a>. It is an MIT-licensed multiplexer written in Rust with its own client and server, so sessions keep running when you detach and you attach to them again later. On top of tiled panes and tabs it offers floating, stacked and pinned panes, command panes that show an exit code and re-run on Enter, KDL layout files, a session manager with session resurrection, and a WebAssembly plugin system that also implements parts of its own interface <a href="#src-2">[2]</a>.</p>
+      <p>Recent releases widened its reach. 0.43.0 added a built-in web client for opening sessions in a browser <a href="#src-3">[3]</a>. 0.44.0 (March 2026) brought native Windows support, terminal-to-terminal attach over HTTPS, read-only sharing tokens and a much larger automation CLI <a href="#src-4">[4]</a>. 0.45.0 (August 2026) added first-class nested sessions, the Kitty graphics protocol, OSC 133 shell integration, desktop notification forwarding and a mobile web UI <a href="#src-5">[5]</a>. The maintainers also run Zellij.online, a paid hosted sharing service with a free tier that is in closed beta, and state that Zellij itself stays free and open source <a href="#src-6">[6]</a>.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Zellij is better</h2>
+      <ul>
+        <li><strong>Pane layouts.</strong> Zellij tiles, floats, stacks and pins panes across tabs, and a KDL layout file can describe a whole environment with commands and plugins <a href="#src-2">[2]</a> <a href="#src-7">[7]</a>. mmux shows one program at a time in its main pane.</li>
+        <li><strong>Extensibility.</strong> Third-party WebAssembly plugins can read pane scrollback, highlight text and drive the session through a permissioned API <a href="#src-4">[4]</a>. mmux has no plugin system.</li>
+        <li><strong>Browser and shared sessions.</strong> The built-in web client serves sessions over HTTPS with authentication, other terminals can attach over HTTPS, and read-only tokens let someone watch without typing <a href="#src-3">[3]</a> <a href="#src-4">[4]</a>. 0.45 adds a touch interface for phones <a href="#src-5">[5]</a>. mmux works only in a terminal, with a single-column layout for narrow screens such as SSH from a phone.</li>
+        <li><strong>Platforms and dependencies.</strong> Zellij ships prebuilt binaries for Linux, macOS on Intel and Apple Silicon, and Windows <a href="#src-8">[8]</a> <a href="#src-9">[9]</a>, and needs nothing else. mmux needs tmux on your <code>PATH</code>, has no Windows build, and covers Intel Macs only through Homebrew or a source build.</li>
+        <li><strong>Terminal features.</strong> Sixel and Kitty graphics, jumping between shell prompts, copying a command together with its output, and opening scrollback in your <code>$EDITOR</code> <a href="#src-2">[2]</a> <a href="#src-5">[5]</a>. mmux copy is drag-select only; there is no keyboard copy mode yet.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Built for agents.</strong> Agents, terminals and processes each get a sidebar section, and you start an agent from your configured list with one keypress. A busy agent shows a gray spinner, a finished one turns green, and one blocked on a question shows a yellow <code>?</code>, so the colored rows are the ones that need you. Zellij panes have no notion of an agent's state.</li>
+        <li><strong>Conversations come back.</strong> After a quit, a crash or a restart to update, reopening the directory restores your agents, and Claude, Codex, Pi and Grok agents resume their conversation. Zellij resurrection restores the layout and the pane commands, which wait for Enter before they run again <a href="#src-10">[10]</a>.</li>
+        <li><strong>Native git panel.</strong> Changes, branches and recent commits sit in the right column. You stage, commit (with an AI-suggested message), branch and push without another tool, and clicking a file shows its diff in the main pane.</li>
+        <li><strong>Worktrees as projects.</strong> <code>w</code> cuts a git worktree that opens as its own project box with its own agents, terminals, processes and git panel. Only one checkout of a repository runs a given process at a time, so every branch reuses the same dev server ports. <code>M</code> merges it back, and finished worktrees clean themselves up.</li>
+        <li><strong>Agents can drive it.</strong> Zellij's CLI controls panes <a href="#src-12">[12]</a>. mmux's CLI also knows agent states: <code>mmux wait</code> returns when an agent is done or needs input, <code>mmux answer</code> picks an option on its prompt, and <code>mmux ask</code> hands a prompt to a new agent and prints its reply.</li>
+        <li><strong>One session per directory.</strong> Running <code>mmux</code> in a project attaches to the session that already exists there. <code>mmux attach</code> lists running and recent sessions, and a workspace manifest puts several projects in one sidebar.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Zellij when</h3>
+          <ul>
+            <li>you want several programs visible side by side, in tabs and splits</li>
+            <li>you describe environments as layout files or extend the tool with plugins</li>
+            <li>you share sessions with others, or open them in a browser</li>
+            <li>you work on Windows, or cannot install tmux</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>you run several coding agents and want to see which one needs you</li>
+            <li>you want agents to pick up their conversation after a restart</li>
+            <li>you commit and branch from the same screen as your agents</li>
+            <li>you work in parallel git worktrees, each with its own agents and dev server</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using Zellij and mmux together</h2>
+      <p>If Zellij is already your terminal workspace, keep it and run mmux in one of its panes for the agent work.</p>
+      <ol>
+        <li>In a Zellij pane, set up the project once and open mmux:
+          <pre><code>cd ~/some/project
+mmux init
+mmux</code></pre>
+        </li>
+        <li>Zellij's default config binds <code>Ctrl b</code> to its tmux mode <a href="#src-11">[11]</a>, and mmux uses <code>Ctrl-b</code> as its leader in a focused pane. Press <code>Ctrl g</code> to lock Zellij while you work in mmux, and again to unlock it.</li>
+        <li>Closing the Zellij pane only detaches mmux. Its tmux session keeps running, and <code>mmux attach</code> from any shell brings it back.</li>
+      </ol>
+      <p>Commands you used to start from a Zellij layout, such as a dev server, become processes in <code>mmux.yaml</code>:</p>
+      <pre><code>processes:
+  - name: Dev server
+    cmd: npm
+    args: ["run", "dev"]
+    autostart: false</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is mmux built on Zellij?</summary>
+        <div class="vs-faq-a"><p>No. mmux runs its own Rust TUI inside an invisible, per-directory tmux session and needs tmux on your PATH. Zellij is a separate multiplexer with its own server and does not use tmux.</p></div>
+      </details>
+      <details>
+        <summary>Can I run mmux inside Zellij?</summary>
+        <div class="vs-faq-a"><p>Yes. mmux is a program in a terminal, so it runs in a Zellij pane. Zellij's default config binds Ctrl b to its tmux mode, which overlaps mmux's Ctrl-b leader, so lock Zellij with Ctrl g while you work in mmux.</p></div>
+      </details>
+      <details>
+        <summary>Which one restores my session after a quit or crash?</summary>
+        <div class="vs-faq-a"><p>Both, in different ways. Zellij saves the layout and the command in each pane every second and recreates them, with each command waiting for Enter before it runs again. mmux restores your agents and terminals: Claude, Codex, Pi and Grok agents resume their conversation, terminals reopen as fresh shells in the directory you left, and processes come back through autostart or a click.</p></div>
+      </details>
+      <details>
+        <summary>Does Zellij run on Windows? Does mmux?</summary>
+        <div class="vs-faq-a"><p>Zellij runs natively on Windows since 0.44.0 (March 2026) and publishes Windows builds with each release. mmux publishes builds for macOS on Apple Silicon and for Linux on arm64 and x86_64.</p></div>
+      </details>
+      <details>
+        <summary>Is Zellij free?</summary>
+        <div class="vs-faq-a"><p>Yes. Zellij is MIT licensed and free. Its maintainers also run Zellij.online, a paid hosted session sharing service with a free tier, in closed beta as of October 2026, and state that Zellij itself stays free and open source. mmux is free under the GPLv3.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://github.com/zellij-org/zellij">Zellij repository: README, license (MIT) and description</a></li>
+        <li id="src-2"><a href="https://zellij.dev/features/">Zellij features</a></li>
+        <li id="src-3"><a href="https://github.com/zellij-org/zellij/releases/tag/v0.43.0">Zellij 0.43.0 release notes: web client</a></li>
+        <li id="src-4"><a href="https://github.com/zellij-org/zellij/releases/tag/v0.44.0">Zellij 0.44.0 release notes: Windows, remote attach, read-only tokens, CLI automation, plugin APIs</a></li>
+        <li id="src-5"><a href="https://github.com/zellij-org/zellij/releases/tag/v0.45.0">Zellij 0.45.0 release notes: nested sessions, Kitty graphics, OSC 133, notifications, mobile web UI</a></li>
+        <li id="src-6"><a href="https://zellij.dev/zellij-online/">Zellij.online and the open source project</a></li>
+        <li id="src-7"><a href="https://zellij.dev/documentation/layouts.html">Zellij documentation: layouts</a></li>
+        <li id="src-8"><a href="https://zellij.dev/documentation/installation.html">Zellij documentation: installation</a></li>
+        <li id="src-9"><a href="https://github.com/zellij-org/zellij/releases/tag/v0.45.1">Zellij 0.45.1 release and its prebuilt binaries</a></li>
+        <li id="src-10"><a href="https://zellij.dev/documentation/session-resurrection.html">Zellij documentation: session resurrection</a></li>
+        <li id="src-11"><a href="https://github.com/zellij-org/zellij/blob/v0.45.1/zellij-utils/assets/config/default.kdl">Zellij 0.45.1 default config (keybindings)</a></li>
+        <li id="src-12"><a href="https://zellij.dev/documentation/controlling-zellij-through-cli.html">Zellij documentation: controlling Zellij through the CLI</a></li>
+        <li id="src-13"><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation (usage, configuration, notifications)</a></li>
+      </ol>
+    </section>
+
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
