@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<!--
+  Comparison page: mmux vs workmux. Built from web/vs/_template; see web/vs/README.md.
+  workmux facts checked against v0.1.276 and its docs on 2026-10-14.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs workmux: worktree agents in a TUI or in tmux</title>
+  <meta name="description" content="workmux pairs each git worktree with a tmux window and keeps tmux as the UI. mmux puts agents, dev servers and worktrees in its own TUI. Where each one fits.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/workmux/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs workmux: worktree agents in a TUI or in tmux">
+  <meta property="og:description" content="workmux pairs each git worktree with a tmux window and keeps tmux as the UI. mmux puts agents, dev servers and worktrees in its own TUI. Where each one fits.">
+  <meta property="og:url" content="https://mmux.org/vs/workmux/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs workmux: worktree agents in a TUI or in tmux">
+  <meta name="twitter:description" content="workmux pairs each git worktree with a tmux window and keeps tmux as the UI. mmux puts agents, dev servers and worktrees in its own TUI. Where each one fits.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Keep the FAQPage in sync with the visible FAQ. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs workmux",
+    "url": "https://mmux.org/vs/workmux/",
+    "description": "workmux pairs each git worktree with a tmux window and keeps tmux as the UI. mmux puts agents, dev servers and worktrees in its own TUI. Where each one fits.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "workmux", "url": "https://workmux.raine.dev/", "sameAs": "https://github.com/raine/workmux" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs workmux", "item": "https://mmux.org/vs/workmux/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is the main difference between mmux and workmux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Whose interface you work in. workmux is a CLI that creates a git worktree and a matching tmux window per task, and tmux (or kitty, WezTerm or Zellij) stays your interface. mmux is its own TUI with a sidebar of agents, terminals and dev processes, a main pane and a git panel, running on a hidden tmux session that you never have to configure." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need to know tmux to use workmux or mmux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "workmux is built on the idea that tmux is the interface, so you navigate windows, panes and popups with tmux itself, or with kitty, WezTerm or Zellij as alternative backends. mmux needs tmux installed but keeps it out of sight: you move around with mmux's own sidebar keys and the mouse." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do agents survive closing the terminal or a crash?",
+        "acceptedAnswer": { "@type": "Answer", "text": "In both, agents keep running when the terminal closes, because they live in tmux. After a tmux or computer crash, workmux resurrect reopens the worktrees that had agents and resumes them. mmux restores its agents and terminals automatically when you reopen the directory, after a quit, a crash or a restart-to-update, and Claude, Codex, Pi and Grok agents resume their conversation." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can either tool sandbox AI agents?",
+        "acceptedAnswer": { "@type": "Answer", "text": "workmux can run agents in containers (Docker, Podman or Apple Container) or Lima VMs scoped to the worktree, isolated from host secrets such as SSH keys. mmux has no sandboxing; agents run as your user in the project or worktree directory." }
+      },
+      {
+        "@type": "Question",
+        "name": "Are mmux and workmux free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Both are open source and written in Rust. mmux is licensed under GPLv3 and workmux under MIT. Neither project lists a paid tier." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs workmux</span></li>
+      </ol>
+    </nav>
+
+    <!-- title + lede -->
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> workmux</h1>
+      <p class="vs-lede">Both tools give each parallel agent task its own git worktree. workmux is a CLI that pairs every worktree with a tmux window and treats tmux as the interface; mmux is a TUI of its own (sidebar, main pane, git panel) that runs on a hidden tmux session. The real question is whose interface you want to live in.</p>
+      <p class="vs-updated">Last checked against workmux v0.1.276 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <!-- TL;DR -->
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick workmux if</strong> you already work in tmux (or kitty, WezTerm, Zellij) and want worktree-per-task automation added to that setup, if you want agents sandboxed in containers or VMs, or if you want merge options such as rebase, squash or merging into a branch other than main.</p>
+      <p><strong>Pick mmux if</strong> you want one app per project that holds agents, terminals, dev servers and git without learning tmux, that restores your agents when you reopen it after a quit or crash, that hands the dev server to whichever worktree you start it in, and that sends desktop notifications even over SSH.</p>
+      <p>Both are free, open source and written in Rust. Each one wants to own worktree creation and cleanup, so in practice you pick one of them per repository.</p>
+    </section>
+
+    <!-- comparison table -->
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and workmux v0.1.276, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">workmux</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Interface</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Its own TUI on a hidden tmux session, with its own keys</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Your tmux windows (or kitty, WezTerm, Zellij tabs), plus an optional sidebar and popup dashboard</td>
+            </tr>
+            <tr>
+              <th scope="row">Worktree plus agent in one step</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>w</code>, or <code>mmux worktree new --prompt</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>workmux add -A "prompt"</code>, branch name generated from the prompt</td>
+            </tr>
+            <tr>
+              <th scope="row">New worktree setup</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>worktrees.copy</code> list and one <code>setup</code> command</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Copy and symlink lists, <code>post_create</code> hooks, pane layouts</td>
+            </tr>
+            <tr>
+              <th scope="row">Merge and clean up</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span><code>M</code> merges into the base branch; finished worktrees are removed after idle</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>workmux merge</code> with <code>--rebase</code>, <code>--squash</code>, <code>--into</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Agent status at a glance</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Sidebar row colors, read from the terminal, no hooks</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Window name icons, sidebar, dashboard; hooks via <code>workmux setup</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Process rows; one dev stack per repo, so ports stay the same</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Commands in tmux panes per worktree; port isolation is a documented recipe</td>
+            </tr>
+            <tr>
+              <th scope="row">Diff review and staging</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Git panel with per-file staging, branches, commits</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Dashboard diff view with per-hunk staging</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent sandboxing</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Not offered</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Docker, Podman, Apple Container or Lima VM</td>
+            </tr>
+            <tr>
+              <th scope="row">Restore after a crash</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Automatic on reopen, also after a quit</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>workmux resurrect</code> after a tmux or computer crash</td>
+            </tr>
+            <tr>
+              <th scope="row">Desktop notifications</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>From bells and OSC 9/777, also over SSH</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span><code>merge --notification</code>; no general agent alert found in the docs</td>
+            </tr>
+            <tr>
+              <th scope="row">Prebuilt binaries</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS Apple Silicon, Linux arm64 and x86_64</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS arm64 and Intel, Linux arm64 and amd64</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3, free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT, free</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">workmux facts from its documentation, README and the v0.1.276 release assets. "Not found in the docs" means we searched its full documentation and changelog and did not find the feature; it is not a confirmed absence.</p>
+    </section>
+
+    <!-- What is workmux -->
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is workmux?</h2>
+      <p>workmux, by Raine Virta, describes itself as "git worktrees + tmux windows for zero-friction parallel dev" [1][2]. One command, <code>workmux add</code>, creates a branch, a git worktree and a matching tmux window, copies or symlinks files such as <code>.env</code> and <code>node_modules</code>, runs post-create hooks and lays out your panes; <code>workmux merge</code> merges the branch and removes the worktree, the window and the local branch [1][4]. tmux is the main backend, with kitty, WezTerm and Zellij (experimental) as alternatives [1].</p>
+      <p>Its stated philosophy is that "tmux is the interface": instead of a separate app, agent status shows up as icons in tmux window names, in an optional sidebar pinned to every tmux window, and in a dashboard you open as a tmux popup [1][5][6][7]. Status comes from hooks that <code>workmux setup</code> installs for Claude Code, OpenCode, Codex, Copilot CLI, Pi, Oh My Pi, Gemini CLI, Grok and Antigravity CLI [5]. It also ships agent skills (<code>/worktree</code>, <code>/coordinator</code>, <code>/merge</code>) and optional sandboxing in containers or Lima VMs [8][9].</p>
+      <p>workmux is a Rust CLI under the MIT license, installed with a shell script, Homebrew, Cargo, mise or Nix. Version v0.1.276 was released on 2026-10-14 with binaries for macOS and Linux [2][3][10].</p>
+    </section>
+
+    <!-- Where workmux is better -->
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where workmux is better</h2>
+      <ul>
+        <li><strong>Your terminal setup stays yours.</strong> workmux adds windows to the tmux session you already use, with your config, key bindings and status line, and it supports kitty, WezTerm and Zellij too [1]. mmux brings its own interface and keys and runs tmux out of sight, so a tuned tmux setup does not carry over.</li>
+        <li><strong>Sandboxed agents.</strong> workmux can run agents in Docker, Podman or Apple Container, or in a Lima VM, isolated from host secrets such as SSH keys and cloud credentials, and its docs spell out the threat model [9]. mmux has nothing comparable.</li>
+        <li><strong>More merge options.</strong> <code>workmux merge</code> can rebase, squash, merge into a branch other than main, or keep the worktree after merging, and the <code>/merge</code> skill lets the agent rebase and resolve conflicts itself [4][8]. mmux's <code>M</code> merges into the branch the worktree came from.</li>
+        <li><strong>Pull request and CI status.</strong> The workmux sidebar and dashboard can show a branch's pull request number and GitHub check status next to each agent [6][7].</li>
+        <li><strong>Hunk-level staging.</strong> The dashboard's patch mode stages individual hunks like <code>git add -p</code> [11]. The mmux git panel stages whole files and directories.</li>
+        <li><strong>More install paths.</strong> Prebuilt binaries for Intel Macs, plus Cargo, mise and Nix with a Home Manager guide [3][10]. mmux ships prebuilt binaries for Apple Silicon Macs and Linux only.</li>
+        <li><strong>Monorepo configs.</strong> workmux walks up from the current directory to the nearest <code>.workmux.yaml</code>, so each package in a monorepo can have its own config [12].</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>No tmux to learn.</strong> Type <code>mmux</code> in a project and you get a sidebar of agents, terminals and processes, a main pane and a git panel, usable with keys or the mouse, and with a layout for phone-width terminals. The tmux session underneath is created and configured for you.</li>
+        <li><strong>Restore is automatic.</strong> Sessions survive closing the terminal or dropping SSH, and even after a quit, a crash or a restart-to-update, reopening the directory brings back your agents and terminals; Claude, Codex, Pi and Grok resume their conversation. workmux covers crashes with the <code>workmux resurrect</code> command, which you run yourself [13].</li>
+        <li><strong>Dev servers are first class.</strong> Processes get their own rows with start, stop, restart and an optional <code>stop:</code> teardown. Only one checkout of a repository runs a given process at a time: starting the dev server in a worktree stops it in the checkout that had it, so <code>localhost:3000</code> is always the branch you last started it in.</li>
+        <li><strong>Status without hooks.</strong> mmux reads an agent's working and ready state from the terminal itself (progress escapes or the terminal title), so there is nothing to install per agent CLI.</li>
+        <li><strong>Notifications over SSH.</strong> A bell or an OSC 9/777 notification from any session becomes a native desktop notification, delivered as an escape sequence, so it reaches your local machine when mmux runs on a remote box.</li>
+        <li><strong>Worktrees tidy themselves up.</strong> A worktree with nothing running, a clean tree and every commit merged or pushed is removed after 30 idle minutes (configurable, or <code>off</code>); a branch with unmerged, unpushed work is never touched. We did not find an equivalent automatic cleanup in the workmux docs.</li>
+        <li><strong>Agents can drive the whole session.</strong> The control CLI lets an agent read a dev server's output (<code>mmux read</code>), wait for another agent (<code>mmux wait</code>), ask one a question and get the reply (<code>mmux ask</code>), or commit and merge a worktree (<code>mmux commit --merge</code>).</li>
+      </ul>
+    </section>
+
+    <!-- When to use which -->
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose workmux when</h3>
+          <ul>
+            <li>You live in tmux, kitty, WezTerm or Zellij and want worktree automation on top of it</li>
+            <li>Agents should run in a container or VM, away from your SSH keys and credentials</li>
+            <li>Your team merges with rebase or squash, or stacks branches with <code>--into</code></li>
+            <li>You want PR and CI check status next to each agent</li>
+            <li>You are on an Intel Mac or install tools through Nix</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>You want one window per project without building a tmux setup first</li>
+            <li>Dev servers and scripts belong next to the agents, with logs agents can read</li>
+            <li>Several worktrees should share one dev stack on the same ports</li>
+            <li>You work over SSH and want notifications on your own machine</li>
+            <li>You want agents back, mid-conversation, after a quit or crash without running anything</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Migration -->
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from workmux to mmux</h2>
+      <ol>
+        <li>Finish open workmux worktrees with <code>workmux merge</code>, or clean them up with <code>workmux remove</code>. mmux creates its own worktrees under <code>~/.mmux/worktrees/</code>.</li>
+        <li>Install mmux and run <code>mmux init</code> in the project.</li>
+        <li>Carry over your <code>.workmux.yaml</code>: files you copied or symlinked go into <code>worktrees.copy</code> (files are copied, directories symlinked), a <code>post_create</code> install step becomes <code>worktrees.setup</code>, and dev server panes become <code>processes</code>. Agents go in <code>~/.mmux/config.yaml</code>.</li>
+        <li>Run <code>mmux</code> and press <code>w</code> for a new worktree, or start one with an agent from the shell.</li>
+      </ol>
+      <pre><code># ./mmux.yaml
+name: my-project
+processes:
+  - name: Dev server
+    cmd: npm
+    args: ["run", "dev"]
+worktrees:
+  copy: [.env, .env.local, node_modules]
+  setup: pnpm install</code></pre>
+      <pre><code>mmux worktree new fix-auth --prompt "fix the login bug"</code></pre>
+    </section>
+
+    <!-- FAQ: mirrored 1:1 in the FAQPage JSON-LD -->
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>What is the main difference between mmux and workmux?</summary>
+        <div class="vs-faq-a"><p>Whose interface you work in. workmux is a CLI that creates a git worktree and a matching tmux window per task, and tmux (or kitty, WezTerm or Zellij) stays your interface. mmux is its own TUI with a sidebar of agents, terminals and dev processes, a main pane and a git panel, running on a hidden tmux session that you never have to configure.</p></div>
+      </details>
+      <details>
+        <summary>Do I need to know tmux to use workmux or mmux?</summary>
+        <div class="vs-faq-a"><p>workmux is built on the idea that tmux is the interface, so you navigate windows, panes and popups with tmux itself, or with kitty, WezTerm or Zellij as alternative backends. mmux needs tmux installed but keeps it out of sight: you move around with mmux's own sidebar keys and the mouse.</p></div>
+      </details>
+      <details>
+        <summary>Do agents survive closing the terminal or a crash?</summary>
+        <div class="vs-faq-a"><p>In both, agents keep running when the terminal closes, because they live in tmux. After a tmux or computer crash, <code>workmux resurrect</code> reopens the worktrees that had agents and resumes them. mmux restores its agents and terminals automatically when you reopen the directory, after a quit, a crash or a restart-to-update, and Claude, Codex, Pi and Grok agents resume their conversation.</p></div>
+      </details>
+      <details>
+        <summary>Can either tool sandbox AI agents?</summary>
+        <div class="vs-faq-a"><p>workmux can run agents in containers (Docker, Podman or Apple Container) or Lima VMs scoped to the worktree, isolated from host secrets such as SSH keys. mmux has no sandboxing; agents run as your user in the project or worktree directory.</p></div>
+      </details>
+      <details>
+        <summary>Are mmux and workmux free?</summary>
+        <div class="vs-faq-a"><p>Yes. Both are open source and written in Rust. mmux is licensed under GPLv3 and workmux under MIT. Neither project lists a paid tier.</p></div>
+      </details>
+    </section>
+
+    <!-- Sources -->
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://workmux.raine.dev/guide/">workmux documentation: What is workmux?</a></li>
+        <li><a href="https://github.com/raine/workmux">workmux repository and README on GitHub (MIT license)</a></li>
+        <li><a href="https://github.com/raine/workmux/releases/tag/v0.1.276">workmux v0.1.276 release and binaries (2026-10-14)</a></li>
+        <li><a href="https://workmux.raine.dev/reference/commands/merge/">workmux documentation: merge command</a></li>
+        <li><a href="https://workmux.raine.dev/guide/status-tracking/">workmux documentation: status tracking</a></li>
+        <li><a href="https://workmux.raine.dev/guide/sidebar/">workmux documentation: sidebar</a></li>
+        <li><a href="https://workmux.raine.dev/guide/dashboard/">workmux documentation: dashboard</a></li>
+        <li><a href="https://workmux.raine.dev/guide/skills/">workmux documentation: skills</a></li>
+        <li><a href="https://workmux.raine.dev/guide/sandbox/">workmux documentation: sandbox</a></li>
+        <li><a href="https://workmux.raine.dev/guide/installation/">workmux documentation: installation</a></li>
+        <li><a href="https://workmux.raine.dev/guide/dashboard/patch-mode/">workmux documentation: patch mode</a></li>
+        <li><a href="https://workmux.raine.dev/guide/monorepos/">workmux documentation: monorepos</a></li>
+        <li><a href="https://workmux.raine.dev/reference/commands/resurrect/">workmux documentation: resurrect command</a></li>
+        <li><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation (usage, configuration, notifications)</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
