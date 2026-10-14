@@ -80,18 +80,24 @@ docker build -t mmux-web . && docker run --rm -p 8080:80 mmux-web
 
 ## Review pass (after the pages are written)
 
-- Add one `<li>` per page to the list in `vs/index.html` (markup in its header comment),
-  alphabetical by X. The "No comparisons published yet" line hides itself.
-- Fill `<!-- vs:others -->` in every page with the same `<li>` entries, minus the page itself.
+- Add one `<li>` per page to the fitting group in `vs/index.html` (terminal multiplexers,
+  agent managers in the terminal, terminal apps, desktop apps; markup in its header comment),
+  alphabetical by X inside the group.
+- Fill `<!-- vs:others -->` in every page with 4-6 of the same `<li>` entries (`../<slug>/`):
+  the closest alternatives, alphabetical. Add the new page to the related pages' lists too.
 - Check each page against the rules above: no `{{`, no `—`, sources present, FAQ JSON-LD
   matches the visible FAQ.
-- Optionally mention `/vs/` in `../llms.txt`.
+- Add the page to the Comparisons section of `../llms.txt`.
+
+A tool that was renamed or replaced keeps its old slug as a redirect stub (see `vs/crystal/`): a
+`noindex` page with a canonical and a meta refresh to the new page, plus a 301 in `../nginx.conf`.
+`gen-sitemap.sh` skips noindex pages, and the stub is not listed on `/vs/`.
 
 ## How it ships
 
 The Docker build (`../Dockerfile`) copies `vs/` without `_template/` and this README,
 fingerprints `vs.css` like the other assets, and generates `sitemap.xml` with
-`../scripts/gen-sitemap.sh` (home, `/vs/` and every `vs/<slug>/`). nginx serves `/vs/<slug>/`
+`../scripts/gen-sitemap.sh` (home, `/vs/` and every `vs/<slug>/` not marked noindex). nginx serves `/vs/<slug>/`
 from the folder's `index.html`, redirects `/vs/<slug>` to the trailing slash, and returns a
 real 404 for unknown slugs. Nothing else to wire up: a new folder is live with the next deploy
 of the image.

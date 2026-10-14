@@ -329,15 +329,6 @@
   font-size: .88rem;
   color: var(--text-2);
 }
-.vs-empty {
-  padding: 1.1rem 1.25rem;
-  color: var(--muted);
-  border: 1px dashed var(--border-2);
-  border-radius: var(--radius);
-}
-/* the empty-state line only shows while the list has no entries (a comment or
- * whitespace inside the <ul> would defeat :empty, so test for an <li>) */
-.vs-list:has(li) + .vs-empty { display: none; }
 
 .vs-all { margin: 1rem 0 0; font-size: .9rem; }
 .vs-all a { color: var(--green-bright); }

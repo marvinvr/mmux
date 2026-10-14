@@ -1,7 +1,8 @@
 #!/bin/sh
 # Print sitemap.xml for the site to stdout: the home page, plus /vs/ and one
 # entry per comparison page once at least one vs/<slug>/index.html exists.
-# Folders starting with "_" (the template) are skipped. A page's <lastmod> is
+# Folders starting with "_" (the template) and pages marked noindex (redirect
+# stubs such as vs/crystal/) are skipped. A page's <lastmod> is
 # the "dateModified" (YYYY-MM-DD) from its WebPage JSON-LD; without a valid
 # one the entry simply has no <lastmod>.
 #
@@ -29,6 +30,7 @@ entries=
 for f in $pages; do
   slug=$(basename "$(dirname "$f")")
   case $slug in _*) continue ;; esac
+  grep -q '<meta name="robots" content="noindex' "$f" && continue
   d=$(sed -n 's/.*"dateModified"[[:space:]]*:[[:space:]]*"\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)".*/\1/p' "$f" | head -n 1)
   # /vs/ takes the newest page's date (YYYYMMDD compares as an integer).
   if [ -n "$d" ] && { [ -z "$latest" ] ||

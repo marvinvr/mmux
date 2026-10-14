@@ -59,6 +59,16 @@ a self-contained setup guide.
 - Config is two layers merged at launch: a global `~/.mmux/config.yaml` with each project's `mmux.yaml` on top.
 - Common keys: `↑`/`↓` move · `Enter` open or spawn · `s`/`x`/`r` start/close/restart · `Tab` focus the git panel · `Ctrl+P` file picker · `d` detach · `q` quit · `Ctrl-b h` return to the sidebar.
 
+## Comparisons
+
+Sourced, side-by-side comparisons of mmux with other tools, each with a "where the other tool is
+better" section: https://mmux.org/vs/
+
+- Terminal multiplexers: [tmux](https://mmux.org/vs/tmux/), [Zellij](https://mmux.org/vs/zellij/)
+- Agent managers in the terminal: [Agent Deck](https://mmux.org/vs/agent-deck/), [CCManager](https://mmux.org/vs/ccmanager/), [Claude Squad](https://mmux.org/vs/claude-squad/), [workmux](https://mmux.org/vs/workmux/)
+- Terminal apps: [cmux](https://mmux.org/vs/cmux/), [Warp](https://mmux.org/vs/warp/)
+- Desktop apps for coding agents: [Codex app](https://mmux.org/vs/codex-app/), [Conductor](https://mmux.org/vs/conductor/), [Nimbalyst (formerly Crystal)](https://mmux.org/vs/nimbalyst/), [Orca](https://mmux.org/vs/orca/), [Paseo](https://mmux.org/vs/paseo/), [Solo](https://mmux.org/vs/solo/), [Superset](https://mmux.org/vs/superset/)
+
 ## Optional
 
 - [README](https://github.com/marvinvr/mmux/blob/main/README.md): the short version of everything above
