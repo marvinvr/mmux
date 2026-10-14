@@ -1,6 +1,7 @@
 mod agent;
 mod agentmgr;
 mod app;
+mod background;
 mod cli;
 mod clipboard;
 mod config;

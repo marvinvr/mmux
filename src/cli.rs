@@ -413,8 +413,9 @@ CONTROL — drive a running session from scripts and agents
                                      #   prompt (yes/no/option text work too)
       mmux start|stop|restart "Dev server"   # stop on an agent/terminal = close
       mmux close s12 [--force]       # close an agent/terminal (busy ⇒ --force)
-      mmux wait s12                  # block until the agent has finished working;
-                                     #   exit 3 if it needs input instead
+      mmux wait s12                  # block until the agent has finished working
+                                     #   (background agents/shells included; exit 3
+                                     #   if it needs input instead)
       mmux start "TestFlight" --wait --tail 40 -t 1h -C ~/project
                                      # wait for the script's exit and final output
       mmux wait "TestFlight" --tail 40  # a process always waits until it exits
@@ -428,11 +429,14 @@ CONTROL — drive a running session from scripts and agents
       mmux commit --in 2h --push                # like S; `mmux commit cancel`
       mmux reload                    # like R: apply an edited mmux.yaml live
 
-    An agent's state is `working` exactly when its sidebar row spins,
-    `needs-input` (a yellow `?`) when it waits on a question, a permission
-    prompt or a notification it raised — until input reaches it — and `idle`
-    otherwise. `wait`/`ask` treat an agent as done once it stops working on
-    what it was sent, and stop with exit 3 and the question, its choices and
+    An agent's state is `working` when its sidebar row spins or, for Claude,
+    while background work it started (sub-agents, shells, monitors) still runs —
+    it'll wake up when that finishes: `working (background: 2 agents, 1 shell)`,
+    JSON `background`. `needs-input` (a yellow `?`) when it waits on a question,
+    a permission prompt or a notification it raised — until input reaches it —
+    and `idle` otherwise. `wait`/`ask` treat an agent as done once it stops
+    working on what it was sent and has no background work left (--no-background:
+    at its idle prompt), and stop with exit 3 and the question, its choices and
     the screen when it needs input; `mmux answer` picks a choice. `new agent --prompt "…"` starts one with a first prompt.
     Persistent footer indicators ([stop], esc to interrupt, Working (...)) keep
     Grok/Codex working during long tool calls and intermediate commentary.

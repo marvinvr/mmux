@@ -45,6 +45,8 @@ mmux close s12 [--force]             # agent/terminal: close for good (busy => r
 mmux close self                      # close your own pane (no --force needed)
 mmux wait s12 [-t 10m] [--settle 1.5s] [--idle|--exit]   # until the agent is done (default) / ended
                                      #   exit 3 = it needs input (see "Answering an agent")
+                                     #   done includes its background agents/shells/monitors;
+                                     #   --no-background returns at its idle prompt
 mmux wait TestFlight --tail 40        # processes always wait for exit; 0 success, 4 failure
 mmux ask "why is CI red?"            # new agent -> wait -> print its reply
 mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]
@@ -55,7 +57,9 @@ mmux reload                          # reload the config live, like R — after 
                                      #   fails with the parse error if a config doesn't load
 ```
 
-- States: an agent is `working` (its sidebar row spins), `needs-input` (`needs-input 12s`: blocked
+- States: an agent is `working` (its sidebar row spins, or — Claude — background work it started is
+  still running and will wake it: `working (background: 2 agents, 1 shell)`, JSON `background`),
+  `needs-input` (`needs-input 12s`: blocked
   on a question, a permission prompt or a notification it raised, until input reaches it) or `idle`
   (`idle 42s`); others are `running`, `stopped`, `exited`, `failed`. A trailing `!` means it rang
   the bell.

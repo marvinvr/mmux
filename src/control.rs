@@ -291,6 +291,16 @@ pub struct SessionInfo {
     /// reached it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_age_ms: Option<u64>,
+    /// Background work (sub-agents, shells, monitors) a Claude agent started and will
+    /// be woken by, shown running on its screen — it isn't done, even at an empty
+    /// prompt. Separate from `working`, which is only its turn in the foreground.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<crate::background::Background>,
+    /// How long ago background work was last seen running: `0` while it runs, absent
+    /// if it never ran. Lets `wait` bridge the moment between the last task finishing
+    /// and the turn it wakes starting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_idle_ms: Option<u64>,
     /// It was seen working after that input arrived — so a quiet agent now means
     /// "done with what I sent", not "hasn't started yet".
     #[serde(default)]
