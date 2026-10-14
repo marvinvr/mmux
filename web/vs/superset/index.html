@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Superset: agents in worktrees, terminal vs desktop</title>
+  <meta name="description" content="Superset is a desktop app that runs CLI coding agents in git worktrees. mmux does it in a terminal, over SSH. Persistence, CLI, pricing and license compared.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/superset/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Superset: agents in worktrees, terminal vs desktop">
+  <meta property="og:description" content="Superset is a desktop app that runs CLI coding agents in git worktrees. mmux does it in a terminal, over SSH. Persistence, CLI, pricing and license compared.">
+  <meta property="og:url" content="https://mmux.org/vs/superset/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Superset: agents in worktrees, terminal vs desktop">
+  <meta name="twitter:description" content="Superset is a desktop app that runs CLI coding agents in git worktrees. mmux does it in a terminal, over SSH. Persistence, CLI, pricing and license compared.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Superset",
+    "url": "https://mmux.org/vs/superset/",
+    "description": "Superset is a desktop app that runs CLI coding agents in git worktrees. mmux does it in a terminal, over SSH. Persistence, CLI, pricing and license compared.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Superset", "url": "https://superset.sh/", "sameAs": "https://github.com/superset-sh/superset" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Superset", "item": "https://mmux.org/vs/superset/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Superset open source?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Superset's code is public on GitHub under the Elastic License 2.0 (ELv2). Its site calls this source-available and not OSI-approved open source. The README says the only restriction is repackaging Superset as a service you sell to others. mmux is licensed GPLv3-or-later."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is Superset (superset.sh) related to Apache Superset?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. The superset.sh site states that it is unrelated to Apache Superset, the data visualization project. The site also says the product is getting a new name soon."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Superset run on Linux, Windows or over SSH?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Superset's desktop app targets macOS (Apple Silicon and Intel). Linux has an x64 AppImage marked experimental, and Windows is not yet available. To reach agents on another machine, Superset adds it as a host and connects through a relay, which is a Pro feature. mmux runs in a terminal on macOS (Apple Silicon) and Linux (arm64 and x86_64), so over SSH you run it on the remote machine itself."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do agents keep running when I close the app?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "In Superset, agents run in a background terminal daemon, so they keep running when you close the window or quit with Cmd+Q. Quit Superset Completely, a restart or a logout ends the terminal sessions, and interrupted agents can often be resumed from Agent Sessions. mmux runs inside an invisible tmux session that survives closing the terminal and SSH drops. After a quit, crash or restart, reopening the directory restores the agents and terminals: Claude, Codex, Pi and Grok agents resume their conversation, and terminals reopen as fresh shells in the directory you left."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can other agents or scripts control Superset and mmux?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, both. Superset has a superset CLI, a TypeScript SDK (@superset_sh/sdk) and a hosted MCP server at api.superset.sh/mcp. Most CLI commands and the MCP server need a Superset account (OAuth login or an API key). mmux has a local mmux CLI (ls, read, send, wait, ask, worktree new and more) that needs no account, plus a skill file you can give to Claude Code. mmux has no SDK or MCP server."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How much does Superset cost?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Superset has a free plan for individuals that covers local workspaces, the desktop app and the CLI. Pro costs $20 per user per month, or $15 per user per month billed yearly, and adds remote access, automations, the mobile app and the Linear and Slack integrations. Enterprise is custom priced. You bring your own agent subscriptions or API keys. mmux is free and has no account or paid tier."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Superset</span></li>
+      </ol>
+    </nav>
+
+    <!-- title + lede -->
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Superset</h1>
+      <p class="vs-lede">Both run several CLI coding agents side by side, each in its own git worktree. Superset is an Electron desktop app with a CLI, SDK and hosted MCP server; mmux is a single binary with a terminal UI that runs inside tmux, locally or on a machine you reach over SSH.</p>
+      <p class="vs-updated">Last checked against Superset desktop v1.38.0 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <!-- TL;DR -->
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Superset if</strong> you want a graphical workspace on a Mac: a diff viewer you can comment in, an in-app browser for dev servers, a native iPhone app, scheduled agent runs that open PRs, and a TypeScript SDK and MCP server for building on top. Several of these are Pro features ($20 per user per month).</p>
+      <p><strong>Pick mmux if</strong> you live in the terminal or work on remote machines over SSH, want sessions that come back after a quit, crash or update with agent conversations resumed, and want a local CLI with no account, under an OSI open source license (GPLv3).</p>
+      <p>The two cover the same core loop (worktree per task, many agents, review, merge) through very different surfaces. Superset is further along on GUI review and team features; mmux is the one that runs where a desktop app cannot.</p>
+    </section>
+
+    <!-- comparison table -->
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Superset desktop v1.38.0, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Superset</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Interface</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Terminal UI (Rust, inside tmux), keyboard and mouse</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Electron desktop app, plus a <code>superset</code> CLI</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS (Apple Silicon; Intel via Homebrew or source), Linux arm64 and x86_64</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS (Apple Silicon and Intel), Linux x64 AppImage (experimental), no Windows yet</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents in git worktrees, with setup scripts</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Each worktree is its own project box; <code>worktrees.setup</code> and <code>copy</code> for env files</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Each workspace is a worktree and branch; setup, teardown and run in <code>.superset/config.json</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Agents keep running when the UI closes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Invisible tmux session survives closing the terminal and SSH drops</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Background terminal daemon survives closing the window and Cmd+Q</td>
+            </tr>
+            <tr>
+              <th scope="row">Comes back after a full quit, crash or restart</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Agents and terminals restored; Claude, Codex, Pi and Grok resume their conversation</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Sessions end; interrupted agents can often be resumed from Agent Sessions</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents on a remote machine</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Run it on the server over SSH; notifications still reach your desktop</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Add the machine as a host, reached through a relay (Pro plan)</td>
+            </tr>
+            <tr>
+              <th scope="row">Phone access</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Any SSH app; single-column layout under 60 columns</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Native iPhone and iPad app (Pro, iOS 26 or later)</td>
+            </tr>
+            <tr>
+              <th scope="row">Reviewing agent changes</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Git panel: file staging, read-only diff preview, commit, push, merge; no hunk staging</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Diff viewer with comments and edits, PR feedback sent to agents</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers across worktrees</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>One checkout runs a given process at a time, so ports stay the same; no built-in browser</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Detects listening ports per workspace, in-app browser; no port allocation</td>
+            </tr>
+            <tr>
+              <th scope="row">Control from scripts and other agents</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Local <code>mmux</code> CLI and a skill file, no account; no SDK or MCP server</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>CLI, TypeScript SDK, hosted MCP server; most commands need an account</td>
+            </tr>
+            <tr>
+              <th scope="row">Scheduled agent runs</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Only scheduled commits</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Automations on a schedule that open PRs (Pro)</td>
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Free, no account</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Free plan for individuals; Pro $20 per user per month ($15 billed yearly)</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Elastic License 2.0 (source-available)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Superset facts from superset.sh, its pricing page, the GitHub README and docs.superset.sh, checked against the desktop-v1.38.0 release. mmux facts from its docs.</p>
+    </section>
+
+    <!-- What is X -->
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Superset?</h2>
+      <p>Superset describes itself as "an agentic IDE to orchestrate 100+ coding agents in parallel" <a href="#src-3">[3]</a>. It is not an agent itself: it runs CLI agents you already use, such as Claude Code, Codex, OpenCode, Gemini and Cursor Agent, with your own subscriptions or API keys, and does not proxy model calls <a href="#src-1">[1]</a>. Each task gets a workspace backed by its own git worktree and branch, with terminals, a diff viewer, an in-app browser and agent status in a sidebar <a href="#src-3">[3]</a>. Desktop and CLI releases are versioned together; this page checked v1.38.0 <a href="#src-4">[4]</a>.</p>
+      <p>The desktop app is built on Electron and targets macOS, with an experimental Linux AppImage; Windows is not yet available <a href="#src-3">[3]</a>. Around it sit a <code>superset</code> CLI, a TypeScript SDK and a hosted MCP server that let scripts and other agents create workspaces, launch agents and read terminals <a href="#src-6">[6]</a> <a href="#src-7">[7]</a>. Pro adds remote hosts, scheduled automations, an iPhone app and Linear and Slack integrations <a href="#src-2">[2]</a>.</p>
+      <p>The code is on GitHub under the Elastic License 2.0, which the site calls "not OSI-approved open source" <a href="#src-1">[1]</a>. Superset (superset.sh) is unrelated to Apache Superset, and its site says the product is "getting a new name soon" <a href="#src-1">[1]</a>.</p>
+    </section>
+
+    <!-- Where X is better -->
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Superset is better</h2>
+      <ul>
+        <li><strong>Reviewing changes in a GUI.</strong> Superset's diff viewer lets you comment on and edit an agent's changes before committing, send PR feedback back to agents, and use a design mode for UI work <a href="#src-3">[3]</a>. mmux's diff preview is read-only and stages whole files.</li>
+        <li><strong>Dev server preview.</strong> Superset detects which ports each workspace listens on and opens them in an in-app browser <a href="#src-9">[9]</a>. mmux has no browser; you open <code>localhost</code> yourself.</li>
+        <li><strong>A native phone app.</strong> On Pro, the iPhone and iPad app checks on agents and reviews diffs on connected computers <a href="#src-3">[3]</a>. mmux on a phone means an SSH client and a narrow terminal layout.</li>
+        <li><strong>Scheduled work and integrations.</strong> Automations run agents on a schedule (issue triage, dependency bumps) and open PRs, and Pro connects Linear and Slack <a href="#src-1">[1]</a> <a href="#src-2">[2]</a>. mmux has nothing comparable.</li>
+        <li><strong>An SDK and MCP server.</strong> Besides the CLI, Superset ships <code>@superset_sh/sdk</code> for Node, Bun and Deno, and an MCP server that agents like Claude Code can add over HTTP <a href="#src-3">[3]</a> <a href="#src-7">[7]</a>. mmux offers only its CLI.</li>
+        <li><strong>Teams and compliance.</strong> Organizations with members, and on Enterprise SAML SSO, SCIM, audit logs and a SOC 2 Type II report <a href="#src-2">[2]</a>. mmux is a single-user tool.</li>
+        <li><strong>Editor hand-off and Intel Macs.</strong> Worktrees open in VS Code, Cursor, Xcode or JetBrains IDEs <a href="#src-1">[1]</a>, and there are prebuilt Intel macOS builds <a href="#src-3">[3]</a>.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>It runs anywhere a terminal does.</strong> mmux is a TUI, so it works the same on your laptop, a Linux server or a dev container you <code>ssh</code> into, with static builds for Linux arm64 and x86_64. Superset's desktop app is macOS-first, with Linux marked experimental.</li>
+        <li><strong>Sessions come back after a quit, crash or update.</strong> Reopening a directory restores its agents and terminals, and Claude, Codex, Pi and Grok agents resume their conversation. In Superset, "Quit Superset Completely", a restart or a logout ends the sessions <a href="#src-5">[5]</a>.</li>
+        <li><strong>Remote work without a relay or a paid plan.</strong> Run mmux on the remote machine and attach over SSH; detach, drop the connection, reattach later. Desktop notifications travel as escape sequences on the terminal stream, so they reach the machine you are sitting at. Superset's remote access is a Pro feature that goes through a relay <a href="#src-2">[2]</a> <a href="#src-5">[5]</a>.</li>
+        <li><strong>Local control, no account.</strong> <code>mmux ls</code>, <code>read</code>, <code>send</code>, <code>wait</code>, <code>ask</code> and <code>worktree new</code> talk to the running mmux on your machine. Superset's CLI needs <code>superset auth login</code> or an API key for most commands, and its MCP server is hosted at <code>api.superset.sh</code> <a href="#src-6">[6]</a> <a href="#src-7">[7]</a>.</li>
+        <li><strong>Agent status without hooks.</strong> mmux reads what the agent puts on screen (progress reports, bells, approval prompts) to mark it working, ready or asking. Superset installs lifecycle hooks into each agent's config, and status only works for agents launched through Superset <a href="#src-8">[8]</a>.</li>
+        <li><strong>One dev stack across worktrees.</strong> Starting a process in a worktree stops it in the checkout that had it first, so <code>localhost:3000</code> is always the branch you last started. Superset lists ports per workspace and leaves allocation to your setup scripts <a href="#src-9">[9]</a>.</li>
+        <li><strong>Worktrees that clean up after themselves.</strong> <code>M</code> merges a worktree into the branch it came from, and finished worktrees (merged or pushed, clean, idle) are removed after 30 minutes by default.</li>
+        <li><strong>OSI open source.</strong> mmux is GPLv3-or-later; Superset's Elastic License 2.0 is source-available.</li>
+      </ul>
+    </section>
+
+    <!-- When to use which -->
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Superset when</h3>
+          <ul>
+            <li>You work on a Mac and prefer a GUI for diffs, comments and previews</li>
+            <li>You want to check on agents from a native iPhone app</li>
+            <li>You want agents to run on a schedule and open PRs, or a Linear or Slack hook-up</li>
+            <li>You are building tooling on a TypeScript SDK or an MCP server</li>
+            <li>A team needs shared organizations, SSO or audit logs</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>Your agents run on a Linux server or a box you reach over SSH</li>
+            <li>You want sessions and agent conversations to survive quits, crashes and updates</li>
+            <li>You want a local CLI for agents to drive, with no account or hosted service</li>
+            <li>You want dev servers, terminals and agents side by side in one terminal window</li>
+            <li>You need an OSI open source license</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Migration -->
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from Superset to mmux</h2>
+      <ol>
+        <li>Install mmux and run <code>mmux init</code> in the repository.</li>
+        <li>Move the <code>setup</code> commands from <code>.superset/config.json</code> into <code>worktrees.setup</code> in <code>mmux.yaml</code> (a single shell line) <a href="#src-10">[10]</a>. Gitignored files like <code>.env</code> are copied by default; list more under <code>worktrees.copy</code>.</li>
+        <li>Turn each <code>run</code> command into a process. mmux has no per-worktree teardown hook; a process's <code>stop:</code> runs when that process stops or mmux quits, which covers a <code>docker compose down</code>.</li>
+        <li>Put your agents in <code>~/.mmux/config.yaml</code> so every project gets them.</li>
+        <li>Where a script called <code>superset workspaces create</code> and launched an agent, use <code>mmux worktree new &lt;branch&gt; --prompt "…"</code>, then <code>mmux wait</code> on the printed id.</li>
+      </ol>
+      <pre><code># mmux.yaml
+name: my-project
+worktrees:
+  setup: bun install
+processes:
+  - name: Dev server
+    cmd: bun
+    args: ["run", "dev"]
+    stop: docker compose down</code></pre>
+      <pre><code>mmux worktree new fix-auth --prompt "fix the login bug"</code></pre>
+    </section>
+
+    <!-- FAQ: mirrored 1:1 in the FAQPage JSON-LD in <head>. -->
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Superset open source?</summary>
+        <div class="vs-faq-a"><p>Superset's code is public on GitHub under the Elastic License 2.0 (ELv2). Its site calls this source-available and not OSI-approved open source. The README says the only restriction is repackaging Superset as a service you sell to others. mmux is licensed GPLv3-or-later.</p></div>
+      </details>
+      <details>
+        <summary>Is Superset (superset.sh) related to Apache Superset?</summary>
+        <div class="vs-faq-a"><p>No. The superset.sh site states that it is unrelated to Apache Superset, the data visualization project. The site also says the product is getting a new name soon.</p></div>
+      </details>
+      <details>
+        <summary>Does Superset run on Linux, Windows or over SSH?</summary>
+        <div class="vs-faq-a"><p>Superset's desktop app targets macOS (Apple Silicon and Intel). Linux has an x64 AppImage marked experimental, and Windows is not yet available. To reach agents on another machine, Superset adds it as a host and connects through a relay, which is a Pro feature. mmux runs in a terminal on macOS (Apple Silicon) and Linux (arm64 and x86_64), so over SSH you run it on the remote machine itself.</p></div>
+      </details>
+      <details>
+        <summary>Do agents keep running when I close the app?</summary>
+        <div class="vs-faq-a"><p>In Superset, agents run in a background terminal daemon, so they keep running when you close the window or quit with Cmd+Q. Quit Superset Completely, a restart or a logout ends the terminal sessions, and interrupted agents can often be resumed from Agent Sessions. mmux runs inside an invisible tmux session that survives closing the terminal and SSH drops. After a quit, crash or restart, reopening the directory restores the agents and terminals: Claude, Codex, Pi and Grok agents resume their conversation, and terminals reopen as fresh shells in the directory you left.</p></div>
+      </details>
+      <details>
+        <summary>Can other agents or scripts control Superset and mmux?</summary>
+        <div class="vs-faq-a"><p>Yes, both. Superset has a superset CLI, a TypeScript SDK (@superset_sh/sdk) and a hosted MCP server at api.superset.sh/mcp. Most CLI commands and the MCP server need a Superset account (OAuth login or an API key). mmux has a local mmux CLI (ls, read, send, wait, ask, worktree new and more) that needs no account, plus a skill file you can give to Claude Code. mmux has no SDK or MCP server.</p></div>
+      </details>
+      <details>
+        <summary>How much does Superset cost?</summary>
+        <div class="vs-faq-a"><p>Superset has a free plan for individuals that covers local workspaces, the desktop app and the CLI. Pro costs $20 per user per month, or $15 per user per month billed yearly, and adds remote access, automations, the mobile app and the Linear and Slack integrations. Enterprise is custom priced. You bring your own agent subscriptions or API keys. mmux is free and has no account or paid tier.</p></div>
+      </details>
+    </section>
+
+    <!-- Sources -->
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://superset.sh/">Superset homepage (superset.sh)</a></li>
+        <li id="src-2"><a href="https://superset.sh/pricing">Superset pricing</a></li>
+        <li id="src-3"><a href="https://github.com/superset-sh/superset">superset-sh/superset on GitHub: README</a></li>
+        <li id="src-4"><a href="https://github.com/superset-sh/superset/releases">Superset releases: desktop-v1.38.0 and cli-v1.38.0 (2026-10-14)</a></li>
+        <li id="src-5"><a href="https://docs.superset.sh/keep-agents-running">Superset documentation: Keep agents running</a></li>
+        <li id="src-6"><a href="https://docs.superset.sh/cli/cli-reference">Superset documentation: CLI reference</a></li>
+        <li id="src-7"><a href="https://docs.superset.sh/mcp-server">Superset documentation: MCP server</a></li>
+        <li id="src-8"><a href="https://docs.superset.sh/agent-status">Superset documentation: Agent status and notifications</a></li>
+        <li id="src-9"><a href="https://docs.superset.sh/ports">Superset documentation: Port management</a></li>
+        <li id="src-10"><a href="https://docs.superset.sh/setup-teardown-scripts">Superset documentation: Project lifecycle scripts</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
