@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<!--
+  mmux vs Claude Squad. Built from web/vs/_template; rules in web/vs/README.md.
+  Claude Squad facts checked against v1.0.20 (README, release notes, source) on 2026-10-14.
+  The page must stay inline-script/style free (strict CSP).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Claude Squad: agents in tmux and git worktrees</title>
+  <meta name="description" content="Claude Squad gives each agent its own tmux session and git worktree. mmux adds dev processes, a git panel, desktop alerts and resumed agent conversations.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/claude-squad/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Claude Squad: agents in tmux and git worktrees">
+  <meta property="og:description" content="Claude Squad gives each agent its own tmux session and git worktree. mmux adds dev processes, a git panel, desktop alerts and resumed agent conversations.">
+  <meta property="og:url" content="https://mmux.org/vs/claude-squad/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Claude Squad: agents in tmux and git worktrees">
+  <meta name="twitter:description" content="Claude Squad gives each agent its own tmux session and git worktree. mmux adds dev processes, a git panel, desktop alerts and resumed agent conversations.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. The FAQPage mirrors the visible FAQ 1:1 (plain text). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Claude Squad",
+    "url": "https://mmux.org/vs/claude-squad/",
+    "description": "Claude Squad gives each agent its own tmux session and git worktree. mmux adds dev processes, a git panel, desktop alerts and resumed agent conversations.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Claude Squad", "url": "https://smtg-ai.github.io/claude-squad/", "sameAs": "https://github.com/smtg-ai/claude-squad" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Claude Squad", "item": "https://mmux.org/vs/claude-squad/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Do mmux and Claude Squad both use tmux and git worktrees?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Claude Squad runs each agent in its own tmux session and gives each session its own git worktree and branch. mmux runs its whole interface inside one invisible tmux session per directory and opens git worktrees as extra project boxes in the same sidebar. The difference is the default: Claude Squad creates a worktree for every new session, mmux creates one when you press w or run mmux worktree new." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do my agents keep running when I close the terminal?",
+        "acceptedAnswer": { "@type": "Answer", "text": "In both tools, yes. Claude Squad's agents live in detached tmux sessions, and quitting the cs interface saves the list and leaves them running. mmux keeps running when you detach with d, close the terminal or lose SSH; run mmux or mmux attach to rejoin. Quitting mmux with q does stop everything, but reopening the directory resumes Claude, Codex, Pi and Grok conversations." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use Codex, Gemini or other agents with Claude Squad and mmux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Claude Squad starts claude by default and runs any other program with cs -p, for example cs -p \"codex\", or through named profiles in ~/.claude-squad/config.json. mmux ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, and any other command can be added as an agent in its YAML config." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does mmux auto-accept prompts like cs -y?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Not in the same way. Claude Squad's experimental -y flag watches the screen of Claude Code and Aider sessions and accepts their prompts, and a background daemon keeps doing it after you quit. mmux instead launches each agent with that agent's own permission flags: its presets have an auto mode and a danger mode, for example --dangerously-skip-permissions for Claude." }
+      },
+      {
+        "@type": "Question",
+        "name": "Are mmux and Claude Squad free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Both are free and open source. mmux is GPLv3, Claude Squad is AGPL-3.0, and neither project's site or README lists a paid plan. The agents you run in them, such as Claude Code or Codex, are billed by their own providers." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Claude Squad</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Claude Squad</h1>
+      <p class="vs-lede">Claude Squad is a terminal app that runs several coding agents side by side, each in its own tmux session and git worktree. mmux is a terminal multiplexer for agents, shells and dev processes with a built-in git panel. Both sit on tmux; they differ in how much of the surrounding workflow they cover and in when a worktree gets created.</p>
+      <p class="vs-updated">Last checked against Claude Squad v1.0.20 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Claude Squad if</strong> you want one job done well: start an agent on a task, have it land in its own branch and worktree automatically, review the diff, then push or pause it. It also ships prebuilt binaries for Intel Macs and Windows; mmux ships none for those.</p>
+      <p><strong>Pick mmux if</strong> the agents are only part of what you run: you also want dev servers and shells next to them, a git panel to stage, commit and merge, desktop notifications when an agent needs you, and agent conversations that resume after a quit or reboot.</p>
+      <p>Both are free and open source, and both keep agents running after you close the terminal.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Claude Squad v1.0.20, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Claude Squad</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Agents survive closing the terminal</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>whole UI runs in a tmux session; <code>mmux attach</code> rejoins</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>each agent runs in a detached tmux session</td>
+            </tr>
+            <tr>
+              <th scope="row">Quitting the UI leaves agents running</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span><code>d</code> detaches; <code>q</code> stops everything (after a confirm)</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>q</code> saves the list, tmux sessions keep running</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent conversation after a reboot</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Claude, Codex, Pi and Grok resume their conversation</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>worktree kept, session comes back paused; resume starts the agent fresh</td>
+            </tr>
+            <tr>
+              <th scope="row">A git worktree per agent</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>on demand: <code>w</code> or <code>mmux worktree new</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>automatic for every new session</td>
+            </tr>
+            <tr>
+              <th scope="row">Review an agent's diff</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>live diff preview, commit history, file staging</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>diff tab per session</td>
+            </tr>
+            <tr>
+              <th scope="row">Commit, push, merge back</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>commit with suggested message, push, <code>M</code> merges a worktree into its base</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span><code>s</code> commits and pushes the branch; no merge key</td>
+            </tr>
+            <tr>
+              <th scope="row">Auto-accept agent prompts</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>via each agent's own flags (<code>auto</code> / <code>danger</code> modes)</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>-y</code> (experimental, Claude Code and Aider), keeps going after you quit</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers and long-running processes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>start, stop, read logs; one dev stack shared across worktrees</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>a terminal tab per session, no process list</td>
+            </tr>
+            <tr>
+              <th scope="row">Desktop notification when an agent needs you</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>also over SSH</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not in its README or source</td>
+            </tr>
+            <tr>
+              <th scope="row">CLI for scripts and other agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux ls</code>, <code>send</code>, <code>wait</code>, <code>ask</code>, <code>worktree new</code></td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>subcommands are <code>debug</code>, <code>reset</code>, <code>version</code>, <code>completion</code></td>
+            </tr>
+            <tr>
+              <th scope="row">Works outside a git repository</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>git panel only appears in a repo</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>must be started inside a git repo</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>prebuilt for macOS (Apple Silicon) and Linux; Intel Macs build from source</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS (Intel, Apple Silicon), Linux, Windows builds (tmux via WSL)</td>
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>free, open source</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>free, open source, no paid plan listed</td>
+            </tr>
+            <tr>
+              <th scope="row">Language</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Rust</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Go</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>AGPL-3.0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Claude Squad facts from its README, release notes and source at tag v1.0.20 (see Sources). mmux facts from its docs.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Claude Squad?</h2>
+      <p>Claude Squad is an open-source terminal app by smtg-ai that "manages multiple Claude Code, Codex, Gemini (and other local agents including Aider) in separate workspaces, allowing you to work on multiple tasks simultaneously" <a href="#src-1">[1]</a>. It is written in Go, installs as <code>cs</code> through Homebrew or an install script, and needs <code>tmux</code> and the GitHub CLI <code>gh</code> <a href="#src-1">[1]</a>. The latest release is v1.0.20 from August 2026, and the repository has about 8,600 GitHub stars <a href="#src-3">[3]</a>.</p>
+      <p>Its model is simple: tmux gives every agent an isolated terminal session, git worktrees give every session its own branch, and a TUI lists the sessions <a href="#src-1">[1]</a>. You press <code>n</code> (or <code>N</code> to add a prompt) to start a session, <code>↵</code> to attach, <code>ctrl-q</code> to detach, and <code>tab</code> to switch between the preview and the diff of what the agent changed. <code>s</code> commits and pushes the branch to GitHub, <code>c</code> commits and pauses the session, and <code>r</code> resumes it <a href="#src-1">[1]</a>. Recent releases added a terminal tab per session <a href="#src-5">[5]</a>, starting a session from an existing branch and named agent profiles <a href="#src-4">[4]</a>.</p>
+      <p>Pausing removes the worktree directory but keeps the branch <a href="#src-8">[8]</a>. With the experimental <code>-y</code> flag, Claude Squad accepts Claude Code and Aider prompts on its own, and a background daemon keeps doing that after you quit <a href="#src-6">[6]</a><a href="#src-9">[9]</a>.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Claude Squad is better</h2>
+      <ul>
+        <li><strong>Isolation by default.</strong> Every new session gets its own worktree and branch without a decision on your part, so two agents never edit the same checkout. In mmux an agent starts in the main checkout unless you cut a worktree first.</li>
+        <li><strong>Quitting is harmless.</strong> <code>q</code> in Claude Squad saves the session list and leaves every agent running in tmux <a href="#src-7">[7]</a>. In mmux, <code>q</code> ends all sessions (it asks first and offers to detach instead), and you rely on the restore when you reopen.</li>
+        <li><strong>Pause and resume.</strong> <code>c</code> commits the work, removes the worktree and keeps the branch; <code>r</code> brings the session back <a href="#src-1">[1]</a><a href="#src-8">[8]</a>. mmux can remove a worktree and keep an unmerged branch, but it has no paused state to resume from.</li>
+        <li><strong>Prompt answering that outlives the UI.</strong> The <code>-y</code> daemon keeps accepting Claude Code and Aider prompts while <code>cs</code> is closed <a href="#src-6">[6]</a>. mmux relies on the agent's own permission flags instead and does not answer prompts on its own.</li>
+        <li><strong>More prebuilt platforms.</strong> Releases include builds for Intel Macs and Windows <a href="#src-3">[3]</a>; its install script points Windows users to WSL for tmux <a href="#src-10">[10]</a>. mmux ships prebuilt binaries for Apple Silicon Macs and Linux only; on an Intel Mac, Homebrew builds it from source.</li>
+        <li><strong>Less to learn.</strong> One list, three tabs (preview, diff, terminal) and about a dozen keys. mmux has a sidebar, a git panel, workspaces and a control CLI, which is more to take in if all you want is parallel agents.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Dev processes next to the agents.</strong> mmux has a Processes section for dev servers and scripts you start, stop and read logs from, with an optional <code>stop:</code> teardown command. Across worktrees only one checkout runs a given process at a time, so <code>localhost:3000</code> is always the branch you last started it in.</li>
+        <li><strong>Conversations come back.</strong> After a quit, crash or restart, reopening the directory resumes Claude, Codex, Pi and Grok conversations, and terminals reopen in the directory you left them in. Claude Squad keeps the worktree after a reboot, but the agent starts a new conversation <a href="#src-8">[8]</a>.</li>
+        <li><strong>Knowing which agent needs you.</strong> Sidebar rows show working (spinner), ready (green) and asking (yellow <code>?</code>). A bell or notification escape from an agent becomes a native desktop notification, and that works over SSH because it travels as a terminal escape.</li>
+        <li><strong>A full git panel.</strong> Stage files, switch branches, browse up to 200 commits, revert or uncommit, commit with a message suggested by Claude or Codex, schedule a commit, and merge a worktree back into its base with <code>M</code>. Finished worktrees (merged or pushed, clean, idle) are cleared away after 30 minutes.</li>
+        <li><strong>Worktrees that run.</strong> New checkouts get the gitignored files they need (<code>.env</code> and friends, at every depth) and an optional one-time <code>setup:</code> command, configured under <code>worktrees:</code>.</li>
+        <li><strong>Agents can drive it.</strong> Any agent can list sessions, read a dev server's output, send prompts, wait for another agent, or cut a worktree with its own agent through the <code>mmux</code> CLI, and everything it starts shows up in your sidebar.</li>
+        <li><strong>Several projects in one window.</strong> A <code>workspace:</code> manifest puts multiple projects in one sidebar, and mmux runs in directories that are not git repositories.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Claude Squad when</h3>
+          <ul>
+            <li>every task should start in its own branch without you thinking about it</li>
+            <li>you want to close the UI often and leave agents working</li>
+            <li>you hand off tasks, then review and push each branch as a PR</li>
+            <li>you want a prebuilt binary for an Intel Mac or Windows</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>your dev server, shells and agents belong in one place</li>
+            <li>you want a desktop notification when an agent is done or asking</li>
+            <li>you commit and merge from the terminal rather than through PRs</li>
+            <li>you want agent conversations back after a reboot</li>
+            <li>you want agents or scripts to start and steer other agents</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from Claude Squad to mmux</h2>
+      <ol>
+        <li>Push or merge any Claude Squad branch you want to keep. Its sessions, worktrees and config stay under <code>~/.claude-squad/</code> and its own tmux sessions; mmux does not touch them.</li>
+        <li>Install mmux and set up the repository. <code>mmux init</code> offers the agent presets it finds on your <code>PATH</code>.</li>
+        <li>Pick a launch mode per agent with <code>mmux agents</code> (or <code>a</code> in the sidebar). If you ran <code>cs -y</code>, the closest match is the <code>danger</code> mode, which skips all approvals through the agent's own flag.</li>
+        <li>For Claude Squad's "one task, one branch" flow, press <code>w</code> and start an agent in the new worktree box, or do both in one command as below.</li>
+        <li>When you no longer need Claude Squad, <code>cs reset</code> removes its stored instances, tmux sessions and worktrees <a href="#src-6">[6]</a>.</li>
+      </ol>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh
+cd ~/code/my-repo
+mmux init
+mmux
+mmux worktree new fix-auth --agent claude --prompt "fix the login bug"</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Do mmux and Claude Squad both use tmux and git worktrees?</summary>
+        <div class="vs-faq-a"><p>Yes. Claude Squad runs each agent in its own tmux session and gives each session its own git worktree and branch. mmux runs its whole interface inside one invisible tmux session per directory and opens git worktrees as extra project boxes in the same sidebar. The difference is the default: Claude Squad creates a worktree for every new session, mmux creates one when you press <code>w</code> or run <code>mmux worktree new</code>.</p></div>
+      </details>
+      <details>
+        <summary>Do my agents keep running when I close the terminal?</summary>
+        <div class="vs-faq-a"><p>In both tools, yes. Claude Squad's agents live in detached tmux sessions, and quitting the <code>cs</code> interface saves the list and leaves them running. mmux keeps running when you detach with <code>d</code>, close the terminal or lose SSH; run <code>mmux</code> or <code>mmux attach</code> to rejoin. Quitting mmux with <code>q</code> does stop everything, but reopening the directory resumes Claude, Codex, Pi and Grok conversations.</p></div>
+      </details>
+      <details>
+        <summary>Can I use Codex, Gemini or other agents with Claude Squad and mmux?</summary>
+        <div class="vs-faq-a"><p>Yes. Claude Squad starts <code>claude</code> by default and runs any other program with <code>cs -p</code>, for example <code>cs -p "codex"</code>, or through named profiles in <code>~/.claude-squad/config.json</code>. mmux ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, and any other command can be added as an agent in its YAML config.</p></div>
+      </details>
+      <details>
+        <summary>Does mmux auto-accept prompts like cs -y?</summary>
+        <div class="vs-faq-a"><p>Not in the same way. Claude Squad's experimental <code>-y</code> flag watches the screen of Claude Code and Aider sessions and accepts their prompts, and a background daemon keeps doing it after you quit. mmux instead launches each agent with that agent's own permission flags: its presets have an <code>auto</code> mode and a <code>danger</code> mode, for example <code>--dangerously-skip-permissions</code> for Claude.</p></div>
+      </details>
+      <details>
+        <summary>Are mmux and Claude Squad free?</summary>
+        <div class="vs-faq-a"><p>Both are free and open source. mmux is GPLv3, Claude Squad is AGPL-3.0, and neither project's site or README lists a paid plan. The agents you run in them, such as Claude Code or Codex, are billed by their own providers.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://github.com/smtg-ai/claude-squad/blob/main/README.md">Claude Squad README: highlights, install, prerequisites, keys, profiles, license</a></li>
+        <li id="src-2"><a href="https://smtg-ai.github.io/claude-squad/">Claude Squad website</a></li>
+        <li id="src-3"><a href="https://github.com/smtg-ai/claude-squad/releases/tag/v1.0.20">Claude Squad v1.0.20 release (2026-08-20): changes and published builds</a></li>
+        <li id="src-4"><a href="https://github.com/smtg-ai/claude-squad/releases/tag/v1.0.17">Claude Squad v1.0.17 release notes: source branch selection, profiles</a></li>
+        <li id="src-5"><a href="https://github.com/smtg-ai/claude-squad/releases/tag/v1.0.16">Claude Squad v1.0.16 release notes: terminal tab</a></li>
+        <li id="src-6"><a href="https://github.com/smtg-ai/claude-squad/blob/v1.0.20/main.go">Claude Squad source, main.go: git repo check, auto-yes daemon, subcommands, reset</a></li>
+        <li id="src-7"><a href="https://github.com/smtg-ai/claude-squad/blob/v1.0.20/app/app.go">Claude Squad source, app/app.go: quit saves instances</a></li>
+        <li id="src-8"><a href="https://github.com/smtg-ai/claude-squad/blob/v1.0.20/session/instance.go">Claude Squad source, session/instance.go: pause, resume, recovery after the tmux server is gone</a></li>
+        <li id="src-9"><a href="https://github.com/smtg-ai/claude-squad/blob/v1.0.20/session/tmux/tmux.go">Claude Squad source, session/tmux/tmux.go: prompt detection for Claude Code and Aider</a></li>
+        <li id="src-10"><a href="https://github.com/smtg-ai/claude-squad/blob/v1.0.20/install.sh">Claude Squad install.sh: platform detection, tmux on Windows</a></li>
+        <li id="src-11"><a href="https://github.com/smtg-ai/claude-squad/blob/main/LICENSE.md">Claude Squad license (AGPL-3.0)</a></li>
+        <li id="src-12"><a href="https://github.com/marvinvr/mmux/blob/main/docs/03-usage.md">mmux docs: usage, git panel, worktrees, restore, control CLI</a></li>
+        <li id="src-13"><a href="https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md">mmux docs: configuration, agent presets and launch modes</a></li>
+        <li id="src-14"><a href="https://github.com/marvinvr/mmux/blob/main/docs/05-notifications.md">mmux docs: notifications</a></li>
+        <li id="src-15"><a href="https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md">mmux docs: installation and platforms</a></li>
+      </ol>
+    </section>
+
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
