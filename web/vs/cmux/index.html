@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs cmux: two different tools for running coding agents</title>
+  <meta name="description" content="mmux and cmux sound alike but are unrelated. mmux is a tmux-based TUI for macOS and Linux; cmux is a native macOS terminal built on Ghostty. How they differ.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/cmux/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs cmux: two different tools for running coding agents">
+  <meta property="og:description" content="mmux and cmux sound alike but are unrelated. mmux is a tmux-based TUI for macOS and Linux; cmux is a native macOS terminal built on Ghostty. How they differ.">
+  <meta property="og:url" content="https://mmux.org/vs/cmux/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs cmux: two different tools for running coding agents">
+  <meta name="twitter:description" content="mmux and cmux sound alike but are unrelated. mmux is a tmux-based TUI for macOS and Linux; cmux is a native macOS terminal built on Ghostty. How they differ.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs cmux",
+    "url": "https://mmux.org/vs/cmux/",
+    "description": "mmux and cmux sound alike but are unrelated. mmux is a tmux-based TUI for macOS and Linux; cmux is a native macOS terminal built on Ghostty. How they differ.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "cmux", "url": "https://cmux.com", "sameAs": "https://github.com/manaflow-ai/cmux" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs cmux", "item": "https://mmux.org/vs/cmux/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Are mmux and cmux the same project?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. They are unrelated projects with different authors and code. cmux is a macOS terminal app by Manaflow. mmux is an open source TUI by Marvin von Rappard that runs inside tmux. Neither is a fork of the other."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does cmux run on Linux or Windows?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Not as of v0.65.1. The cmux README says it is macOS only for now, as a native Swift and AppKit app. mmux runs on macOS and Linux."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is cmux free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The macOS app is free and its code is GPL-3.0-or-later. Paid plans start at $40 per month billed yearly and add cloud VMs and the iOS app. mmux is free and GPLv3."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do agents keep running when I quit cmux?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Not by default. cmux restores the layout, working directories and scrollback, and resumes supported agents from saved session IDs. For live processes that survive quitting, it offers the opt-in cmux local-tmux command. In mmux every session runs inside tmux, so closing the window only detaches."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I run mmux inside cmux?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. cmux is a terminal, so mmux runs in a cmux tab like any other terminal program."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs cmux</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> cmux</h1>
+      <p class="vs-lede">The names differ by one letter, but these are separate projects by different authors. mmux is a terminal UI that runs inside a tmux session in whatever terminal you already use, on macOS or Linux. cmux, by Manaflow, is a native macOS terminal app built on libghostty. The real difference: mmux brings agents, processes and git into one persistent TUI, cmux replaces your terminal app with a GUI made of tabs, splits, a browser and notifications.</p>
+      <p class="vs-updated">Last checked against cmux v0.65.1 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick cmux if</strong> you work on a Mac and want a GPU-rendered terminal app with vertical tabs, split panes, a scriptable in-app browser, notification rings and a notification panel. It also restores agent conversations for more agents than mmux, and offers paid cloud VMs and an iOS app.</p>
+      <p><strong>Pick mmux if</strong> you want the same setup on a Linux box or over SSH from any terminal, programs that keep running when the window closes, and built-in dev processes, a git panel and git worktrees in the same sidebar.</p>
+      <p>They are not exclusive: cmux is a terminal, and mmux is a program you run in a terminal. See below.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and cmux v0.65.1, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">cmux</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS (Apple Silicon) and Linux, inside any terminal</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS app (Apple Silicon and Intel); iOS app in beta</td>
+            </tr>
+            <tr>
+              <th scope="row">Programs keep running after the window closes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>always, every session lives in a tmux session</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>opt-in with <code>cmux local-tmux</code>; by default the layout is restored, not the processes</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent conversations resume after quit</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Claude, Codex, Pi and Grok</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>13 agents via hooks, including Claude Code, Codex, OpenCode, Gemini</td>
+            </tr>
+            <tr>
+              <th scope="row">Remote machines</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>runs on the remote host; attach from any SSH client</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>cmux ssh</code> workspaces; remote tmux attach in beta</td>
+            </tr>
+            <tr>
+              <th scope="row">Split panes</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>one program in the main pane at a time</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>horizontal and vertical splits, tabs</td>
+            </tr>
+            <tr>
+              <th scope="row">Built-in browser</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>links open in your system browser</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>browser pane that agents can script</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent attention cues</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>idle agents turn green; desktop notification, also over SSH</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>pane rings, unread badges, notification panel, macOS notification</td>
+            </tr>
+            <tr>
+              <th scope="row">Git</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>git panel: stage, commit, branches, push</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>sidebar shows branch and linked PR status</td>
+            </tr>
+            <tr>
+              <th scope="row">Git worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>w</code> creates one, <code>M</code> merges it back</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not built in by design; script it yourself</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers and scripts</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Processes section with start, stop, restart, autostart</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>custom commands in <code>cmux.json</code>; sidebar lists listening ports</td>
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>app free; Pro from $40/month for cloud VMs and the iOS app</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPL-3.0-or-later; server parts BUSL-1.1</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">cmux facts from its README, LICENSE, docs and pricing page at v0.65.1 (released 2026-10-12). mmux facts from its docs at 0.13.13.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is cmux?</h2>
+      <p>cmux describes itself as "a Ghostty-based macOS terminal with vertical tabs and notifications for AI coding agents" [1]. It is a native app written in Swift and AppKit that uses libghostty for rendering and reads your existing Ghostty config for themes, fonts and keybindings [1]. It is not a fork of Ghostty [1].</p>
+      <p>Its main additions over a plain terminal are a sidebar of vertical tabs (showing git branch, linked PR, working directory, listening ports and the latest notification), a notification system that picks up OSC 9/99/777 escapes or the <code>cmux notify</code> CLI, an in-app browser that agents can drive, and a CLI plus socket API to create workspaces, split panes and send keystrokes [1]. The project calls itself "a primitive, not a solution" [1], and for that reason has said it will not add built-in git worktree support [5].</p>
+      <p>cmux is made by Manaflow, a Y Combinator Summer 2024 company in San Francisco [6]. The app is free and GPL-3.0-or-later, while its server components are under BUSL-1.1 [7]. Paid Pro, Max, Team and Enterprise plans add cloud VMs, the iOS app and team features [4]. The repository also contains a Rust TUI called cmux-tui, but it is not part of the release downloads we checked [3], so this page compares the macOS app.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where cmux is better</h2>
+      <ul>
+        <li><strong>Several things on screen at once.</strong> cmux has tabs and horizontal and vertical splits, so you can watch two agents and a dev server side by side [1]. mmux shows one program in its main pane at a time; you switch between them from the sidebar.</li>
+        <li><strong>A browser next to the terminal.</strong> cmux can split a browser pane beside a terminal, and agents can snapshot the page, click, fill forms and read console output through the same API [1]. mmux has nothing comparable.</li>
+        <li><strong>A native Mac app.</strong> GPU rendering through libghostty, your Ghostty config, macOS keyboard shortcuts, Sparkle auto-updates and a DMG install [1]. mmux is a TUI, so how it looks and feels depends on the terminal you run it in.</li>
+        <li><strong>Notification handling.</strong> Besides desktop notifications, cmux keeps a notification panel, marks panes with a ring and has a shortcut to jump to the latest unread [1]. mmux colors sidebar rows and sends a desktop notification, but keeps no history of them.</li>
+        <li><strong>More agents resume.</strong> cmux lists resume support for 13 agents, among them Claude Code, Codex, OpenCode, Gemini, Amp and Copilot [1]. mmux resumes Claude, Codex, Pi and Grok conversations.</li>
+        <li><strong>Phone and cloud.</strong> cmux has an iOS app (beta) that pairs with your Mac, and paid cloud VMs to run agents in isolated sandboxes [1][4]. mmux has neither; on a phone you SSH in and mmux switches to a single-column layout.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Linux and any terminal.</strong> mmux is one binary for macOS and Linux that runs in iTerm2, Ghostty, kitty, WezTerm, a plain SSH session or cmux itself. cmux is macOS only [1].</li>
+        <li><strong>Persistent by default.</strong> Every mmux runs inside an invisible tmux session, so closing the window or losing an SSH connection detaches instead of killing your agents. In cmux, quitting restores the layout and resumes supported agents, but live processes only survive if you opt in with <code>cmux local-tmux</code> [1][2].</li>
+        <li><strong>Runs where the code is.</strong> On a remote server, mmux runs on that server and you attach with any SSH client, from any computer. Desktop notifications still reach your local terminal through OSC escapes.</li>
+        <li><strong>Dev processes as first-class rows.</strong> Dev servers and scripts are declared in <code>mmux.yaml</code>, started and stopped from the sidebar, can run a <code>stop:</code> command on quit, and only one checkout of a repository runs a given process at a time so ports do not clash.</li>
+        <li><strong>Git panel and worktrees built in.</strong> Stage, commit (with an AI-suggested message), switch branches and push from the right-hand panel. Press <code>w</code> and a worktree opens as its own project box with its own agents and processes; <code>M</code> merges it back. cmux leaves worktrees to your own scripts on purpose [5].</li>
+        <li><strong>Projects grouped by directory.</strong> One mmux per directory, and a workspace manifest can bundle several repositories into one sidebar.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose cmux when</h3>
+          <ul>
+            <li>you work on a Mac and want a GUI terminal app, not a TUI</li>
+            <li>you want to see several agents side by side in splits</li>
+            <li>agents should drive a browser next to the terminal</li>
+            <li>you want managed cloud VMs or an iOS app and are fine paying for them</li>
+            <li>you prefer building your own workflow from primitives</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>you work on Linux, or on a remote box over SSH</li>
+            <li>agents must keep running after you close the window</li>
+            <li>you want dev servers, git and worktrees in the same sidebar as the agents</li>
+            <li>you want to keep your current terminal app</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using cmux and mmux together</h2>
+      <p>cmux is a terminal and mmux is a terminal program, so you can run mmux inside a cmux tab. You keep cmux's rendering, splits and browser pane, and mmux keeps the agents alive when you quit cmux.</p>
+      <ol>
+        <li>Install mmux (it needs tmux on your <code>PATH</code>).</li>
+        <li>Open a cmux workspace in your project and run <code>mmux</code>. Reattach later with <code>mmux attach</code>.</li>
+        <li>mmux's default <code>osc9</code> notifications are an escape that cmux listens for [1], so an agent that needs you should still raise cmux's notification cues. We have not tested this combination.</li>
+      </ol>
+      <pre><code>cd ~/some/project
+mmux init
+mmux</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Are mmux and cmux the same project?</summary>
+        <div class="vs-faq-a"><p>No. They are unrelated projects with different authors and code. cmux is a macOS terminal app by Manaflow. mmux is an open source TUI by Marvin von Rappard that runs inside tmux. Neither is a fork of the other.</p></div>
+      </details>
+      <details>
+        <summary>Does cmux run on Linux or Windows?</summary>
+        <div class="vs-faq-a"><p>Not as of v0.65.1. The cmux README says it is macOS only for now, as a native Swift and AppKit app. mmux runs on macOS and Linux.</p></div>
+      </details>
+      <details>
+        <summary>Is cmux free?</summary>
+        <div class="vs-faq-a"><p>The macOS app is free and its code is GPL-3.0-or-later. Paid plans start at $40 per month billed yearly and add cloud VMs and the iOS app. mmux is free and GPLv3.</p></div>
+      </details>
+      <details>
+        <summary>Do agents keep running when I quit cmux?</summary>
+        <div class="vs-faq-a"><p>Not by default. cmux restores the layout, working directories and scrollback, and resumes supported agents from saved session IDs. For live processes that survive quitting, it offers the opt-in cmux local-tmux command. In mmux every session runs inside tmux, so closing the window only detaches.</p></div>
+      </details>
+      <details>
+        <summary>Can I run mmux inside cmux?</summary>
+        <div class="vs-faq-a"><p>Yes. cmux is a terminal, so mmux runs in a cmux tab like any other terminal program.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://github.com/manaflow-ai/cmux/blob/main/README.md">cmux README (features, session restore, FAQ)</a></li>
+        <li><a href="https://github.com/manaflow-ai/cmux/blob/main/docs/local-tmux.md">cmux docs: local tmux persistence</a></li>
+        <li><a href="https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1">cmux v0.65.1 release and downloads</a></li>
+        <li><a href="https://cmux.com/pricing">cmux pricing</a></li>
+        <li><a href="https://cmux.com/blog/cmux-home">cmux blog: cmux home (2026-06-23, on worktrees)</a></li>
+        <li><a href="https://www.ycombinator.com/companies/manaflow">Y Combinator: Manaflow</a></li>
+        <li><a href="https://github.com/manaflow-ai/cmux/blob/main/LICENSE">cmux LICENSE</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
