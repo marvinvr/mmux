@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<!--
+  /vs/: the index of every "mmux vs X" page.
+  Each comparison adds ONE <li> to the list below (the review pass does this,
+  not the agent writing the page), alphabetically by X:
+
+    <li><a href="<slug>/"><span class="vs-list-title">mmux <span class="vs-vs">vs</span> X</span><span class="vs-list-desc">One factual line: what X is and the main difference.</span></a></li>
+
+  The empty-state line hides itself once the list has an <li> (vs.css).
+  The sitemap picks up /vs/ automatically once a vs/<slug>/ page exists.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compare mmux with other terminal and agent tools</title>
+  <meta name="description" content="Honest, sourced comparisons of mmux with other terminal multiplexers and agent tools: what each does better, and when to pick which.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="Compare mmux with other tools">
+  <meta property="og:description" content="Honest, sourced comparisons of mmux with other terminal multiplexers and agent tools.">
+  <meta property="og:url" content="https://mmux.org/vs/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Compare mmux with other tools">
+  <meta name="twitter:description" content="Honest, sourced comparisons of mmux with other terminal multiplexers and agent tools.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="vs.css">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "Compare mmux",
+    "url": "https://mmux.org/vs/",
+    "description": "Honest, sourced comparisons of mmux with other terminal multiplexers and agent tools.",
+    "inLanguage": "en",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" }
+    ]
+  }
+  </script>
+
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="./" aria-current="page">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../">mmux</a></li>
+        <li><span aria-current="page">compare</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> the rest</h1>
+      <p class="vs-lede">How mmux compares with other terminal multiplexers and tools for running coding agents. Each page says where the other tool is the better choice, and links its sources.</p>
+    </header>
+
+    <section class="vs-section" aria-labelledby="all">
+      <h2 class="vs-h2" id="all">Comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:list (alphabetical by X; see the comment at the top) -->
+      </ul>
+      <p class="vs-empty">No comparisons published yet.</p>
+    </section>
+
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="./">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>

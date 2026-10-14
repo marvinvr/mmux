@@ -140,7 +140,7 @@ project directory: mmux`, ghost buttons → github + the docs. Script default, H
 no cargo.
 
 ### 4.8 `<footer class="site-footer">`
-`mmux · GPLv3 · github · docs · built by marvinvr`.
+`mmux · GPLv3 · github · docs · compare · built by marvinvr` (`compare` → `/vs/`, §12).
 
 ---
 
@@ -347,16 +347,21 @@ web/
   tui.js        # renderTUI/renderLine + scroll & sandbox drivers + copy + nav.
   fonts/        # DepartureMono-Regular.woff2 + its OFL LICENSE + README.
   banner.txt    # the plain-text card nginx serves to curl/wget/httpie on `/`.
-  robots.txt / sitemap.xml / llms.txt / assets/ (og-image, icon, promo-poster)   # stable URLs.
+  robots.txt / llms.txt / assets/ (og-image, icon, promo-poster)   # stable URLs.
+  vs/           # the comparison pages (§12): index.html, vs.css, _template/,
+                #   <slug>/index.html. README.md + _template/ are never deployed.
+  scripts/gen-sitemap.sh   # prints sitemap.xml at build time (not committed).
                 # og-image.png's editable source is ../assets/og-image.src.html —
                 #   kept OUTSIDE web/ so it never ships; regen recipe in its comment.
-  Dockerfile    # nginx:alpine; fingerprints css/js to <name>.<hash>.<ext> and
-                #   rewrites index.html refs (1y immutable cache stays safe).
+  Dockerfile    # nginx:alpine; fingerprints css/js (incl. vs/vs.css) to
+                #   <name>.<hash>.<ext> and rewrites the refs in every *.html
+                #   (1y immutable cache stays safe); generates sitemap.xml.
                 #   fonts/, assets/ and the txt/xml files are copied verbatim.
   nginx.conf    # gzip + charset utf-8 + strict CSP (self + the umami origin in
                 #   script-src/connect-src + public.mmux.org in media-src)
                 #   + the curl→banner.txt rewrite on `/`
-                #   + no-cache index.html + 1y immutable fingerprinted assets.
+                #   + /vs/<slug>/ folders (real 404 for unknown slugs)
+                #   + no-cache *.html + 1y immutable fingerprinted assets.
   DESIGN.md     # this file.  README.md — the web/ readme.
 ```
 
@@ -391,3 +396,23 @@ web/
       public.mmux.org — the CSP allow-lists exactly those, per directive. `curl https://mmux.org/`
       returns banner.txt.
 - [ ] `node --check` passes; no console errors; no globals beyond MMUX + MMUX_SCENES.
+
+## 12. Comparison pages (`vs/`)
+
+Long-form "mmux vs X" articles at `/vs/<slug>/`, indexed at `/vs/`. How to write one and the
+content rules: `vs/README.md`.
+
+- **Same identity, no demo.** Each page loads `../../styles.css` (tokens, nav, footer, buttons,
+  display face) and then `../vs.css` (article layout only). No JS of our own; the only script is
+  umami. FAQ uses native `<details>`. The CSP is unchanged: no inline style/script beyond the
+  JSON-LD data blocks.
+- **Nav:** brand → home · `the demo` · `compare` · `github`; phones keep the brand + github
+  (`.nav-page` hides). **Footer:** identical to §4.8.
+- **Relative paths** everywhere (`../../styles.css`), so pages work over `file://` and the
+  Dockerfile's basename-based fingerprinting rewrites them. Canonical/OG URLs are absolute.
+- **The table** is the one place ANSI-ish colors appear outside the window: the ✓ / ~ / ✗ marks
+  use `--green-bright` / `--yellow` / `--red`. Each mark is `aria-hidden` with an `sr-only`
+  yes/partly/no word beside it, so the verdict is never color- or glyph-only. On phones the table
+  scrolls inside its own frame; the page never scrolls sideways.
+- **Content:** English, honest (every page has "Where X is better"), sourced, no invented
+  features, no em dashes, no marketing language.

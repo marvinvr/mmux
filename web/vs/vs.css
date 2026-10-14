@@ -1,0 +1,378 @@
+/* ============================================================================
+ * mmux.org — comparison pages (/vs/ and /vs/<slug>/)
+ *
+ * Loaded AFTER ../styles.css, which supplies the tokens, reset, nav, footer,
+ * buttons and the display face. This file only adds the long-form article
+ * layout: breadcrumb, title block, TL;DR, comparison table, prose sections,
+ * FAQ, "other comparisons" and the closing install card. Same rules as the
+ * home page (DESIGN.md): flat, sharp, tmux green, no gradients, no glows.
+ *
+ * Map: shell → breadcrumb → head → tldr → table → prose → faq → others →
+ *      cta → overview list → responsive.
+ * ========================================================================== */
+
+/* shell — one readable column, wider only for the table ------------------- */
+.vs-main {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 5rem;
+}
+.vs-main section {
+  /* styles.css pads every <section> like a full-bleed home-page band. This reset
+   * outranks .vs-section/.vs-tldr/.vs-cta, so those are written as .vs-main .x */
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.vs-main .vs-section { margin-top: 3.5rem; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* breadcrumb --------------------------------------------------------------- */
+.vs-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+  font-size: .85rem;
+  color: var(--muted);
+}
+.vs-crumbs li + li::before {
+  content: "/";
+  margin-right: .5rem;
+  color: var(--faint);
+}
+.vs-crumbs a { color: var(--text-2); }
+.vs-crumbs a:hover { color: var(--green-bright); }
+.vs-crumbs [aria-current="page"] { color: var(--muted); }
+
+/* title block -------------------------------------------------------------- */
+.vs-h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 5vw, 2.8rem);
+  font-weight: 400;            /* single-weight pixel face — no faux bold */
+  letter-spacing: 0;
+  line-height: 1.15;
+  color: var(--text);
+  margin: 0 0 1rem;
+}
+.vs-h1 .vs-vs { color: var(--muted); }
+.vs-lede {
+  max-width: var(--measure);
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.vs-updated {
+  margin: 1rem 0 0;
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+/* headings inside the article: the display face, smaller than the home h2 */
+.vs-h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 3vw, 1.7rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.25;
+  color: var(--text);
+  margin: 0 0 1.25rem;
+}
+.vs-h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 1.75rem 0 .5rem;
+}
+
+/* TL;DR — a flat card with the green edge the sidebar uses for the active row */
+.vs-main .vs-tldr {
+  margin-top: 2.5rem;
+  padding: 1.25rem 1.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  border-radius: var(--radius);
+}
+.vs-tldr .kicker { margin-bottom: .6rem; }
+.vs-tldr p { margin: 0 0 .7rem; }
+.vs-tldr p:last-child { margin-bottom: 0; }
+
+/* prose -------------------------------------------------------------------- */
+.vs-prose p,
+.vs-prose li {
+  max-width: 68ch;
+  line-height: 1.75;
+}
+.vs-prose p { margin: 0 0 1rem; }
+.vs-prose ul,
+.vs-prose ol {
+  margin: 0 0 1.25rem;
+  padding-left: 1.4rem;
+}
+.vs-prose ul { list-style: none; padding-left: 1.1rem; }
+.vs-prose ul > li { position: relative; }
+.vs-prose ul > li::before {
+  content: "-";
+  position: absolute;
+  left: -1.1rem;
+  color: var(--green);
+}
+.vs-prose ol { list-style: decimal; }
+.vs-prose ol > li::marker { color: var(--green); }
+.vs-prose li { margin-bottom: .55rem; }
+.vs-prose a,
+.vs-faq a,
+.vs-tldr a,
+.vs-sources a {
+  color: var(--green-bright);
+  text-decoration: underline;
+  text-decoration-color: var(--green-dim);
+  text-underline-offset: 2px;
+}
+.vs-prose a:hover,
+.vs-faq a:hover,
+.vs-tldr a:hover,
+.vs-sources a:hover { color: var(--text); }
+.vs-main code {
+  padding: .06rem .35rem;
+  font-size: .9em;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.vs-main pre {
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  font-size: .88rem;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.vs-main pre code {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+/* comparison table ----------------------------------------------------------
+ * Scrolls inside its own frame on narrow screens; the page never scrolls
+ * sideways. The mark glyphs are aria-hidden; each cell carries a sr-only
+ * "yes/partly/no" so the verdict is not color- or glyph-only. */
+.vs-table-wrap {
+  /* the containing block for the cells' absolutely positioned .sr-only spans,
+   * which would otherwise escape the scroller and widen the page on phones */
+  position: relative;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.vs-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: .9rem;
+  line-height: 1.55;
+}
+.vs-table caption {
+  padding: .7rem 1rem;
+  text-align: left;
+  font-size: .8rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.vs-table th,
+.vs-table td {
+  padding: .75rem 1rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.vs-table tr:last-child th,
+.vs-table tr:last-child td { border-bottom: 0; }
+.vs-table thead th {
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.vs-table tbody th {
+  width: 30%;
+  font-weight: 400;
+  color: var(--text);
+}
+.vs-table td { color: var(--text-2); }
+.vs-table thead th.vs-col-mmux { color: var(--green-bright); }
+
+.mark {
+  display: inline-block;
+  width: 1.1em;
+  margin-right: .35rem;
+  font-weight: 700;
+  text-align: center;
+}
+.mark-yes  { color: var(--green-bright); }
+.mark-part { color: var(--yellow); }
+.mark-no   { color: var(--red); }
+.mark-na   { color: var(--faint); }
+
+.vs-table-note {
+  margin: .75rem 0 0;
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+/* "when to pick which" — two flat cards side by side ----------------------- */
+.vs-choose {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.vs-choose-card {
+  padding: 1.15rem 1.25rem .4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.vs-choose-card .vs-h3 { margin-top: 0; }
+.vs-choose-card--mmux { border-top: 2px solid var(--green); }
+
+/* FAQ — native <details>, no JS -------------------------------------------- */
+.vs-faq details {
+  border-bottom: 1px solid var(--border);
+}
+.vs-faq details:first-of-type { border-top: 1px solid var(--border); }
+.vs-faq summary {
+  display: flex;
+  gap: .75rem;
+  padding: 1rem 0;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  color: var(--text);
+}
+.vs-faq summary::-webkit-details-marker { display: none; }
+.vs-faq summary::before {
+  content: "+";
+  flex: none;
+  width: 1ch;
+  color: var(--green);
+}
+.vs-faq details[open] summary::before { content: "-"; }
+.vs-faq summary:hover { color: var(--green-bright); }
+.vs-faq .vs-faq-a {
+  padding: 0 0 1rem 1.75ch;
+  max-width: 68ch;
+  line-height: 1.75;
+}
+.vs-faq .vs-faq-a p { margin: 0 0 .75rem; }
+.vs-faq .vs-faq-a p:last-child { margin-bottom: 0; }
+
+/* sources ------------------------------------------------------------------- */
+.vs-sources {
+  font-size: .85rem;
+  color: var(--muted);
+}
+.vs-sources ol {
+  margin: 0;
+  padding-left: 1.4rem;
+  list-style: decimal;
+}
+.vs-sources li { margin-bottom: .35rem; }
+
+/* other comparisons + the /vs/ overview list -------------------------------- */
+.vs-list {
+  display: grid;
+  gap: .6rem;
+}
+.vs-list a {
+  display: block;
+  padding: .9rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color .15s ease, background .15s ease;
+}
+.vs-list a:hover {
+  border-color: var(--green-dim);
+  background: var(--surface-2);
+}
+.vs-list-title {
+  display: block;
+  color: var(--text);
+  font-weight: 700;
+}
+.vs-list-title .vs-vs { color: var(--muted); font-weight: 400; }
+.vs-list-desc {
+  display: block;
+  margin-top: .2rem;
+  font-size: .88rem;
+  color: var(--text-2);
+}
+.vs-empty {
+  padding: 1.1rem 1.25rem;
+  color: var(--muted);
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius);
+}
+/* the empty-state line only shows while the list has no entries (a comment or
+ * whitespace inside the <ul> would defeat :empty, so test for an <li>) */
+.vs-list:has(li) + .vs-empty { display: none; }
+
+.vs-all { margin: 1rem 0 0; font-size: .9rem; }
+.vs-all a { color: var(--green-bright); }
+.vs-all a:hover { color: var(--text); }
+
+/* closing card: the install line + the way back ---------------------------- */
+.vs-main .vs-cta {
+  margin-top: 4rem;
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.vs-cta .vs-h2 { margin-bottom: .75rem; }
+.vs-cta p { margin: 0 auto 1.1rem; max-width: var(--measure); }
+.vs-cta pre {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 0 1.25rem;
+  text-align: left;
+}
+.vs-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .75rem;
+}
+
+/* responsive --------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .vs-main { padding: 2rem 1rem 4rem; }
+  .vs-main .vs-section { margin-top: 2.75rem; }
+  .vs-choose { grid-template-columns: 1fr; }
+  /* phones: like the home page, keep only the brand + github in the header */
+  .nav-links .nav-page,
+  .nav-links .nav-sep { display: none; }
+}

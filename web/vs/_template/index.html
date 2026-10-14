@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<!--
+  =============================================================================
+  TEMPLATE for one comparison page: mmux vs {{X}}.  Read web/vs/README.md first.
+
+  Copy this whole folder to web/vs/<slug>/ (lowercase, a-z0-9 and dashes, e.g.
+  vs/tmux/, vs/zellij/), then replace every {{PLACEHOLDER}}:
+
+    {{X}}            the other tool's name as its own project writes it
+    {{SLUG}}         the folder name, e.g. tmux
+    {{TITLE}}        <title> / og:title, ~50-60 chars, e.g.
+                     "mmux vs tmux: persistent sessions for coding agents"
+    {{DESCRIPTION}}  meta description, 140-160 chars, one concrete sentence or two
+    {{DATE}}         YYYY-MM-DD you checked the facts. Goes in dateModified
+                     (the sitemap reads it) and in the visible "last checked" line.
+    {{X_URL}}        the other tool's homepage or docs
+    {{X_REPO}}       its source repo (drop "sameAs" if it has none)
+
+  Remove every "EDIT:" comment once done; keep the structural comments short.
+  Relative paths (../../styles.css) are deliberate: they work over file:// and
+  in nginx, and the Docker build fingerprints them. Do not make them absolute.
+  The page must stay inline-script/style free (strict CSP): no style="",
+  no onclick, no <script> except the JSON-LD data blocks and umami below.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <meta name="description" content="{{DESCRIPTION}}">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/{{SLUG}}/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{DESCRIPTION}}">
+  <meta property="og:url" content="https://mmux.org/vs/{{SLUG}}/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{TITLE}}">
+  <meta name="twitter:description" content="{{DESCRIPTION}}">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs {{X}}",
+    "url": "https://mmux.org/vs/{{SLUG}}/",
+    "description": "{{DESCRIPTION}}",
+    "inLanguage": "en",
+    "dateModified": "{{DATE}}",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "{{X}}", "url": "{{X_URL}}", "sameAs": "{{X_REPO}}" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs {{X}}", "item": "https://mmux.org/vs/{{SLUG}}/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "{{QUESTION 1}}",
+        "acceptedAnswer": { "@type": "Answer", "text": "{{ANSWER 1, plain text}}" }
+      },
+      {
+        "@type": "Question",
+        "name": "{{QUESTION 2}}",
+        "acceptedAnswer": { "@type": "Answer", "text": "{{ANSWER 2, plain text}}" }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs {{X}}</span></li>
+      </ol>
+    </nav>
+
+    <!-- title + lede. EDIT: the lede is 1-2 sentences saying what each tool IS,
+         not which one wins. -->
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> {{X}}</h1>
+      <p class="vs-lede">{{One or two neutral sentences: what mmux is, what {{X}} is, and the one axis where they really differ.}}</p>
+      <p class="vs-updated">Last checked against {{X}} {{VERSION}} on <time datetime="{{DATE}}">{{DATE}}</time>.</p>
+    </header>
+
+    <!-- TL;DR: three short paragraphs or fewer. The verdict a skimmer needs,
+         including when {{X}} is the better pick. -->
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick {{X}} if</strong> {{...}}.</p>
+      <p><strong>Pick mmux if</strong> {{...}}.</p>
+      <p>{{Optional: they also work together, see below.}}</p>
+    </section>
+
+    <!-- comparison table. 6-12 rows, concrete capabilities, no vague
+         "ease of use". Each cell: one mark + a short factual phrase.
+           <span class="mark mark-yes"  aria-hidden="true">✓</span><span class="sr-only">yes: </span>
+           <span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>
+           <span class="mark mark-no"   aria-hidden="true">✗</span><span class="sr-only">no: </span>
+           <span class="mark mark-na"   aria-hidden="true">·</span>   (neutral facts: license, language)
+         Rows where {{X}} wins must be in here too. -->
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux {{MMUX_VERSION}} and {{X}} {{VERSION}}, as of {{DATE}}.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">{{X}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">{{Sessions survive closing the terminal}}</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>{{short fact}}</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>{{short fact}}</td>
+            </tr>
+            <tr>
+              <th scope="row">{{Capability}}</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>{{short fact}}</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>{{short fact}}</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>{{license}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">{{Optional: one line on how the table was checked, e.g. "{{X}} facts from its docs and source at v1.2.3."}}</p>
+    </section>
+
+    <!-- What is X: neutral, in its own terms, 1-3 paragraphs. Cite sources [1]. -->
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is {{X}}?</h2>
+      <p>{{...}}</p>
+    </section>
+
+    <!-- Where X is better: genuinely. If you cannot name real advantages,
+         the comparison is not honest yet. -->
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where {{X}} is better</h2>
+      <ul>
+        <li><strong>{{Advantage}}.</strong> {{One or two sentences with the concrete reason.}}</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>{{Advantage}}.</strong> {{One or two sentences, only features documented in docs/.}}</li>
+      </ul>
+    </section>
+
+    <!-- When to use which: two cards, 3-5 bullets each, as situations. -->
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose {{X}} when</h3>
+          <ul>
+            <li>{{situation}}</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>{{situation}}</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Migration / using both. Pick the heading that fits: "Moving from {{X}}
+         to mmux" (numbered steps) or "Using {{X}} and mmux together".
+         Commands in <pre><code>; only real mmux commands/config (docs/). -->
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">{{Moving from {{X}} to mmux | Using {{X}} and mmux together}}</h2>
+      <ol>
+        <li>{{step}}</li>
+      </ol>
+      <pre><code>{{command}}</code></pre>
+    </section>
+
+    <!-- FAQ: 3-6 questions people actually search. Mirror them 1:1 in the
+         FAQPage JSON-LD in <head>. -->
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>{{QUESTION 1}}</summary>
+        <div class="vs-faq-a"><p>{{ANSWER 1}}</p></div>
+      </details>
+      <details>
+        <summary>{{QUESTION 2}}</summary>
+        <div class="vs-faq-a"><p>{{ANSWER 2}}</p></div>
+      </details>
+    </section>
+
+    <!-- Sources: every claim about {{X}} needs one. Link primary sources
+         (docs, README, source, changelog), not blog posts. -->
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="{{URL}}">{{X}} documentation: {{page}}</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>

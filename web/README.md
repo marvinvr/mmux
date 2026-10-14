@@ -1,13 +1,14 @@
 # web/ — the mmux.org static site
 
-A single static page: plain HTML + CSS + vanilla JS, no framework, no dev build step
-(open `index.html` directly). It renders fully offline; the only external calls are the
+A static site: plain HTML + CSS + vanilla JS, no framework, no dev build step
+(open `index.html` directly). The home page plus the "mmux vs X" comparison pages under
+[`vs/`](vs/README.md). It renders fully offline; the only external calls are the
 self-hosted umami analytics script and, once a visitor presses play, the promo video streamed
 from `public.mmux.org` (both allow-listed in the CSP — see `DESIGN.md` §0). The page must work
 perfectly with either blocked: the video section falls back to its self-hosted poster.
 
 The production Docker image fingerprints the CSS/JS at build time (renames each to
-`<name>.<contenthash>.<ext>` and rewrites the refs in `index.html`) so a long
+`<name>.<contenthash>.<ext>` and rewrites the refs in every HTML page) so a long
 `immutable` edge cache is safe and deploys never need a Cloudflare purge.
 
 ## View it
@@ -31,9 +32,12 @@ docker run --rm -p 8080:80 mmux-web
 - `index.html`, `styles.css`, `scenes.js`, `tui.js` — the site (see `DESIGN.md`).
 - `fonts/` — the self-hosted Departure Mono display face + its OFL license (see `fonts/README.md`).
 - `banner.txt` — the plain-text card nginx serves when `curl`/`wget`/`httpie` hits `/`.
-- `robots.txt`, `sitemap.xml`, `llms.txt` — crawler/agent surface: a permissive robots policy
-  (search + named AI bots), the canonical sitemap, and an [llms.txt](https://llmstxt.org)-format
-  guide LLMs can read. The `<head>` adds canonical, Open Graph/Twitter, and a schema.org
+- `vs/` — the comparison pages: `/vs/` (index), `/vs/<slug>/` (one per tool), the shared
+  `vs.css` and a `_template/` to copy. How to add one: [`vs/README.md`](vs/README.md).
+- `robots.txt`, `llms.txt` — crawler/agent surface: a permissive robots policy (search + named
+  AI bots) and an [llms.txt](https://llmstxt.org)-format guide LLMs can read.
+- `scripts/gen-sitemap.sh` — prints `sitemap.xml` (home, `/vs/`, every `vs/<slug>/`, lastmod
+  from each page's `dateModified`). The Docker build runs it; the sitemap is not committed. The `<head>` adds canonical, Open Graph/Twitter, and a schema.org
   `SoftwareApplication` JSON-LD block.
 - `assets/promo-poster.webp` — the promo video's poster: a 1600×900 still of the video's own end
   card (mark + wordmark + tagline, at 46.4s). The video itself is not in this repo.

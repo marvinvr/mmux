@@ -5,3 +5,5 @@ fonts/README.md
 *.map
 .DS_Store
 node_modules
+vs/README.md
+vs/_template

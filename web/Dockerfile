@@ -7,27 +7,40 @@ COPY index.html styles.css tui.js scenes.js /usr/share/nginx/html/
 COPY fonts/ /usr/share/nginx/html/fonts/
 COPY assets/ /usr/share/nginx/html/assets/
 
+# The "mmux vs X" comparison pages: /vs/ + one vs/<slug>/index.html each, and
+# their shared vs.css. vs/README.md and vs/_template/ stay out (.dockerignore).
+COPY vs/ /usr/share/nginx/html/vs/
+
 # Agent/SEO files served from the root with stable (un-fingerprinted) URLs:
-# robots.txt + sitemap.xml for crawlers, llms.txt as an LLM-readable guide,
-# banner.txt as the plain-text answer nginx serves to curl/wget on `/`.
-COPY robots.txt sitemap.xml llms.txt banner.txt /usr/share/nginx/html/
+# robots.txt for crawlers, llms.txt as an LLM-readable guide, banner.txt as
+# the plain-text answer nginx serves to curl/wget on `/`.
+COPY robots.txt llms.txt banner.txt /usr/share/nginx/html/
+
+# sitemap.xml is generated, not committed: the home page plus every vs/<slug>/
+# page that exists in this build (lastmod from each page's dateModified).
+COPY scripts/gen-sitemap.sh /tmp/gen-sitemap.sh
+RUN sh /tmp/gen-sitemap.sh /usr/share/nginx/html > /usr/share/nginx/html/sitemap.xml && \
+    rm /tmp/gen-sitemap.sh
 
 # The install script, served at a stable URL: `curl -fsSL https://mmux.org/install.sh | sh`.
 COPY install.sh /usr/share/nginx/html/
 
 # Fingerprint the assets: rename each to <name>.<contenthash>.<ext> and rewrite
-# the quoted references in index.html to match. This is what makes the 1y
+# the quoted references in every HTML page to match. This is what makes the 1y
 # `immutable` cache in nginx.conf safe — a changed file gets a new hash, hence a
 # new URL, so browsers and Cloudflare fetch it fresh; unchanged files keep their
-# hash and stay cached. No cache purging on deploy. The quotes in the sed match
-# the real `src="…"`/`href="…"` references, never the plain-text mentions of
-# these filenames in index.html's comments.
+# hash and stay cached. No cache purging on deploy. References are matched by
+# basename after a quote or a slash and before the closing quote, so `"styles.css"`,
+# `"../../styles.css"` and `"../vs.css"` are all rewritten, while the plain-text
+# mentions of these filenames in comments are not. That needs the basenames to be
+# unique across the site, which they are.
 RUN cd /usr/share/nginx/html && \
-    for f in styles.css scenes.js tui.js; do \
+    for f in styles.css scenes.js tui.js vs/vs.css; do \
       h=$(sha256sum "$f" | cut -c1-8); \
-      new="${f%.*}.$h.${f##*.}"; \
-      mv "$f" "$new"; \
-      sed -i "s|\"$f\"|\"$new\"|g" index.html; \
+      b=$(basename "$f"); \
+      nb="${b%.*}.$h.${b##*.}"; \
+      mv "$f" "$(dirname "$f")/$nb"; \
+      find . -name '*.html' -exec sed -i "s#\\([\"/]\\)${b%.*}\\.${b##*.}\"#\\1$nb\"#g" {} +; \
     done
 
 # Server block: cache headers, gzip, strict CSP (see nginx.conf).
