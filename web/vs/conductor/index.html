@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Conductor: parallel coding agents in worktrees</title>
+  <meta name="description" content="Conductor is a Mac app for parallel Claude Code and Codex agents in git worktrees. mmux does the same in a terminal on macOS and Linux, including over SSH.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/conductor/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Conductor: parallel coding agents in worktrees">
+  <meta property="og:description" content="Conductor is a Mac app for parallel Claude Code and Codex agents in git worktrees. mmux does the same in a terminal on macOS and Linux, including over SSH.">
+  <meta property="og:url" content="https://mmux.org/vs/conductor/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Conductor: parallel coding agents in worktrees">
+  <meta name="twitter:description" content="Conductor is a Mac app for parallel Claude Code and Codex agents in git worktrees. mmux does the same in a terminal on macOS and Linux, including over SSH.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Conductor",
+    "url": "https://mmux.org/vs/conductor/",
+    "description": "Conductor is a Mac app for parallel Claude Code and Codex agents in git worktrees. mmux does the same in a terminal on macOS and Linux, including over SSH.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Conductor", "url": "https://www.conductor.build/" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Conductor", "item": "https://mmux.org/vs/conductor/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Conductor free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The local Mac app is free and uses your own Claude Code or Codex subscription or API keys. Cloud workspaces, live collaboration, the Conductor API and the mobile app are in the Pro plan at $50 per month; Teams is $60 per user per month (pricing page, October 2026). mmux is free and licensed GPLv3." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Conductor run on Linux or Windows?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Conductor's local workspaces run on a Mac, with Apple Silicon and Intel builds. Its cloud workspaces run in Linux sandboxes, but you use them from the Conductor app. mmux runs in a terminal on macOS (Apple Silicon) and Linux (arm64 and x86_64), including on a remote server over SSH." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do mmux and Conductor both use git worktrees?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Conductor creates one worktree and a new branch per workspace, based on the latest commit of the base branch on origin. mmux opens a worktree as another project box in the same sidebar, stores it under ~/.mmux/worktrees/, copies gitignored files such as .env into it, and can run a setup command." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which coding agents does each support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Conductor supports Claude Code, Codex, Cursor and OpenCode. mmux runs any command-line agent and ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use Conductor and mmux on the same repository?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Both work on ordinary git branches. For example, run agents with mmux on a remote machine, push the branch, and start a Conductor workspace from that branch or its pull request to review and merge it. Git checks out a branch in only one worktree at a time, so let one tool own a branch at a time." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Conductor</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Conductor</h1>
+      <p class="vs-lede">mmux is a terminal multiplexer for coding agents: one Rust binary with a sidebar of agents, terminals and processes that keeps running inside tmux. Conductor, from Melty Labs, is a Mac desktop app that runs Claude Code, Codex, Cursor and OpenCode in parallel, each in its own git worktree. Both isolate a task per worktree; the real difference is a terminal tool you can reach over SSH versus a native Mac app built around reviewing and merging pull requests.</p>
+      <p class="vs-updated">Last checked against Conductor 0.90.2 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Conductor if</strong> you work on a Mac, want a desktop app rather than a terminal UI, and your loop ends in a GitHub pull request: it has a diff viewer with inline comments that go back to the agent, one-key PR creation, a Checks tab for CI, ten ports per workspace so every branch can run its dev server at once, and paid cloud workspaces and team features.</p>
+      <p><strong>Pick mmux if</strong> you live in the terminal, run agents on Linux or on a remote machine over SSH, want sessions that survive a dropped connection and restore after a quit, or want agents, dev servers and shells in one sidebar that other agents can drive from the command line. It is free and GPLv3.</p>
+      <p>They do not exclude each other: both sit on top of git worktrees and the agent CLIs you already have, see below.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Conductor 0.90.2, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Conductor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Interface</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>TUI in any terminal, keyboard and mouse</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Native Mac app with a chat composer per agent</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS (Apple Silicon) and Linux (arm64, x86_64)</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS only, Apple Silicon and Intel builds</td>
+            </tr>
+            <tr>
+              <th scope="row">Use on a remote machine over SSH</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>runs in the remote terminal, survives disconnects</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>no; remote work goes through Conductor Cloud (Pro)</td>
+            </tr>
+            <tr>
+              <th scope="row">One git worktree per task</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>w</code> opens a worktree as its own project box</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>each workspace is a worktree on a new branch</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>any CLI; presets for Claude, Codex, Pi, Gemini, Amp, opencode, Grok</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Claude Code, Codex, Cursor, OpenCode</td>
+            </tr>
+            <tr>
+              <th scope="row">Diff review with comments to the agent</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>read-only diff preview, no inline comments</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>line comments become attachments for the agent</td>
+            </tr>
+            <tr>
+              <th scope="row">Pull requests and CI status</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>pushes branches, does not open PRs</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>creates PRs, Checks tab shows CI and review comments</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers across worktrees</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>one checkout runs a process at a time, same ports</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>ten ports per workspace, or one-at-a-time mode</td>
+            </tr>
+            <tr>
+              <th scope="row">Sessions restore after a quit or restart</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Claude, Codex, Pi and Grok resume their conversation</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>archived workspaces restore with chat history</td>
+            </tr>
+            <tr>
+              <th scope="row">Scripting and API</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>local CLI: <code>mmux ask</code>, <code>send</code>, <code>wait</code>, <code>worktree new</code></td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>HTTP API, CLI and MCP for cloud workspaces (beta)</td>
+            </tr>
+            <tr>
+              <th scope="row">Cloud workspaces, team collaboration, mobile app</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>local only; a narrow layout for SSH from a phone</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>on the paid plans; iOS app since 0.90.0</td>
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>free locally; Pro $50/mo, Teams $60/user/mo</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>proprietary (Melty Labs, Inc.)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Conductor facts from its website, docs, pricing page, changelog and terms, plus the Homebrew cask for the version and CPU builds. Not verified, so not compared: whether Conductor's local agents keep running after the app is quit, and how it notifies you when an agent finishes.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Conductor?</h2>
+      <p>Conductor describes itself as a way to "run parallel coding agents on your Mac" <a href="#src-1">[1]</a>. It is made by Melty Labs, Inc. <a href="#src-10">[10]</a> and ships as a macOS app, with Apple Silicon and Intel builds <a href="#src-11">[11]</a>. You add a repository, then create workspaces: each one is a separate git worktree on a new branch, based on the latest commit of the base branch on <code>origin</code> <a href="#src-4">[4]</a>. In each workspace you chat with Claude Code, Codex, Cursor or OpenCode, test with the terminal or the Run button, review the diff, open a pull request, merge, and archive the workspace <a href="#src-3">[3]</a> <a href="#src-5">[5]</a>.</p>
+      <p>Per-project setup, run and archive scripts live in <code>.conductor/settings.toml</code>, and each workspace gets environment variables such as <code>CONDUCTOR_PORT</code>, a block of ten ports so parallel dev servers do not collide <a href="#src-6">[6]</a>. The local app is free and uses your own agent subscriptions or API keys. The Pro plan ($50 per month) adds Conductor Cloud workspaces, live collaboration, the Conductor API and the mobile app; Teams ($60 per user per month) and Enterprise add admin, billing and SSO features <a href="#src-2">[2]</a>. The software is proprietary <a href="#src-10">[10]</a>.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Conductor is better</h2>
+      <ul>
+        <li><strong>The review and pull request loop.</strong> The diff viewer lets you comment on changed lines, and those comments go back to the agent as attachments. <code>Cmd+Shift+P</code> creates a pull request, Conductor can draft its description and respond to review comments, and a Checks tab shows git status, CI, deployments and open todos <a href="#src-5">[5]</a> <a href="#src-7">[7]</a>. mmux stops at commit, push and merge.</li>
+        <li><strong>Starting work from an issue.</strong> A workspace can start from a branch, a pull request, a GitHub issue or a Linear issue <a href="#src-5">[5]</a>. mmux starts a worktree from a branch name.</li>
+        <li><strong>Every workspace can run its own dev server.</strong> Each workspace gets ten ports via <code>CONDUCTOR_PORT</code>, so the app on every branch can run at the same time; a <code>nonconcurrent</code> run mode exists for projects tied to one port <a href="#src-6">[6]</a>. mmux deliberately runs a given process in only one checkout of a repository at a time.</li>
+        <li><strong>A desktop app.</strong> If you do not want to learn a terminal multiplexer, Conductor is a regular Mac window with a chat composer, and you can open any workspace in your IDE <a href="#src-5">[5]</a>.</li>
+        <li><strong>Cloud and team features.</strong> Paid plans add cloud workspaces, live collaboration, an HTTP API and an iOS app <a href="#src-2">[2]</a> <a href="#src-8">[8]</a> <a href="#src-9">[9]</a>. mmux is a local tool with none of these.</li>
+        <li><strong>Intel Macs.</strong> Conductor ships an Intel build <a href="#src-11">[11]</a>. mmux's prebuilt macOS binary is for Apple Silicon only.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Runs where a terminal runs.</strong> mmux works on macOS and Linux, locally or on a remote box over SSH. Below 60 columns it switches to a single-column layout, so it is usable from a phone's SSH client.</li>
+        <li><strong>Sessions survive disconnects and quits.</strong> mmux lives in an invisible per-directory tmux session: closing the terminal or dropping SSH only detaches. After a quit, crash or update restart, reopening the directory restores the session, and Claude, Codex, Pi and Grok resume their conversations.</li>
+        <li><strong>Any agent, plus terminals and processes.</strong> An agent is any command you configure, shown in its own TUI unchanged. Dev servers and scripts sit in the same sidebar as processes you start, stop and read.</li>
+        <li><strong>Agents can drive it locally.</strong> Every running mmux has a control socket. <code>mmux ask</code>, <code>mmux send</code>, <code>mmux wait</code>, <code>mmux read</code> and <code>mmux worktree new</code> let one agent start, prompt and read others, or read a dev server's logs, all visible in your sidebar.</li>
+        <li><strong>A built-in git panel.</strong> Stage, commit with a generated message, schedule a commit and push, and merge a worktree back into its base branch with <code>M</code>. Finished worktrees (clean, idle, merged or pushed) are cleaned up on their own after 30 minutes.</li>
+        <li><strong>Notifications over SSH.</strong> When an agent rings the bell or sends a notification escape, mmux turns it into a desktop notification on the machine your terminal runs on, even across an SSH hop.</li>
+        <li><strong>Open source.</strong> GPLv3, one binary, no paid tier.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Conductor when</h3>
+          <ul>
+            <li>you work on a Mac and prefer a desktop app to a terminal UI</li>
+            <li>most tasks end as a GitHub pull request you review line by line</li>
+            <li>you want every branch's dev server running at once</li>
+            <li>you want cloud workspaces, shared sessions with teammates, or an iOS app</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>your agents run on Linux or on a remote server you reach over SSH</li>
+            <li>sessions must keep running when your laptop sleeps or the connection drops</li>
+            <li>you use agents beyond Conductor's four, or want shells and dev servers next to them</li>
+            <li>you want agents to orchestrate other agents from the command line</li>
+            <li>you want an open source tool with no paid tier</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using Conductor and mmux together</h2>
+      <p>Both tools work on plain git branches, so they can share a repository. A split that plays to each:</p>
+      <ol>
+        <li>Run long agent sessions with mmux on a remote machine, where they survive your laptop closing. Cut a worktree with an agent already working in it.</li>
+        <li>Push the branch from mmux's git panel (<code>P</code>) or the command line.</li>
+        <li>On your Mac, start a Conductor workspace from that branch or its pull request <a href="#src-5">[5]</a> to review the diff, comment, and merge.</li>
+      </ol>
+      <pre><code>ssh devbox
+cd ~/src/app &amp;&amp; mmux        # open or reattach; d detaches
+# then, from any shell in ~/src/app (or from an agent inside mmux):
+mmux worktree new fix-auth --prompt "fix the login bug"
+mmux commit -p fix-auth -m "fix login" --push</code></pre>
+      <p>Git allows a branch to be checked out in only one worktree at a time, so let one tool own a branch at a time.</p>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Conductor free?</summary>
+        <div class="vs-faq-a"><p>The local Mac app is free and uses your own Claude Code or Codex subscription or API keys. Cloud workspaces, live collaboration, the Conductor API and the mobile app are in the Pro plan at $50 per month; Teams is $60 per user per month (pricing page, October 2026). mmux is free and licensed GPLv3.</p></div>
+      </details>
+      <details>
+        <summary>Does Conductor run on Linux or Windows?</summary>
+        <div class="vs-faq-a"><p>No. Conductor's local workspaces run on a Mac, with Apple Silicon and Intel builds. Its cloud workspaces run in Linux sandboxes, but you use them from the Conductor app. mmux runs in a terminal on macOS (Apple Silicon) and Linux (arm64 and x86_64), including on a remote server over SSH.</p></div>
+      </details>
+      <details>
+        <summary>Do mmux and Conductor both use git worktrees?</summary>
+        <div class="vs-faq-a"><p>Yes. Conductor creates one worktree and a new branch per workspace, based on the latest commit of the base branch on origin. mmux opens a worktree as another project box in the same sidebar, stores it under ~/.mmux/worktrees/, copies gitignored files such as .env into it, and can run a setup command.</p></div>
+      </details>
+      <details>
+        <summary>Which coding agents does each support?</summary>
+        <div class="vs-faq-a"><p>Conductor supports Claude Code, Codex, Cursor and OpenCode. mmux runs any command-line agent and ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok.</p></div>
+      </details>
+      <details>
+        <summary>Can I use Conductor and mmux on the same repository?</summary>
+        <div class="vs-faq-a"><p>Yes. Both work on ordinary git branches. For example, run agents with mmux on a remote machine, push the branch, and start a Conductor workspace from that branch or its pull request to review and merge it. Git checks out a branch in only one worktree at a time, so let one tool own a branch at a time.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://www.conductor.build/">Conductor website: home page</a></li>
+        <li id="src-2"><a href="https://www.conductor.build/pricing">Conductor: pricing</a></li>
+        <li id="src-3"><a href="https://www.conductor.build/docs">Conductor documentation: introduction</a></li>
+        <li id="src-4"><a href="https://www.conductor.build/docs/concepts/workspaces-and-branches">Conductor documentation: isolated workspaces</a></li>
+        <li id="src-5"><a href="https://www.conductor.build/docs/concepts/workflow">Conductor documentation: workflow</a></li>
+        <li id="src-6"><a href="https://www.conductor.build/docs/reference/scripts">Conductor documentation: project scripts</a></li>
+        <li id="src-7"><a href="https://www.conductor.build/docs/reference/diff-viewer">Conductor documentation: diff viewer</a></li>
+        <li id="src-8"><a href="https://www.conductor.build/docs/api">Conductor documentation: Conductor API (beta)</a></li>
+        <li id="src-9"><a href="https://www.conductor.build/changelog">Conductor changelog (0.90.0, Conductor for iOS, 2026-10-02)</a></li>
+        <li id="src-10"><a href="https://www.conductor.build/terms">Conductor terms of service (Melty Labs, Inc.)</a></li>
+        <li id="src-11"><a href="https://formulae.brew.sh/cask/conductor">Homebrew cask: conductor 0.90.2 (Apple Silicon and Intel builds)</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
