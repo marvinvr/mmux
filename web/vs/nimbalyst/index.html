@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<!-- mmux vs Nimbalyst. Built from vs/_template; see web/vs/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Nimbalyst (formerly Crystal) for AI coding agents</title>
+  <meta name="description" content="mmux runs Claude Code and Codex CLIs in a persistent tmux session you can reach over SSH. Nimbalyst, Crystal's successor, is a desktop app with visual editors.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/nimbalyst/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Nimbalyst (formerly Crystal) for AI coding agents">
+  <meta property="og:description" content="mmux runs Claude Code and Codex CLIs in a persistent tmux session you can reach over SSH. Nimbalyst, Crystal's successor, is a desktop app with visual editors.">
+  <meta property="og:url" content="https://mmux.org/vs/nimbalyst/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Nimbalyst (formerly Crystal) for AI coding agents">
+  <meta name="twitter:description" content="mmux runs Claude Code and Codex CLIs in a persistent tmux session you can reach over SSH. Nimbalyst, Crystal's successor, is a desktop app with visual editors.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Nimbalyst",
+    "url": "https://mmux.org/vs/nimbalyst/",
+    "description": "mmux runs Claude Code and Codex CLIs in a persistent tmux session you can reach over SSH. Nimbalyst, Crystal's successor, is a desktop app with visual editors.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Nimbalyst", "url": "https://nimbalyst.com/", "sameAs": "https://github.com/Nimbalyst/nimbalyst" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Nimbalyst", "item": "https://mmux.org/vs/nimbalyst/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Nimbalyst the same project as Crystal?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Crystal's GitHub README says Crystal has been deprecated and replaced by Nimbalyst, dated February 2026, and recommends moving to Nimbalyst for updates. Crystal's last release is v0.3.5 from 2026-02-26. Nimbalyst keeps Crystal's core idea, parallel Claude Code and Codex sessions in git worktrees, and adds visual editors, a task tracker and an iOS app."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do Nimbalyst agents keep running after I quit the app?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Nimbalyst's terminal docs say quitting stops all terminal processes and keeps their scrollback. Its docs do not say whether agent sessions continue after a quit; saved sessions can be resumed from its local database. mmux runs everything inside a detached tmux session, so agents, terminals and dev servers keep running when you close the terminal, and after a full quit, reopening the directory restores the sessions."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use Nimbalyst or mmux over SSH?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Nimbalyst is a desktop app and its docs describe no SSH or headless mode; its iOS app talks to a Nimbalyst desktop app that has to be running. mmux is a terminal program, so you can run it on a remote machine over SSH, disconnect, and rejoin later with mmux attach. Its desktop notifications reach your local machine over SSH."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does mmux have visual editors, a kanban board or diff approval like Nimbalyst?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. mmux has a git panel with a read-only diff preview, whole-file staging and AI-suggested commit messages, and Ctrl+P opens files in your $EDITOR. It has no Markdown or mockup editors, no task tracker and no per-edit approval step. If you need those, Nimbalyst is the better fit."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Are Nimbalyst and mmux free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Both are free and open source: mmux under GPLv3, Nimbalyst under MIT. Nimbalyst is free for individuals; its Teams plan is listed at $20 per user per month ($200 per year) and is free during its beta. Neither charges for model usage: Nimbalyst uses your own Claude Code or Codex subscription or API key, and mmux runs the agent CLIs you already have installed."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Nimbalyst</span></li>
+      </ol>
+    </nav>
+
+    <!-- title + lede -->
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Nimbalyst</h1>
+      <p class="vs-lede">mmux is a terminal multiplexer in one Rust binary: it runs your agents' own CLIs, shells and dev servers inside a tmux session that keeps going when you close the terminal or drop SSH. Nimbalyst, the successor of Crystal, is a desktop app that puts Claude Code and Codex sessions next to visual editors for Markdown, mockups and diagrams, plus a task tracker.</p>
+      <p class="vs-updated">Last checked against Nimbalyst v0.81.3 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <!-- TL;DR -->
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Nimbalyst if</strong> you want a desktop GUI around your agents: approve each AI edit as a diff, write specs and mockups in visual editors, plan work on a kanban board, run natively on Windows, or check sessions from an iPhone. It is MIT licensed and free for individuals.</p>
+      <p><strong>Pick mmux if</strong> you work in the terminal, often on remote machines over SSH, and want agents and dev servers to keep running after you close the window. Agents run as their unmodified CLIs, so anything you can start in a shell can be an mmux agent.</p>
+      <p>Coming from Crystal: it was deprecated in February 2026 and its README points to Nimbalyst. Both tools cover "several agents in parallel git worktrees". The difference is a GUI with visual editors (Nimbalyst) versus a terminal with persistent sessions (mmux).</p>
+    </section>
+
+    <!-- comparison table -->
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Nimbalyst v0.81.3, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Nimbalyst</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">How agents run</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Each agent's own CLI (Claude Code, Codex, any command) in a terminal pane</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Its own transcript UI for Claude and Codex; the Claude Code CLI in a terminal is opt-in [8]</td>
+            </tr>
+            <tr>
+              <th scope="row">Keeps running after you close the UI</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Detached tmux session; after a full quit, agents resume their conversation</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Quitting stops terminal processes, scrollback is kept [6]; not documented for agent sessions</td>
+            </tr>
+            <tr>
+              <th scope="row">Remote machine over SSH</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Runs in any terminal; desktop notifications still arrive over SSH</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Desktop app; no SSH or headless mode in its docs</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>macOS and Linux; no native Windows build</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS 12+, Windows 10+, Linux (.deb, AppImage) [2]</td>
+            </tr>
+            <tr>
+              <th scope="row">Phone access</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>No mobile app</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>iOS app, end-to-end encrypted relay to your desktop; needs an account [7]</td>
+            </tr>
+            <tr>
+              <th scope="row">Visual editors</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Opens files in your <code>$EDITOR</code> (<code>Ctrl+P</code>)</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>WYSIWYG Markdown, mockups, Excalidraw, Mermaid, CSV, code [1]</td>
+            </tr>
+            <tr>
+              <th scope="row">Reviewing agent edits</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Git panel with read-only diff preview and whole-file staging</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Each AI edit shown as a diff to approve; per-session file list [1]</td>
+            </tr>
+            <tr>
+              <th scope="row">Git worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>w</code> opens one as its own project box, <code>M</code> merges it back, finished ones are cleaned up</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>One per session (<code>Cmd/Ctrl+Alt+W</code>), merged back from the session panel [5]</td>
+            </tr>
+            <tr>
+              <th scope="row">Task tracking</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>None</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Tracker with kanban and list views that agents read and update [1]</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers and scripts</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Processes you start, stop and restart; one checkout runs a given process at a time</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Ghostty terminal tabs, one per worktree, in Developer Mode [6]</td>
+            </tr>
+            <tr>
+              <th scope="row">Scriptable from the shell</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux ls</code>, <code>read</code>, <code>ask</code>, <code>start</code> drive sessions and agents</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span><code>nim</code> CLI for tracker items; no session commands documented [10]</td>
+            </tr>
+            <tr>
+              <th scope="row">License and price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3, free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT; free for individuals, Teams $20/user/month, free during beta [4]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Nimbalyst facts from nimbalyst.com, its docs and its GitHub README at v0.81.3; numbers in brackets point to the sources below. Where its docs are silent, the cell says "not documented" instead of guessing.</p>
+    </section>
+
+    <!-- What is X -->
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Nimbalyst?</h2>
+      <p>Nimbalyst describes itself as "the open-source visual workspace for Claude Code, Codex, and OpenCode" [2]. It is a TypeScript and Electron desktop app for macOS, Windows and Linux, with an iOS companion app [2][7]. You run several agent sessions side by side, each optionally in its own git worktree, and work on their output in visual editors for Markdown, mockups, diagrams, spreadsheets and code [1][5].</p>
+      <p>Claude Code and Codex are the main agents; OpenCode, GitHub Copilot, Gemini and a few others are listed as alpha [8]. By default Nimbalyst shows Claude sessions in its own transcript UI; running the Claude Code CLI in a terminal is an opt-in mode [8]. You bring your own subscription or API key [1], and sessions are stored in a local SQLite database [9].</p>
+      <p>Nimbalyst is the successor of Crystal (stravu/crystal), a desktop app for running Claude Code and Codex sessions in parallel git worktrees. Crystal's README marks it deprecated as of February 2026 and replaced by Nimbalyst; its last release is v0.3.5 from 2026-02-26 [12][13].</p>
+    </section>
+
+    <!-- Where X is better -->
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Nimbalyst is better</h2>
+      <ul>
+        <li><strong>Visual editing next to the agent.</strong> WYSIWYG Markdown, mockups, Excalidraw, Mermaid, CSV and data models sit in the same window as the session, and the agent works on them with you [1]. In mmux, that is your own editor in another pane.</li>
+        <li><strong>Approving edits before they land.</strong> Each AI edit is shown as a diff to inspect and approve, and a sidebar lists every file a session read or wrote [1]. mmux shows diffs in its git panel after the fact, with whole-file staging only.</li>
+        <li><strong>Task tracking built in.</strong> A tracker with kanban and list views that agents read and update as they work, plus the <code>nim</code> CLI for scripting it [1][10]. mmux has no task tracking.</li>
+        <li><strong>Windows and iPhone.</strong> Native builds for Windows 10+ and an iOS app that relays to your desktop with end-to-end encryption [2][7]. mmux runs on macOS and Linux and has no mobile app.</li>
+        <li><strong>No terminal needed.</strong> Everything is point and click, and the docs include a section on code and git basics for non-developers [11]. mmux assumes you are comfortable in a terminal.</li>
+        <li><strong>Team features.</strong> Teams adds shared documents, trackers and team chat; it is free during its beta, then listed at $20 per user per month [1][4]. mmux is single-user.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Sessions outlive the window.</strong> Everything runs in an invisible per-directory tmux session, so closing the terminal or losing SSH does not stop agents, terminals or dev servers; <code>mmux</code> or <code>mmux attach</code> rejoins. After a full quit or restart, Claude, Codex, Pi and Grok agents resume their conversation. Nimbalyst's docs say quitting stops terminal processes [6].</li>
+        <li><strong>Remote machines.</strong> mmux is a terminal program, so it runs on a server or VM over SSH, and its desktop notifications still reach the machine you are sitting at.</li>
+        <li><strong>Agents are the real CLIs.</strong> An agent is a command in your config (<code>claude</code>, <code>codex</code>, or anything else) in its own terminal pane, so you get the tool's own interface, flags and slash commands, and a new CLI agent works without waiting for an integration.</li>
+        <li><strong>Dev processes next to agents.</strong> Dev servers and scripts are Processes you start, stop, restart and read logs from. Across worktrees, only one checkout runs a given process at a time, so every branch reuses the same ports.</li>
+        <li><strong>Agents can drive it.</strong> <code>mmux ls</code>, <code>mmux read</code>, <code>mmux ask</code> and <code>mmux start</code> let an agent check its siblings, read a dev server's logs, hand a prompt to another agent, or cut a worktree. Nimbalyst's <code>nim</code> CLI covers tracker items [10].</li>
+        <li><strong>Small and terminal-native.</strong> One Rust binary that needs tmux (and git for the git panel), shown in whatever terminal you already use.</li>
+      </ul>
+    </section>
+
+    <!-- When to use which -->
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Nimbalyst when</h3>
+          <ul>
+            <li>you want to review and approve every agent edit in a GUI before it lands</li>
+            <li>your agent work produces specs, docs, mockups or diagrams, not only code</li>
+            <li>you plan work on a kanban board and want agents to update it</li>
+            <li>you are on Windows, or want to follow sessions from an iPhone</li>
+            <li>you used Crystal and want its direct successor</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>you live in the terminal and often work over SSH</li>
+            <li>agents and dev servers should keep running after you close the terminal or lose the connection</li>
+            <li>you want each agent's own CLI, including agents beyond Claude Code and Codex</li>
+            <li>you run dev servers next to agents across several worktrees</li>
+            <li>you want agents to check on and delegate to other agents from the shell</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Migration -->
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from Crystal or Nimbalyst to mmux</h2>
+      <ol>
+        <li>Install mmux. It needs tmux on your <code>PATH</code> (Homebrew installs it for you).</li>
+        <li>Add your agents once, for every project, in <code>~/.mmux/config.yaml</code>.</li>
+        <li>Optionally add dev servers as processes in the project's <code>mmux.yaml</code>.</li>
+        <li>Run <code>mmux init</code> in the repo to choose a setup, then <code>mmux</code> to open it.</li>
+        <li>For Crystal-style parallel work, press <code>w</code> for a new git worktree. It opens as its own project box with its own agents, terminals and git panel; <code>M</code> merges it back into the branch it came from.</li>
+      </ol>
+      <pre><code># ~/.mmux/config.yaml
+agents:
+  - name: Claude
+    cmd: claude
+  - name: Codex
+    cmd: codex</code></pre>
+      <pre><code># ./mmux.yaml
+name: my-project
+processes:
+  - name: Dev server
+    cmd: npm
+    args: ["run", "dev"]</code></pre>
+      <pre><code>cd ~/some/project
+mmux init
+mmux</code></pre>
+      <p>mmux has no importer for Crystal or Nimbalyst sessions, so agents start new conversations. You can also keep Nimbalyst for docs and mockups and run agents in mmux on the same repository: Nimbalyst keeps its content as plain files on disk [2].</p>
+    </section>
+
+    <!-- FAQ: mirrored 1:1 in the FAQPage JSON-LD -->
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Nimbalyst the same project as Crystal?</summary>
+        <div class="vs-faq-a"><p>Crystal's GitHub README says Crystal has been deprecated and replaced by Nimbalyst, dated February 2026, and recommends moving to Nimbalyst for updates. Crystal's last release is v0.3.5 from 2026-02-26. Nimbalyst keeps Crystal's core idea, parallel Claude Code and Codex sessions in git worktrees, and adds visual editors, a task tracker and an iOS app.</p></div>
+      </details>
+      <details>
+        <summary>Do Nimbalyst agents keep running after I quit the app?</summary>
+        <div class="vs-faq-a"><p>Nimbalyst's terminal docs say quitting stops all terminal processes and keeps their scrollback. Its docs do not say whether agent sessions continue after a quit; saved sessions can be resumed from its local database. mmux runs everything inside a detached tmux session, so agents, terminals and dev servers keep running when you close the terminal, and after a full quit, reopening the directory restores the sessions.</p></div>
+      </details>
+      <details>
+        <summary>Can I use Nimbalyst or mmux over SSH?</summary>
+        <div class="vs-faq-a"><p>Nimbalyst is a desktop app and its docs describe no SSH or headless mode; its iOS app talks to a Nimbalyst desktop app that has to be running. mmux is a terminal program, so you can run it on a remote machine over SSH, disconnect, and rejoin later with <code>mmux attach</code>. Its desktop notifications reach your local machine over SSH.</p></div>
+      </details>
+      <details>
+        <summary>Does mmux have visual editors, a kanban board or diff approval like Nimbalyst?</summary>
+        <div class="vs-faq-a"><p>No. mmux has a git panel with a read-only diff preview, whole-file staging and AI-suggested commit messages, and <code>Ctrl+P</code> opens files in your <code>$EDITOR</code>. It has no Markdown or mockup editors, no task tracker and no per-edit approval step. If you need those, Nimbalyst is the better fit.</p></div>
+      </details>
+      <details>
+        <summary>Are Nimbalyst and mmux free?</summary>
+        <div class="vs-faq-a"><p>Both are free and open source: mmux under GPLv3, Nimbalyst under MIT. Nimbalyst is free for individuals; its Teams plan is listed at $20 per user per month ($200 per year) and is free during its beta. Neither charges for model usage: Nimbalyst uses your own Claude Code or Codex subscription or API key, and mmux runs the agent CLIs you already have installed.</p></div>
+      </details>
+    </section>
+
+    <!-- Sources -->
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://nimbalyst.com/">Nimbalyst homepage: features and FAQ</a></li>
+        <li><a href="https://github.com/Nimbalyst/nimbalyst">Nimbalyst GitHub README (MIT, Electron, platforms)</a></li>
+        <li><a href="https://github.com/Nimbalyst/nimbalyst/releases/tag/v0.81.3">Nimbalyst release v0.81.3 (2026-10-14)</a></li>
+        <li><a href="https://nimbalyst.com/pricing/">Nimbalyst pricing</a></li>
+        <li><a href="https://nimbalyst.com/docs/developer-features/worktrees/">Nimbalyst documentation: Worktrees</a></li>
+        <li><a href="https://nimbalyst.com/docs/developer-features/terminal-window/">Nimbalyst documentation: Terminal Window</a></li>
+        <li><a href="https://nimbalyst.com/docs/mobile/mobile-app/">Nimbalyst documentation: Mobile App</a></li>
+        <li><a href="https://nimbalyst.com/docs/setup-nimbalyst/ai-provider-setup-and-notifications/">Nimbalyst documentation: AI Provider Setup and Notifications</a></li>
+        <li><a href="https://nimbalyst.com/docs/open-safe-private-secure/session-and-window-state-storage/">Nimbalyst documentation: Session and Window State Storage</a></li>
+        <li><a href="https://nimbalyst.com/docs/task-management/nim-cli/">Nimbalyst documentation: The nim CLI</a></li>
+        <li><a href="https://nimbalyst.com/docs/">Nimbalyst documentation: table of contents</a></li>
+        <li><a href="https://github.com/stravu/crystal">Crystal GitHub README (deprecation notice)</a></li>
+        <li><a href="https://github.com/stravu/crystal/releases/tag/v0.3.5">Crystal release v0.3.5 (2026-02-26)</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
