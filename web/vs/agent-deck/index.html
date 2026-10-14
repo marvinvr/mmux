@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Agent Deck: tmux-based managers for AI coding agents</title>
+  <meta name="description" content="Agent Deck is a Go TUI over tmux with agent status, conversation forks, MCP and a web UI. mmux is a Rust TUI with a live pane, git panel and dev processes.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/agent-deck/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Agent Deck: tmux-based managers for AI coding agents">
+  <meta property="og:description" content="Agent Deck is a Go TUI over tmux with agent status, conversation forks, MCP and a web UI. mmux is a Rust TUI with a live pane, git panel and dev processes.">
+  <meta property="og:url" content="https://mmux.org/vs/agent-deck/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Agent Deck: tmux-based managers for AI coding agents">
+  <meta name="twitter:description" content="Agent Deck is a Go TUI over tmux with agent status, conversation forks, MCP and a web UI. mmux is a Rust TUI with a live pane, git panel and dev processes.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Agent Deck",
+    "url": "https://mmux.org/vs/agent-deck/",
+    "description": "Agent Deck is a Go TUI over tmux with agent status, conversation forks, MCP and a web UI. mmux is a Rust TUI with a live pane, git panel and dev processes.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Agent Deck", "url": "https://github.com/asheshgoplani/agent-deck" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Agent Deck", "item": "https://mmux.org/vs/agent-deck/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is the main difference between mmux and Agent Deck?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Agent Deck is a list of agent sessions with fleet features around it: forks, MCP and skill management, Docker sandboxes, cost tracking, a web UI and remote control through Telegram or Slack. mmux is a single-project workspace where the selected agent runs live next to a sidebar of agents, terminals and dev processes and a built-in git panel."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Are mmux and Agent Deck free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Both are free and open source. Agent Deck is MIT licensed and written in Go. mmux is GPLv3 licensed and written in Rust."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can mmux fork an agent conversation like Agent Deck?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Agent Deck forks Claude, OpenCode, Pi, Codex and Oh My Pi sessions through each tool's native fork support. mmux has no fork feature; you can start another agent in a new worktree with w or mmux worktree new, but it starts a fresh conversation."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which one works better from a phone?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Agent Deck, if you want an app-like experience: it has a browser UI and a conductor you can message from Telegram or Slack. mmux works over SSH from a phone terminal and switches to a single-column layout under 60 columns, but it has no web UI or chat bridge."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I run Agent Deck and mmux on the same machine?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Agent Deck creates tmux sessions named agentdeck_* and can use its own tmux socket. mmux runs one tmux session per directory and sets its options per session, never globally."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Agent Deck</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Agent Deck</h1>
+      <p class="vs-lede">Both run your AI coding agents inside tmux so they keep going after you close the terminal. Agent Deck is a Go session manager built around a list of agents with status, forks, MCP and skill management, a web UI and a phone-controlled conductor. mmux is a Rust workspace for one project at a time: agents, terminals and dev processes in a sidebar, the selected one live in the main pane, and a git panel next to it.</p>
+      <p class="vs-updated">Last checked against Agent Deck v1.16.28 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Agent Deck if</strong> you run many agents across many projects and want fleet tooling around them: forking a conversation into a new worktree, toggling MCP servers and skills per session, Docker sandboxes, cost tracking, a browser UI, agents on remote SSH hosts, or a conductor you message from Telegram or Slack. It has far more agent-specific features than mmux.</p>
+      <p><strong>Pick mmux if</strong> you want the agent, its dev server, a shell and git in one screen: the agent stays live in the main pane while you scan the sidebar, the built-in git panel stages, commits and pushes, and dev processes start, stop and hand over between worktrees. Closed sessions come back when you reopen the directory, with Claude, Codex, Pi and Grok resuming their conversations.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Agent Deck v1.16.28, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Agent Deck</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Sessions survive closing the terminal or SSH</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>everything runs in a per-directory tmux session</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>each agent is its own tmux session</td>
+            </tr>
+            <tr>
+              <th scope="row">Work in an agent while the overview stays on screen</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>sidebar, live main pane and git panel side by side</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>list with a read-only preview; <code>Enter</code> attaches full screen, <code>Ctrl+Q</code> returns</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent status in the list</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>working, ready, needs input, crashed</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>running, waiting, idle, error; hook-based for Codex and pi</td>
+            </tr>
+            <tr>
+              <th scope="row">Fork an agent conversation</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not supported</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Claude, OpenCode, Pi, Codex, Oh My Pi; into a new worktree by default</td>
+            </tr>
+            <tr>
+              <th scope="row">Git worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>one key; merge back with <code>M</code>; finished ones are cleaned up</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>per session; setup and teardown scripts, sparse checkout, jj</td>
+            </tr>
+            <tr>
+              <th scope="row">Git UI (stage, commit, push, diff)</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>built-in panel with generated commit messages</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>none documented</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers and scripts</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Processes with start, stop, teardown commands and logs</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>run them in a shell session; no process type</td>
+            </tr>
+            <tr>
+              <th scope="row">MCP, skills and cost tracking</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>left to each agent</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>MCP manager and socket pool, skills manager, cost dashboard</td>
+            </tr>
+            <tr>
+              <th scope="row">Docker sandbox for agents</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not built in</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>per session, project bind-mounted</td>
+            </tr>
+            <tr>
+              <th scope="row">Reach it from a phone or browser</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>over SSH, with a single-column layout under 60 columns</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>web UI, Telegram and Slack conductor, remote SSH hosts</td>
+            </tr>
+            <tr>
+              <th scope="row">Reopen after quit or restart</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>agents and terminals restored; Claude, Codex, Pi, Grok resume</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>sessions kept in a registry; restart resumes supported tools</td>
+            </tr>
+            <tr>
+              <th scope="row">Drive it from scripts and agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux send</code>, <code>wait</code>, <code>ask</code>, <code>answer</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>agent-deck session send</code>, JSON output, conductors</td>
+            </tr>
+            <tr>
+              <th scope="row">License, language</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3, Rust</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT, Go</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Agent Deck facts from its README and TUI reference at v1.16.28. "None documented" means we did not find it in those docs, not that it can never be done.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Agent Deck?</h2>
+      <p>Agent Deck describes itself as "mission control for your AI coding agents" and a "terminal session manager for AI coding agents" <a href="#src-1">[1]</a>. It is an open source project hosted at github.com/asheshgoplani/agent-deck, written in Go with Bubble Tea, MIT licensed, and runs on macOS, Linux and Windows through WSL <a href="#src-1">[1]</a><a href="#src-4">[4]</a>. You install it with a shell script, Homebrew or <code>go install</code>, and it needs tmux. The repository mentions no paid tier. Usage telemetry is opt-in and off until you agree <a href="#src-1">[1]</a>.</p>
+      <p>The TUI is a grouped list of sessions with a preview pane that shows the last lines of the selected session and refreshes every two seconds <a href="#src-2">[2]</a>. Each session is a tmux session; <code>Enter</code> attaches to it and <code>Ctrl+Q</code> detaches back to the list. It knows about Claude Code, Gemini CLI, OpenCode, Codex, Copilot, Cursor, pi and several more, with different levels of integration per tool, and any other command can be added as a custom tool <a href="#src-1">[1]</a>.</p>
+      <p>Around that list it adds conversation forking, an MCP manager with a shared socket pool, a skills manager, Docker sandboxes, cost tracking, a web UI (<code>agent-deck web</code>), remote instances over SSH, and "conductors": long-running agent sessions that watch the others and can be reached through Telegram or Slack <a href="#src-1">[1]</a><a href="#src-3">[3]</a><a href="#src-5">[5]</a>. The project releases often; v1.16.28 came out on 2026-10-10 <a href="#src-6">[6]</a>.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Agent Deck is better</h2>
+      <ul>
+        <li><strong>Forking conversations.</strong> <code>f</code> forks the selected session through the tool's own fork support, and by default puts the fork in a new worktree with the parent's uncommitted changes <a href="#src-1">[1]</a>. mmux has no fork.</li>
+        <li><strong>Agent configuration tooling.</strong> MCP servers and Claude skills can be attached per session or per project from the TUI, a socket pool shares MCP processes across sessions, and per-group Claude accounts are supported <a href="#src-1">[1]</a>. mmux leaves all of that to each agent's own config.</li>
+        <li><strong>Remote and phone access.</strong> A browser UI, Telegram and Slack bridges through a conductor, and management of agent-deck instances on other machines over SSH <a href="#src-1">[1]</a><a href="#src-3">[3]</a>. mmux is reached over SSH like any terminal program and has no web UI.</li>
+        <li><strong>Docker sandboxes.</strong> A session can run in a container with the project mounted, and <code>agent-deck try</code> runs a one-shot sandboxed task <a href="#src-5">[5]</a>. mmux runs agents directly on the host.</li>
+        <li><strong>Cost tracking.</strong> A dashboard (<code>$</code>) shows token spend by day, session and model, with optional budget limits <a href="#src-1">[1]</a>. mmux does not track cost.</li>
+        <li><strong>More worktree options.</strong> Sparse checkout for large monorepos, Jujutsu workspaces, bare-repository layouts, and setup plus teardown scripts per repository <a href="#src-1">[1]</a>.</li>
+        <li><strong>Many projects in one list.</strong> Groups, fuzzy search, a global search across Claude conversations, archiving and profiles are built for dozens of sessions at once <a href="#src-1">[1]</a><a href="#src-2">[2]</a>.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>The agent stays on screen.</strong> The selected agent, terminal or process runs live in the main pane next to the sidebar, so you type into it without leaving the overview. Agent Deck shows a preview and switches to the full tmux session when you attach.</li>
+        <li><strong>Git is part of the window.</strong> The git panel stages files and folders, commits with a suggested message, pushes, pulls, switches branches, shows diffs, and can schedule a commit for later. No separate tool needed.</li>
+        <li><strong>Dev processes are first class.</strong> Processes have start, stop and restart keys, an optional <code>stop:</code> teardown such as <code>docker compose down</code>, and <code>mmux read</code> for their logs. Across worktrees only one checkout runs a given process at a time, so ports stay the same.</li>
+        <li><strong>Worktrees as project boxes.</strong> <code>w</code> cuts a worktree with a generated name that opens as its own box with its own agents, terminals and git panel. <code>M</code> merges it back, and finished worktrees (merged or pushed, clean, idle) are removed after 30 minutes by default.</li>
+        <li><strong>Quit and come back.</strong> After <code>q</code>, a crash or an update restart, reopening the directory restores the agents and terminals that were open, and Claude, Codex, Pi and Grok resume their conversations.</li>
+        <li><strong>Desktop notifications over SSH.</strong> Bells and notification escapes from any session become desktop popups on the machine your terminal runs on, because mmux sends them as escape sequences through tmux.</li>
+        <li><strong>Small surface.</strong> One binary, a YAML file per project and an optional global one. Fewer features also means less to configure.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Agent Deck when</h3>
+          <ul>
+            <li>you supervise ten or more agents across many repositories at once</li>
+            <li>you want to fork a conversation to try a second approach</li>
+            <li>you manage MCP servers, skills or Claude accounts per session</li>
+            <li>you want to check on agents from a browser, Telegram or Slack</li>
+            <li>agents should run in Docker containers, or you need cost tracking</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>you work in one project (or one workspace of projects) at a time</li>
+            <li>you want the agent, its dev server and git visible in one window</li>
+            <li>you start and stop dev servers next to your agents, across worktrees</li>
+            <li>you work over SSH and want notifications on your local desktop</li>
+            <li>you want quit-and-reopen to bring your agents back mid-conversation</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from Agent Deck to mmux</h2>
+      <ol>
+        <li>Install mmux. It needs tmux, which you already have for Agent Deck.</li>
+        <li>In each project, run <code>mmux init</code>. The wizard offers presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, including their auto-approve modes. Other tools go under <code>agents:</code> in <code>~/.mmux/config.yaml</code> with a <code>cmd</code> and <code>args</code>.</li>
+        <li>If you used <code>.agent-deck/worktree-setup.sh</code>, move it to <code>worktrees: setup:</code> in <code>mmux.yaml</code>, and list gitignored files to copy under <code>worktrees: copy:</code>.</li>
+        <li>Add dev servers as <code>processes:</code> in <code>mmux.yaml</code> instead of running them in shell sessions.</li>
+        <li>For several repositories in one sidebar, run <code>mmux init workspace</code> in their parent directory.</li>
+        <li>Scripts that called <code>agent-deck session send</code> can use <code>mmux send</code> and <code>mmux wait</code>.</li>
+      </ol>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh
+cd ~/some/project
+mmux init
+mmux</code></pre>
+      <p>Your conversations live in each agent's own history, not in Agent Deck, so nothing needs exporting. The two tools can also stay installed side by side: Agent Deck names its tmux sessions <code>agentdeck_*</code> <a href="#src-1">[1]</a>, and mmux sets its tmux options per session, never globally.</p>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>What is the main difference between mmux and Agent Deck?</summary>
+        <div class="vs-faq-a"><p>Agent Deck is a list of agent sessions with fleet features around it: forks, MCP and skill management, Docker sandboxes, cost tracking, a web UI and remote control through Telegram or Slack. mmux is a single-project workspace where the selected agent runs live next to a sidebar of agents, terminals and dev processes and a built-in git panel.</p></div>
+      </details>
+      <details>
+        <summary>Are mmux and Agent Deck free?</summary>
+        <div class="vs-faq-a"><p>Yes. Both are free and open source. Agent Deck is MIT licensed and written in Go. mmux is GPLv3 licensed and written in Rust.</p></div>
+      </details>
+      <details>
+        <summary>Can mmux fork an agent conversation like Agent Deck?</summary>
+        <div class="vs-faq-a"><p>No. Agent Deck forks Claude, OpenCode, Pi, Codex and Oh My Pi sessions through each tool's native fork support. mmux has no fork feature; you can start another agent in a new worktree with w or mmux worktree new, but it starts a fresh conversation.</p></div>
+      </details>
+      <details>
+        <summary>Which one works better from a phone?</summary>
+        <div class="vs-faq-a"><p>Agent Deck, if you want an app-like experience: it has a browser UI and a conductor you can message from Telegram or Slack. mmux works over SSH from a phone terminal and switches to a single-column layout under 60 columns, but it has no web UI or chat bridge.</p></div>
+      </details>
+      <details>
+        <summary>Can I run Agent Deck and mmux on the same machine?</summary>
+        <div class="vs-faq-a"><p>Yes. Agent Deck creates tmux sessions named agentdeck_* and can use its own tmux socket. mmux runs one tmux session per directory and sets its options per session, never globally.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li id="src-1"><a href="https://github.com/asheshgoplani/agent-deck/blob/main/README.md">Agent Deck README (main branch, v1.16.28)</a></li>
+        <li id="src-2"><a href="https://github.com/asheshgoplani/agent-deck/blob/main/skills/agent-deck/references/tui-reference.md">Agent Deck TUI reference</a></li>
+        <li id="src-3"><a href="https://github.com/asheshgoplani/agent-deck/tree/main/docs/conductor">Agent Deck conductor docs</a></li>
+        <li id="src-4"><a href="https://github.com/asheshgoplani/agent-deck/blob/main/LICENSE">Agent Deck LICENSE (MIT)</a></li>
+        <li id="src-5"><a href="https://github.com/asheshgoplani/agent-deck/blob/main/skills/agent-deck/references/sandbox.md">Agent Deck Docker sandbox reference</a></li>
+        <li id="src-6"><a href="https://github.com/asheshgoplani/agent-deck/releases/tag/v1.16.28">Agent Deck release v1.16.28</a></li>
+        <li id="src-7"><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation</a> (usage, configuration, notifications)</li>
+      </ol>
+    </section>
+
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
