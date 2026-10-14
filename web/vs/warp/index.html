@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<!-- mmux vs Warp. See web/vs/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Warp: AI terminal or persistent agent multiplexer</title>
+  <meta name="description" content="mmux vs Warp: Warp is an AI terminal app with a built-in agent, cloud agents and metered usage. mmux keeps the agent CLIs you already use running in tmux, free.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/warp/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Warp: AI terminal or persistent agent multiplexer">
+  <meta property="og:description" content="mmux vs Warp: Warp is an AI terminal app with a built-in agent, cloud agents and metered usage. mmux keeps the agent CLIs you already use running in tmux, free.">
+  <meta property="og:url" content="https://mmux.org/vs/warp/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Warp: AI terminal or persistent agent multiplexer">
+  <meta name="twitter:description" content="mmux vs Warp: Warp is an AI terminal app with a built-in agent, cloud agents and metered usage. mmux keeps the agent CLIs you already use running in tmux, free.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Warp",
+    "url": "https://mmux.org/vs/warp/",
+    "description": "mmux vs Warp: Warp is an AI terminal app with a built-in agent, cloud agents and metered usage. mmux keeps the agent CLIs you already use running in tmux, free.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Warp", "url": "https://www.warp.dev/", "sameAs": "https://github.com/warpdotdev/warp" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Warp", "item": "https://mmux.org/vs/warp/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Warp a replacement for mmux, or the other way around?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Neither, fully. Warp is a terminal application with its own AI agent and cloud agents. mmux is a program that runs inside a terminal and keeps your agents, shells and dev processes alive in a tmux session. You can run mmux inside Warp." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do my agents keep running when I close Warp?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Warp's session restoration brings back windows, tabs, panes and recent Blocks when you relaunch it. Its docs describe this as a saved snapshot and do not say that running processes survive quitting the app. Inside mmux, agents keep running in the tmux session after you close the terminal window, and you rejoin with mmux attach." }
+      },
+      {
+        "@type": "Question",
+        "name": "How does Warp pricing work in 2026?",
+        "acceptedAnswer": { "@type": "Answer", "text": "As of October 2026 the pricing page lists a Free plan, Build at 20 USD per month with 20 USD of agent usage at API rates, Max at 200 USD per month with 200 USD of usage, and Business at 50 USD per seat. Warp's October 2025 announcement counted the Build allowance in credits (1,500 per month); the current page states it in dollars. The Free plan supports bringing your own API key. mmux has no plans or usage fees; you pay only for the agent CLIs you run in it." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use Claude Code or Codex in both?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Warp detects Claude Code, Codex, OpenCode, Gemini CLI and other CLI agents and adds features such as a rich input editor, code review comments and, for Claude Code, Codex and OpenCode, notifications. mmux launches any agent CLI from its config, ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, and resumes Claude, Codex, Pi and Grok conversations when you reopen a directory." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does mmux run on Windows like Warp does?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. mmux ships for macOS (Apple Silicon) and Linux (arm64 and x86_64) and needs tmux. Warp runs natively on macOS, Windows and Linux." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is Warp open source?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes, the Warp client is on GitHub. Its UI framework crates are MIT licensed and the rest of the code is AGPLv3. mmux is GPLv3." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Warp</span></li>
+      </ol>
+    </nav>
+
+    <!-- title + lede -->
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Warp</h1>
+      <p class="vs-lede">Warp is a desktop terminal app with its own AI agent, cloud agents and a paid usage model. mmux is a program you run inside any terminal that keeps the agent CLIs you already use, plus shells and dev processes, alive in a per-directory tmux session.</p>
+      <p class="vs-updated">Last checked against Warp v0.2026.10.07 on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <!-- TL;DR -->
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Warp if</strong> you want a new terminal application with an AI agent built in, a choice of hosted models, cloud agents that run while your laptop is closed, or native Windows support, and you are fine with a usage-based plan for the AI parts.</p>
+      <p><strong>Pick mmux if</strong> you already work with agent CLIs such as Claude Code or Codex and want them, your shells and your dev servers to keep running when you close the window or lose SSH, in the terminal you already use, without an account or a usage bill on top.</p>
+      <p>They are not exclusive: mmux is a terminal program, so it runs inside a Warp tab like any other.</p>
+    </section>
+
+    <!-- comparison table -->
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Warp v0.2026.10.07, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Warp</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">What it is</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>a TUI that runs inside any terminal, backed by tmux</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>a desktop terminal app with a built-in AI agent</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents keep running after you close the window</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>tmux session survives closing the terminal or dropping SSH</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>restores windows, tabs, panes and recent Blocks on relaunch; running processes are not described as surviving</td>
+            </tr>
+            <tr>
+              <th scope="row">Restore after quit or restart</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Claude, Codex, Pi and Grok agents resume their conversation; terminals reopen in place</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>layout and recent output come back; the docs do not cover resuming agent conversations</td>
+            </tr>
+            <tr>
+              <th scope="row">Built-in AI agent</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>launches agent CLIs you install</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Warp Agent with curated models from OpenAI, Anthropic and Google</td>
+            </tr>
+            <tr>
+              <th scope="row">Third-party CLI agents</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>any CLI; presets for Claude, Codex, Pi, Gemini, Amp, opencode, Grok</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>detects Claude Code, Codex, OpenCode, Gemini CLI and more; adds rich input and review comments</td>
+            </tr>
+            <tr>
+              <th scope="row">Cloud agents</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>everything runs on your machine or the host you SSH into</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>on Warp-hosted compute or your own infrastructure, triggered from Slack, Linear, GitHub, schedules</td>
+            </tr>
+            <tr>
+              <th scope="row">"Agent needs you" notifications</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>green sidebar row plus desktop notification from the bell, <code>OSC 9</code> or <code>OSC 777</code>, also over SSH</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>for Claude Code, Codex and OpenCode after a plugin or config step; not yet for other CLI agents</td>
+            </tr>
+            <tr>
+              <th scope="row">Remote machines and phones</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>runs on the remote host over plain SSH; single-column layout for phone-width terminals</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>SSH extension installs a helper on Linux or macOS hosts; Remote Control lets you steer a CLI agent from another device</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev processes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>start, stop, restart and tail processes from <code>mmux.yaml</code></td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Tab Configs save session setups; no separate process list documented</td>
+            </tr>
+            <tr>
+              <th scope="row">Git and worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>native git panel; each worktree opens as its own project box</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>inline code review for agent changes; no git panel or worktree manager documented</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS (Apple Silicon), Linux arm64 and x86_64; needs tmux</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS, Windows and Linux (x86_64 and ARM64)</td>
+            </tr>
+            <tr>
+              <th scope="row">Account and price</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>no account; free</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>account optional for the terminal; Free plan, Build 20 USD/month, Max 200 USD/month, Business 50 USD/seat</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>MIT (UI framework) and AGPLv3 (rest of the client)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Warp facts from docs.warp.dev, warp.dev/pricing and the warpdotdev/warp repository, checked on 2026-10-14. Warp ships weekly, so details change often.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Warp?</h2>
+      <p>Warp describes itself as "an agentic development environment, born out of the terminal" [1]. It is a desktop terminal application for macOS, Windows and Linux [2] with the Warp Agent built in, which uses a curated list of models from providers such as OpenAI, Anthropic and Google [3]. The same agent is also available as a standalone <code>warp</code> CLI for other terminals, which requires logging in to a Warp account [4]. Inside the app, Warp detects third-party CLI agents such as Claude Code, Codex, OpenCode and Gemini CLI and adds a rich input editor, code review comments, vertical tab metadata and Remote Control [5].</p>
+      <p>Beyond the desktop, Warp runs cloud agents on Warp-hosted compute or your own infrastructure, started by Slack messages, Linear or GitHub events, CI failures or schedules [6]. The homepage now leads with "Warp Factories", fleets of agents built on that platform [7].</p>
+      <p>The terminal itself works without an account [2]. AI usage is metered: as of October 2026 the pricing page lists a Free plan with pay-as-you-go usage and bring-your-own-key, Build at 20 USD per month with 20 USD of agent usage at API rates, Max at 200 USD per month, and Business at 50 USD per seat [8]. Warp's October 2025 pricing announcement counted the Build allowance as 1,500 credits per month [9]; the current page states it in dollars. The client source is on GitHub, with the UI framework under MIT and the rest under AGPLv3 [1].</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Warp is better</h2>
+      <ul>
+        <li><strong>An agent out of the box.</strong> Warp ships its own agent and lets you pick between hosted models [3]. mmux has no agent of its own; it launches CLIs you install and pay for separately.</li>
+        <li><strong>Cloud agents.</strong> Warp can run agents away from your laptop, on its compute or yours, and start them from Slack, Linear, GitHub, CI or a schedule [6]. mmux runs everything on the machine it is started on.</li>
+        <li><strong>Windows.</strong> Warp runs natively on Windows 10 (version 1903) or later, x86_64 and ARM64 [2]. mmux supports macOS and Linux only.</li>
+        <li><strong>Editing and reviewing agent work.</strong> Warp adds a rich input editor and inline code review comments to supported CLI agents [5]. mmux shows the agent's own terminal UI unchanged and offers a git panel with a diff preview instead of review comments.</li>
+        <li><strong>A full terminal app.</strong> Warp is the terminal: tabs, split panes, vertical tabs and session restoration are part of the app [10][11]. mmux needs a terminal to run in and tmux on the machine.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Agents keep running when the window closes.</strong> mmux runs inside an invisible, per-directory tmux session, so closing the terminal or dropping SSH detaches without stopping anything. <code>mmux attach</code> rejoins from anywhere. Warp's session restoration brings back layout and recent output, and its docs do not describe processes surviving a quit [11].</li>
+        <li><strong>Conversations come back after a quit or restart.</strong> Reopening a directory resumes Claude, Codex, Pi and Grok agents in their previous conversation and reopens terminals where you left them.</li>
+        <li><strong>Any terminal, any SSH session.</strong> mmux runs in whatever terminal you use, including on a remote host over plain SSH, and switches to a single-column layout under 60 columns for a phone. Notifications travel as terminal escapes, so they reach your desktop across the SSH hop.</li>
+        <li><strong>Notifications for every agent.</strong> Any program that rings the bell or emits <code>OSC 9</code> or <code>OSC 777</code> lights up its sidebar row and raises a desktop notification. Warp's agent notifications cover Claude Code, Codex and OpenCode [5].</li>
+        <li><strong>Dev processes and worktrees in one place.</strong> Processes from <code>mmux.yaml</code> start, stop and restart from the sidebar. A git worktree opens as its own project box, and only one checkout of a repository runs a given process at a time, so ports do not clash.</li>
+        <li><strong>No account, no usage bill.</strong> mmux is free and GPLv3. The only AI cost is whatever the agent CLIs you run in it cost you.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Warp when</h3>
+          <ul>
+            <li>You want an AI agent built into the terminal without installing separate CLIs.</li>
+            <li>Agents should run in the cloud, triggered by Slack, Linear, GitHub or a schedule.</li>
+            <li>You work on Windows.</li>
+            <li>You want to replace your terminal app, not add a tool inside it.</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>You run Claude Code, Codex or other agent CLIs and want them to outlive the terminal window.</li>
+            <li>You work on remote machines over SSH, sometimes from a phone.</li>
+            <li>You want agents, shells, dev servers and git for a project in one sidebar.</li>
+            <li>You want to keep your current terminal and avoid another subscription.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using Warp and mmux together</h2>
+      <p>mmux is a full-screen terminal program, so a Warp tab can host it. Warp then sees one program in that tab: its per-agent features (rich input, review comments, agent notifications) apply to agents started directly in a Warp tab, not to the ones running inside mmux. mmux's own sidebar states and notifications take over there.</p>
+      <ol>
+        <li>Install mmux and open a project directory in a Warp tab.</li>
+        <li>Run <code>mmux init</code> and pick your agents, then <code>mmux</code> to open the session.</li>
+        <li>Optionally add Warp's own agent CLI as an mmux agent in <code>~/.mmux/config.yaml</code> (it needs a Warp login [4]).</li>
+        <li>Close the Warp window whenever you like; run <code>mmux attach</code> later, from Warp or any other terminal, to rejoin.</li>
+      </ol>
+      <pre><code># ~/.mmux/config.yaml
+agents:
+  - name: Claude
+    cmd: claude
+  - name: Warp
+    cmd: warp</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Warp a replacement for mmux, or the other way around?</summary>
+        <div class="vs-faq-a"><p>Neither, fully. Warp is a terminal application with its own AI agent and cloud agents. mmux is a program that runs inside a terminal and keeps your agents, shells and dev processes alive in a tmux session. You can run mmux inside Warp.</p></div>
+      </details>
+      <details>
+        <summary>Do my agents keep running when I close Warp?</summary>
+        <div class="vs-faq-a"><p>Warp's session restoration brings back windows, tabs, panes and recent Blocks when you relaunch it. Its docs describe this as a saved snapshot and do not say that running processes survive quitting the app. Inside mmux, agents keep running in the tmux session after you close the terminal window, and you rejoin with <code>mmux attach</code>.</p></div>
+      </details>
+      <details>
+        <summary>How does Warp pricing work in 2026?</summary>
+        <div class="vs-faq-a"><p>As of October 2026 the pricing page lists a Free plan, Build at 20 USD per month with 20 USD of agent usage at API rates, Max at 200 USD per month with 200 USD of usage, and Business at 50 USD per seat. Warp's October 2025 announcement counted the Build allowance in credits (1,500 per month); the current page states it in dollars. The Free plan supports bringing your own API key. mmux has no plans or usage fees; you pay only for the agent CLIs you run in it.</p></div>
+      </details>
+      <details>
+        <summary>Can I use Claude Code or Codex in both?</summary>
+        <div class="vs-faq-a"><p>Yes. Warp detects Claude Code, Codex, OpenCode, Gemini CLI and other CLI agents and adds features such as a rich input editor, code review comments and, for Claude Code, Codex and OpenCode, notifications. mmux launches any agent CLI from its config, ships presets for Claude, Codex, Pi, Gemini, Amp, opencode and Grok, and resumes Claude, Codex, Pi and Grok conversations when you reopen a directory.</p></div>
+      </details>
+      <details>
+        <summary>Does mmux run on Windows like Warp does?</summary>
+        <div class="vs-faq-a"><p>No. mmux ships for macOS (Apple Silicon) and Linux (arm64 and x86_64) and needs tmux. Warp runs natively on macOS, Windows and Linux.</p></div>
+      </details>
+      <details>
+        <summary>Is Warp open source?</summary>
+        <div class="vs-faq-a"><p>Yes, the Warp client is on GitHub. Its UI framework crates are MIT licensed and the rest of the code is AGPLv3. mmux is GPLv3.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://github.com/warpdotdev/warp">warpdotdev/warp on GitHub: README and license</a></li>
+        <li><a href="https://docs.warp.dev/getting-started/quickstart/installation-and-setup/">Warp documentation: installation and setup</a></li>
+        <li><a href="https://docs.warp.dev/agents/getting-started/faqs/">Warp documentation: agent FAQs (models, usage, BYOK)</a></li>
+        <li><a href="https://docs.warp.dev/agents/cli/quickstart/">Warp documentation: Warp Agent CLI quickstart</a></li>
+        <li><a href="https://docs.warp.dev/agents/cli-agents/overview/">Warp documentation: third-party CLI agents</a></li>
+        <li><a href="https://docs.warp.dev/platform/">Warp documentation: cloud agents</a></li>
+        <li><a href="https://www.warp.dev/">Warp homepage</a></li>
+        <li><a href="https://www.warp.dev/pricing">Warp pricing</a></li>
+        <li><a href="https://www.warp.dev/blog/warp-new-pricing-flexibility-byok">Warp blog: Changes to Warp's pricing, introducing Build (October 2025)</a></li>
+        <li><a href="https://docs.warp.dev/terminal/windows/">Warp documentation: windows and tabs</a></li>
+        <li><a href="https://docs.warp.dev/terminal/sessions/session-restoration/">Warp documentation: session restoration</a></li>
+        <li><a href="https://docs.warp.dev/changelog/2026/">Warp changelog 2026 (v0.2026.10.07)</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
