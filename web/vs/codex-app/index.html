@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<!-- Comparison page: mmux vs the OpenAI Codex app. See web/vs/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs OpenAI Codex app: parallel agents in worktrees</title>
+  <meta name="description" content="mmux vs OpenAI's Codex app, now part of the ChatGPT desktop app: parallel agents in git worktrees, diff review, SSH persistence, platforms and pricing.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/codex-app/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs OpenAI Codex app: parallel agents in worktrees">
+  <meta property="og:description" content="mmux vs OpenAI's Codex app, now part of the ChatGPT desktop app: parallel agents in git worktrees, diff review, SSH persistence, platforms and pricing.">
+  <meta property="og:url" content="https://mmux.org/vs/codex-app/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs OpenAI Codex app: parallel agents in worktrees">
+  <meta name="twitter:description" content="mmux vs OpenAI's Codex app, now part of the ChatGPT desktop app: parallel agents in git worktrees, diff review, SSH persistence, platforms and pricing.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Codex app",
+    "url": "https://mmux.org/vs/codex-app/",
+    "description": "mmux vs OpenAI's Codex app, now part of the ChatGPT desktop app: parallel agents in git worktrees, diff review, SSH persistence, platforms and pricing.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Codex app", "url": "https://learn.chatgpt.com/docs/app" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Codex app", "item": "https://mmux.org/vs/codex-app/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is the Codex app still a separate app?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. OpenAI launched the Codex app for macOS in February 2026 and, on July 9, 2026, released a new ChatGPT desktop app for macOS and Windows that combines Chat, Work and Codex. OpenAI's release note says Codex app users move to it by updating as usual. The Codex features (projects, parallel chats, worktrees, the review pane) live on inside it, and OpenAI's docs now call it the ChatGPT desktop app." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can mmux run OpenAI Codex?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes, the Codex CLI. Codex is one of mmux's built-in agent presets, with normal, auto and danger launch modes. mmux shows when a Codex agent is working or ready, resumes its conversation when you reopen a directory, and mmux last reads its reply from the Codex transcript. It does not run the ChatGPT desktop app itself, which is a graphical program." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can the Codex app run Claude Code or other agents?",
+        "acceptedAnswer": { "@type": "Answer", "text": "OpenAI's docs describe the app running Codex with OpenAI's models and do not describe launching other vendors' agents as chats. Each chat has an integrated terminal, so you can start any CLI there, but the app does not track it as an agent. mmux treats Claude, Codex, Gemini, Amp, opencode, Pi, Grok or any other command as an agent in the same sidebar." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do agents keep running when I close the window?",
+        "acceptedAnswer": { "@type": "Answer", "text": "In mmux, yes: closing the terminal or dropping SSH only detaches, and everything keeps running in an invisible tmux session until you reattach. For the Codex app, OpenAI's docs say scheduled tasks need the computer on and the app running, and remote access stops when the host closes the app. Codex cloud tasks run on OpenAI's servers instead." }
+      },
+      {
+        "@type": "Question",
+        "name": "What do they cost?",
+        "acceptedAnswer": { "@type": "Answer", "text": "mmux is free and GPLv3 licensed; each agent you run is billed by its own provider. Codex in the ChatGPT desktop app is included in ChatGPT plans: Free at $0, Go at $8, Plus at $20, Pro from $100 per month, and Business at $20 per user per month billed annually, per OpenAI's pricing page in October 2026. It also works with an API key billed at API rates, without cloud features." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Codex app</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Codex app</h1>
+      <p class="vs-lede">mmux is a terminal multiplexer that keeps any CLI coding agent, shell and dev server running in a persistent, per-directory tmux session. OpenAI's Codex app, launched in February 2026 and part of the ChatGPT desktop app since July 2026, is a graphical command center for parallel Codex chats in git worktrees. Both run agents side by side in worktrees; they differ in where they live (a terminal on any machine vs a desktop window) and in which agents they run (any CLI vs Codex).</p>
+      <p class="vs-updated">Last checked against OpenAI's Codex app documentation (ChatGPT desktop app, Codex CLI 0.162.1) on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick the Codex app if</strong> you work with Codex on a desktop and want a graphical review loop: inline comments on diffs, chunk-level staging, pull requests and PR review without leaving the app, plus cloud tasks, scheduled tasks and a native Windows build.</p>
+      <p><strong>Pick mmux if</strong> you run several different agent CLIs (Claude, Codex, Gemini and others) and want them, your shells and your dev servers in one terminal UI that keeps running on a laptop or a remote server after you close the terminal or lose SSH.</p>
+      <p>They also combine: the Codex CLI is a built-in mmux agent preset, and the desktop app can open the same repository for review.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and the Codex app in the ChatGPT desktop app, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Codex app</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Interface</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>TUI in any terminal, keyboard and mouse</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Desktop GUI, plus ChatGPT mobile as a remote</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents it runs</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Any CLI; presets for Claude, Codex, Gemini, Amp, opencode, Pi, Grok</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Codex chats; other CLIs only as commands in a chat's terminal</td>
+            </tr>
+            <tr>
+              <th scope="row">Parallel agents in git worktrees</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Each worktree is its own project box on a branch, under <code>~/.mmux/worktrees/</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Managed worktrees per chat, detached HEAD, Handoff to the local checkout</td>
+            </tr>
+            <tr>
+              <th scope="row">Worktree cleanup</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Removes finished ones (clean, idle, merged or pushed) after 30 min</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Keeps the 15 most recent, snapshots before deleting</td>
+            </tr>
+            <tr>
+              <th scope="row">Diff review and staging</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Diff preview, whole-file staging, no hunks</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Inline comments for Codex, stage or revert chunks</td>
+            </tr>
+            <tr>
+              <th scope="row">Pull requests</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>Commit, push and merge only</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Create PRs and review them in the side panel</td>
+            </tr>
+            <tr>
+              <th scope="row">Keeps running when the window closes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Detach or drop SSH, the tmux session keeps going</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Local scheduled tasks and remote access need the app running</td>
+            </tr>
+            <tr>
+              <th scope="row">Remote machines</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Runs on the server itself; phone layout over SSH</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>SSH remote projects; mobile app controls a Mac or Windows host</td>
+            </tr>
+            <tr>
+              <th scope="row">Dev servers and processes</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Sidebar processes with teardown; one dev stack shared across worktrees</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Top-bar actions run in a chat's terminal</td>
+            </tr>
+            <tr>
+              <th scope="row">Cloud and scheduled tasks</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>Local only; scheduled commits, not scheduled agent runs</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>Codex cloud tasks and scheduled tasks</td>
+            </tr>
+            <tr>
+              <th scope="row">Platforms</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS (Apple Silicon), Linux (arm64, x86_64); needs tmux</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>macOS, Windows, Linux (preview)</td>
+            </tr>
+            <tr>
+              <th scope="row">Price and account</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Free, no account; agents billed by their providers</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>ChatGPT plan (Free $0 to Pro from $100/month) or API key</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>Proprietary app; the Codex CLI is Apache-2.0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Codex app facts from OpenAI's docs at learn.chatgpt.com (no desktop app version number is published there) and OpenAI's release notes. OpenAI publishes no source for the desktop app; "proprietary" reflects that.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is the Codex app?</h2>
+      <p>OpenAI released the Codex app for macOS in February 2026 as a place to run several Codex agents in parallel, each in its own chat, organized by project [13]. On July 9, 2026, OpenAI shipped a new ChatGPT desktop app for macOS and Windows that combines Chat, Work and Codex; existing Codex app users move to it by updating [12]. OpenAI's documentation now describes these features under the ChatGPT desktop app [1], with a Windows build from the Microsoft Store [10] and a Linux build in preview for Ubuntu, Debian, Fedora and Arch [11]. This page keeps calling it the Codex app, since that is the part being compared.</p>
+      <p>A Codex project points at a local folder (or several, with one primary repository) or at a project on an SSH host [8][5]. Each chat can run in the local checkout or in a managed git worktree that Codex creates under <code>$CODEX_HOME/worktrees</code>; Handoff moves a chat and its code between the two, and Codex removes old managed worktrees beyond the 15 most recent after saving a snapshot [2]. Each chat has an integrated terminal scoped to its project or worktree [4], and the review pane shows the diff, takes inline comments for Codex, stages or reverts chunks, commits, pushes and opens pull requests [3]. The app also offers scheduled tasks [6], cloud tasks, notifications when a turn finishes or needs approval [7], and sign-in with a ChatGPT plan or an API key [9].</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where the Codex app is better</h2>
+      <ul>
+        <li><strong>The review loop.</strong> You can comment on a diff line and have Codex address it, stage or revert individual chunks, open a pull request and review PRs in a side panel [3][12]. mmux's git panel stages whole files or directories, has no inline comments and does not create pull requests.</li>
+        <li><strong>Worktrees with a safety net.</strong> Codex snapshots a managed worktree before deleting it and restores it when you reopen the chat, and Handoff moves work between the worktree and your local checkout [2]. mmux removes only finished worktrees whose commits are merged or pushed, but has no snapshot or handoff.</li>
+        <li><strong>Work beyond your machine.</strong> Codex cloud tasks run in OpenAI's environments, scheduled tasks start chats on a timer [6], and the ChatGPT mobile app can drive a connected Mac or Windows host [5]. mmux runs only where you start it and schedules commits, not agent runs.</li>
+        <li><strong>Windows and no terminal required.</strong> There is a native Windows app with a Windows sandbox and optional WSL [10], and the whole interface is a desktop GUI. mmux is a TUI for macOS and Linux that needs tmux.</li>
+        <li><strong>Built-in sandboxing.</strong> The app ships its own sandbox and approval modes (a native Windows sandbox, and bubblewrap when the agent runs in WSL2) [10]. mmux does not sandbox; it starts each agent with that agent's own permission flags.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Any agent, side by side.</strong> mmux ships presets for Claude, Codex, Gemini, Amp, opencode, Pi and Grok, and any other command can be an agent. A Claude agent and a Codex agent can work in two worktrees of the same repository in one sidebar, each row turning green when it is done.</li>
+        <li><strong>Survives the window and the connection.</strong> The TUI runs inside an invisible per-directory tmux session, so closing the terminal or dropping SSH only detaches; <code>mmux attach</code> rejoins from anywhere. After a quit or crash, Claude, Codex, Pi and Grok agents resume their conversations.</li>
+        <li><strong>Lives where the code lives.</strong> Run mmux on a remote dev box and it keeps working there with nothing attached; under 60 columns it switches to a single-column layout for SSH from a phone, and desktop notifications travel over SSH to the machine your terminal runs on.</li>
+        <li><strong>Dev servers as first-class rows.</strong> Processes sit in the sidebar with start, stop and a <code>stop:</code> teardown command. Only one checkout of a repository runs a given process at a time, so starting <strong>Dev</strong> in a worktree stops it in the main clone first and <code>localhost:3000</code> is always the branch you last started.</li>
+        <li><strong>Scriptable by agents.</strong> Every running mmux has a control socket: <code>mmux ask</code>, <code>mmux wait</code>, <code>mmux read</code> and <code>mmux worktree new --prompt</code> let one agent start, prompt and read another, visibly in your sidebar.</li>
+        <li><strong>Open source, no account.</strong> mmux is GPLv3, a single binary, and needs no sign-in of its own.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose the Codex app when</h3>
+          <ul>
+            <li>Codex is your only agent and you have a ChatGPT plan.</li>
+            <li>You review agent work line by line and want PRs opened from the same window.</li>
+            <li>You want tasks to run in the cloud or on a schedule.</li>
+            <li>You are on Windows, or you prefer a GUI to a terminal.</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>You mix agents from different vendors on the same repository.</li>
+            <li>Your agents run on a remote server you reach over SSH, sometimes from a phone.</li>
+            <li>Dev servers, shells and agents should live in one persistent session that outlasts the terminal.</li>
+            <li>You want scripts or agents to start, prompt and wait for other agents.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Using the Codex app and mmux together</h2>
+      <ol>
+        <li>Turn on the Codex preset in mmux with <code>mmux agents</code> (or <code>a</code> in the sidebar), picking the normal, auto or danger mode.</li>
+        <li>Start Codex in its own worktree, from the TUI with <code>w</code> or from a script.</li>
+        <li>When you want the Codex app's review pane or a pull request, add the repository as a local project in the desktop app and review there; mmux's git panel picks up commits made elsewhere on its own.</li>
+      </ol>
+      <pre><code>mmux worktree new fix-auth --agent codex --prompt "fix the login bug"
+mmux ask --agent codex "why does /health 500?"</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is the Codex app still a separate app?</summary>
+        <div class="vs-faq-a"><p>No. OpenAI launched the Codex app for macOS in February 2026 and, on July 9, 2026, released a new ChatGPT desktop app for macOS and Windows that combines Chat, Work and Codex. OpenAI's release note says Codex app users move to it by updating as usual. The Codex features (projects, parallel chats, worktrees, the review pane) live on inside it, and OpenAI's docs now call it the ChatGPT desktop app.</p></div>
+      </details>
+      <details>
+        <summary>Can mmux run OpenAI Codex?</summary>
+        <div class="vs-faq-a"><p>Yes, the Codex CLI. Codex is one of mmux's built-in agent presets, with normal, auto and danger launch modes. mmux shows when a Codex agent is working or ready, resumes its conversation when you reopen a directory, and <code>mmux last</code> reads its reply from the Codex transcript. It does not run the ChatGPT desktop app itself, which is a graphical program.</p></div>
+      </details>
+      <details>
+        <summary>Can the Codex app run Claude Code or other agents?</summary>
+        <div class="vs-faq-a"><p>OpenAI's docs describe the app running Codex with OpenAI's models and do not describe launching other vendors' agents as chats. Each chat has an integrated terminal, so you can start any CLI there, but the app does not track it as an agent. mmux treats Claude, Codex, Gemini, Amp, opencode, Pi, Grok or any other command as an agent in the same sidebar.</p></div>
+      </details>
+      <details>
+        <summary>Do agents keep running when I close the window?</summary>
+        <div class="vs-faq-a"><p>In mmux, yes: closing the terminal or dropping SSH only detaches, and everything keeps running in an invisible tmux session until you reattach. For the Codex app, OpenAI's docs say scheduled tasks need the computer on and the app running, and remote access stops when the host closes the app. Codex cloud tasks run on OpenAI's servers instead.</p></div>
+      </details>
+      <details>
+        <summary>What do they cost?</summary>
+        <div class="vs-faq-a"><p>mmux is free and GPLv3 licensed; each agent you run is billed by its own provider. Codex in the ChatGPT desktop app is included in ChatGPT plans: Free at $0, Go at $8, Plus at $20, Pro from $100 per month, and Business at $20 per user per month billed annually, per OpenAI's pricing page in October 2026. It also works with an API key billed at API rates, without cloud features.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://learn.chatgpt.com/docs/app">OpenAI docs: ChatGPT desktop app</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/environments/git-worktrees">OpenAI docs: Worktrees</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/environments/local-environment">OpenAI docs: Local environments and built-in Git tools</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/integrated-terminal">OpenAI docs: Integrated terminal</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/remote-connections">OpenAI docs: Remote connections</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/automations">OpenAI docs: Scheduled tasks</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/notifications">OpenAI docs: Notifications</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/projects">OpenAI docs: Projects and chats</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/pricing">OpenAI docs: Pricing</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/windows/windows-app">OpenAI docs: Windows app</a></li>
+        <li><a href="https://learn.chatgpt.com/docs/linux/linux-app">OpenAI docs: Linux desktop app</a></li>
+        <li><a href="https://help.openai.com/en/articles/11391654-chatgpt-business-release-notes#the-new-chatgpt-desktop-app-brings-chat-work-and-codex-toget">OpenAI Help Center: ChatGPT Business release notes, July 9, 2026</a></li>
+        <li><a href="https://openai.com/index/introducing-the-codex-app/">OpenAI: Introducing the Codex app (February 2026)</a></li>
+        <li><a href="https://github.com/openai/codex">openai/codex on GitHub: the Codex CLI, Apache-2.0, release 0.162.1</a></li>
+      </ol>
+    </section>
+
+    <!-- Other comparisons: leave as is. The review pass fills this list with
+         the other published /vs/ pages (same <li> markup as vs/index.html). -->
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <!-- closing card: identical on every page. -->
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
