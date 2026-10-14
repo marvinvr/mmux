@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mmux vs Solo: terminal multiplexer vs desktop agent app</title>
+  <meta name="description" content="mmux vs Solo by Aaron Francis: a tmux-backed TUI that survives SSH and runs on Linux, next to Solo's macOS and Windows desktop app with solo.yml and MCP tools.">
+  <meta name="author" content="Marvin von Rappard">
+  <meta name="theme-color" content="#0d0e10">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://mmux.org/vs/solo/">
+
+  <!-- Open Graph / social cards (the shared site card; no per-page image) -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="mmux">
+  <meta property="og:title" content="mmux vs Solo: terminal multiplexer vs desktop agent app">
+  <meta property="og:description" content="mmux vs Solo by Aaron Francis: a tmux-backed TUI that survives SSH and runs on Linux, next to Solo's macOS and Windows desktop app with solo.yml and MCP tools.">
+  <meta property="og:url" content="https://mmux.org/vs/solo/">
+  <meta property="og:image" content="https://mmux.org/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="mmux, a terminal multiplexer for AI agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="mmux vs Solo: terminal multiplexer vs desktop agent app">
+  <meta name="twitter:description" content="mmux vs Solo by Aaron Francis: a tmux-backed TUI that survives SSH and runs on Linux, next to Solo's macOS and Windows desktop app with solo.yml and MCP tools.">
+  <meta name="twitter:image" content="https://mmux.org/assets/og-image.png">
+
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="mmux guide for LLMs and agents">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+  <!-- inline data: favicon, same as the home page -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Cg%20fill='%2386efac'%3E%3Crect%20x='0'%20y='0'%20width='15'%20height='1'/%3E%3Crect%20x='0'%20y='1'%20width='1'%20height='14'/%3E%3C/g%3E%3Cg%20fill='%2316a34a'%3E%3Crect%20x='15'%20y='0'%20width='1'%20height='16'/%3E%3Crect%20x='0'%20y='15'%20width='15'%20height='1'/%3E%3C/g%3E%3Cg%20fill='%234ade80'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='3'/%3E%3Crect%20x='1'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='13'%20y='4'%20width='2'%20height='11'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='9'%20y='6'%20width='2'%20height='9'/%3E%3Crect%20x='3'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='7'%20y='12'%20width='2'%20height='3'/%3E%3Crect%20x='11'%20y='12'%20width='2'%20height='3'/%3E%3C/g%3E%3Cg%20fill='%230d0e10'%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='2'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='6'/%3E%3Crect%20x='11'%20y='6'%20width='2'%20height='6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../vs.css">
+
+  <!-- Structured data. Non-executable data blocks: CSP's script-src does not
+       govern them. Keep them in sync with the visible page: the FAQPage below
+       must list exactly the questions and answers shown in the FAQ section
+       (plain text, no HTML in "text"). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "mmux vs Solo",
+    "url": "https://mmux.org/vs/solo/",
+    "description": "mmux vs Solo by Aaron Francis: a tmux-backed TUI that survives SSH and runs on Linux, next to Solo's macOS and Windows desktop app with solo.yml and MCP tools.",
+    "inLanguage": "en",
+    "dateModified": "2026-10-14",
+    "isPartOf": { "@type": "WebSite", "name": "mmux", "url": "https://mmux.org/" },
+    "about": { "@type": "SoftwareApplication", "name": "mmux", "url": "https://mmux.org/" },
+    "mentions": { "@type": "SoftwareApplication", "name": "Solo", "url": "https://soloterm.com/" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "mmux", "item": "https://mmux.org/" },
+      { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mmux.org/vs/" },
+      { "@type": "ListItem", "position": 3, "name": "mmux vs Solo", "item": "https://mmux.org/vs/solo/" }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Solo open source?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The Solo desktop app is a commercial product from Try Hard Studios. Its site states no license, and we found no public source repository for the app as of October 2026. The older soloterm/solo package, an Artisan command for Laravel projects by the same author, is open source under the MIT license. mmux is GPLv3." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Solo run on Linux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Not yet. The download page for Solo 0.10.1 offers beta builds for macOS (Intel and Apple Silicon) and 64-bit Windows, and lists Linux (Ubuntu 22.04 or equivalent, x86-64, AppImage) as coming soon. mmux runs on macOS (Apple Silicon) and on Linux arm64 and x86_64." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use Solo over SSH or on a remote server?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Solo's own comparison with tmux says it is a local desktop application, does not provide sessions that survive SSH disconnects and does not run on headless servers. mmux runs inside a tmux session on whatever machine you start it on, so you can SSH into a server, run mmux there, drop the connection and reattach later." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does mmux have an MCP server like Solo?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. mmux exposes a command line instead: every running mmux serves a private control socket, and commands such as mmux ls, mmux read, mmux restart and mmux ask let an agent read process output, restart processes and delegate to other agents through its normal shell tool. Solo offers an MCP server, a localhost HTTP API and a CLI." }
+      },
+      {
+        "@type": "Question",
+        "name": "How much does Solo cost compared to mmux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Solo is free for up to 4 projects and 20 processes with all features. Solo Pro costs $99 per year for unlimited projects and processes on up to 3 devices, and team seats start at $99 per seat per year. mmux is free and open source with no project or process limits." }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Privacy-friendly, self-hosted analytics (umami), same as the home page -->
+  <script
+    src="https://stats.marvinvr.ch/api/script.js"
+    data-site-id="9d0d67d36442"
+    defer
+  ></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- header: identical on every /vs/ page. Change it in README's snippet, not here alone. -->
+  <header class="site-nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="../../">
+        <svg class="brand-mark" viewBox="0 0 16 16" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><g fill="#86efac"><rect x="0" y="0" width="15" height="1"/><rect x="0" y="1" width="1" height="14"/></g><g fill="#16a34a"><rect x="15" y="0" width="1" height="16"/><rect x="0" y="15" width="15" height="1"/></g><g fill="#4ade80"><rect x="1" y="1" width="14" height="3"/><rect x="1" y="4" width="2" height="11"/><rect x="13" y="4" width="2" height="11"/><rect x="5" y="6" width="2" height="9"/><rect x="9" y="6" width="2" height="9"/><rect x="3" y="12" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="11" y="12" width="2" height="3"/></g><g fill="#0d0e10"><rect x="3" y="4" width="10" height="2"/><rect x="3" y="6" width="2" height="6"/><rect x="7" y="6" width="2" height="6"/><rect x="11" y="6" width="2" height="6"/></g></svg>
+        <span>mmux</span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a class="nav-page" href="../../#demo">the demo</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a class="nav-page" href="../">compare</a>
+        <span class="nav-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/marvinvr/mmux">github</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="vs-main" tabindex="-1">
+    <nav class="vs-crumbs" aria-label="breadcrumb">
+      <ol>
+        <li><a href="../../">mmux</a></li>
+        <li><a href="../">compare</a></li>
+        <li><span aria-current="page">mmux vs Solo</span></li>
+      </ol>
+    </nav>
+
+    <header>
+      <p class="kicker">// compare</p>
+      <h1 class="vs-h1">mmux <span class="vs-vs">vs</span> Solo</h1>
+      <p class="vs-lede">mmux is a terminal UI for coding agents, terminals and dev processes that runs inside an invisible tmux session, so it works in any terminal and over SSH. Solo, by Aaron Francis, is a desktop app for macOS and Windows that supervises your dev stack from a committed <code>solo.yml</code> and lets agents control it through MCP, HTTP or a CLI. The real difference is where they live: a terminal you can detach from, or a local GUI.</p>
+      <p class="vs-updated">Last checked against Solo 0.10.1 (beta) on <time datetime="2026-10-14">2026-10-14</time>.</p>
+    </header>
+
+    <section class="vs-tldr" aria-labelledby="tldr">
+      <p class="kicker" id="tldr">// tl;dr</p>
+      <p><strong>Pick Solo if</strong> you work on a local Mac or Windows machine, want a GUI that shows each process with its CPU and memory, need processes to restart on their own after a crash or a file change, or want your agents to talk to the dev stack over MCP.</p>
+      <p><strong>Pick mmux if</strong> you live in the terminal, work on Linux or on remote machines over SSH, want agents and processes to keep running after you close the window, or want a free, open source tool with a built-in git panel and worktrees.</p>
+      <p>Both read a per-project file of dev processes and both let agents read process output, so moving between them is mostly a config translation.</p>
+    </section>
+
+    <section class="vs-section" aria-labelledby="table">
+      <h2 class="vs-h2" id="table">At a glance</h2>
+      <div class="vs-table-wrap">
+        <table class="vs-table">
+          <caption>mmux 0.13.13 and Solo 0.10.1, as of 2026-10-14.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col" class="vs-col-mmux">mmux</th>
+              <th scope="col">Solo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Linux</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>macOS (Apple Silicon) and Linux arm64, x86_64</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>listed as coming soon [2]</td>
+            </tr>
+            <tr>
+              <th scope="row">Native Windows</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not supported</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>64-bit beta, with WSL execution profiles [2][3]</td>
+            </tr>
+            <tr>
+              <th scope="row">Runs on a remote server over SSH</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>the session lives in tmux on that host</td>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>local desktop app only [8]</td>
+            </tr>
+            <tr>
+              <th scope="row">Keeps running after you close the UI</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>detach, close the terminal or drop SSH, then reattach</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>runs while the app is open; a normal quit stops all processes [7]</td>
+            </tr>
+            <tr>
+              <th scope="row">Per-project process manifest</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux.yaml</code>, plus a git-ignored local override</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>solo.yml</code>, with a trust check for new commands [4]</td>
+            </tr>
+            <tr>
+              <th scope="row">Automatic process restart</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>start, stop and restart by hand or CLI</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>on unexpected exit, or when watched files change [4]</td>
+            </tr>
+            <tr>
+              <th scope="row">CPU and memory per process</th>
+              <td><span class="mark mark-no" aria-hidden="true">✗</span><span class="sr-only">no: </span>not shown</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>in the sidebar [8]</td>
+            </tr>
+            <tr>
+              <th scope="row">Agent control surface</th>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>CLI over a local socket, no MCP</td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>MCP server, localhost HTTP API and CLI [1]</td>
+            </tr>
+            <tr>
+              <th scope="row">Agents read process output</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>mmux read</code></td>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span><code>get_process_output</code>, <code>search_output</code> [5]</td>
+            </tr>
+            <tr>
+              <th scope="row">Git</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>built-in commit panel, worktrees as separate projects</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>worktree support listed; no git panel documented [1]</td>
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              <td><span class="mark mark-yes" aria-hidden="true">✓</span><span class="sr-only">yes: </span>free, no limits</td>
+              <td><span class="mark mark-part" aria-hidden="true">~</span><span class="sr-only">partly: </span>free up to 4 projects and 20 processes; Pro $99/year [1]</td>
+            </tr>
+            <tr>
+              <th scope="row">License</th>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>GPLv3</td>
+              <td><span class="mark mark-na" aria-hidden="true">·</span>commercial; no public source for the app found</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vs-table-note">Solo facts from soloterm.com, its docs and changelog at 0.10.1; numbers in brackets point to the sources below. mmux facts from its docs at 0.13.13.</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="what-is">
+      <h2 class="vs-h2" id="what-is">What is Solo?</h2>
+      <p>Solo calls itself "the meta-harness for coding agents" [1]. It is a desktop app built with Tauri that runs next to the CLI agents you already use, such as Claude Code, Codex, OpenCode and Pi, and gives them shared processes, context and tasks. You describe the project's dev server, queue workers, tunnels and similar commands once in <code>solo.yml</code>, which you can commit, and humans and agents then share those processes instead of starting duplicates [1][4]. Solo can also suggest processes for stacks such as Laravel, Next.js, Django and Rust [1].</p>
+      <p>Agents run in real terminals inside the app. Solo shows whether an agent seems to be working, idle or waiting for permission (the site says this detection is heuristic), and a lead agent can spawn, message and wait for agents in other harnesses [1]. Agents reach Solo through an MCP server, a localhost-only HTTP API or the <code>solo</code> CLI; the MCP tools cover projects, processes, output, agents, scratchpads, todos, prompt templates and more [1][6]. The HTTP API needs the desktop app to be running [1].</p>
+      <p>Solo is published by Try Hard Studios. Version 0.10.1 (September 2026) is a beta for macOS 11+ and Windows 10 1809+, with Linux listed as coming soon [2][3]. It is free for up to 4 projects and 20 processes; Pro is $99 per year [1].</p>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="x-better">
+      <h2 class="vs-h2" id="x-better">Where Solo is better</h2>
+      <ul>
+        <li><strong>Process supervision.</strong> A process in <code>solo.yml</code> can set <code>auto_restart</code> to come back after it exits unexpectedly, and <code>restart_when_changed</code> to restart when files matching a glob change [4]. mmux has neither: you restart a process yourself with <code>r</code> or <code>mmux restart</code>.</li>
+        <li><strong>A real GUI.</strong> Solo is a desktop window with a sidebar that shows CPU and memory per process, keyboard palettes and no prefix keys to learn [1][8]. mmux is a terminal UI with mouse support, but it is still a terminal UI.</li>
+        <li><strong>MCP and HTTP for agents.</strong> Agents that prefer MCP get typed tools, for example <code>get_process_output</code>, <code>search_output</code> and <code>get_process_ports</code>, which lists the localhost ports a process listens on [5]. mmux only offers a CLI, and has no port detection.</li>
+        <li><strong>Windows.</strong> Solo ships a 64-bit Windows beta with Windows and WSL execution profiles [2][3]. mmux supports macOS and Linux.</li>
+        <li><strong>Shared context for agents.</strong> Scratchpads, todos with dependencies and prompt templates are built in and reachable over MCP [1][6]. mmux has nothing comparable.</li>
+        <li><strong>A trust gate for committed commands.</strong> New or changed commands from <code>solo.yml</code> can be blocked until you approve them [1][4], which matters when you pull a teammate's change to that file.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="mmux-better">
+      <h2 class="vs-h2" id="mmux-better">Where mmux is better</h2>
+      <ul>
+        <li><strong>Sessions survive closing the terminal and SSH drops.</strong> mmux runs in a per-directory tmux session, so agents and dev servers keep running after you close the window or lose the connection. Run <code>mmux</code> or <code>mmux attach</code> to rejoin. Solo stops its processes when you quit it normally [7].</li>
+        <li><strong>Remote and headless machines.</strong> mmux works the same on a laptop and on a Linux box you reach over SSH, and it still raises native desktop notifications on your machine when an agent finishes. Solo's own tmux comparison says it does not run on headless servers [8].</li>
+        <li><strong>Restore after quit.</strong> When you reopen a directory after a quit, a crash or a restart-to-update, Claude, Codex, Pi and Grok agents resume their conversations and terminals reopen where you left them.</li>
+        <li><strong>Git panel and worktrees.</strong> A native git panel commits with an AI-suggested message and can schedule commits. <code>w</code> opens a git worktree as its own project box with its own agents and processes, only one checkout runs a given process at a time so ports stay the same, <code>M</code> merges back, and finished worktrees clean themselves up.</li>
+        <li><strong>Answering agents from scripts.</strong> <code>mmux wait</code> blocks until an agent is done or asks something, and <code>mmux answer</code> picks an option on its permission prompt, so another agent or a script can drive it end to end.</li>
+        <li><strong>Linux, free and open source.</strong> mmux is a single Rust binary for macOS and Linux (arm64 and x86_64), licensed GPLv3, with no project or process limits.</li>
+      </ul>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="which">
+      <h2 class="vs-h2" id="which">When to use which</h2>
+      <div class="vs-choose">
+        <div class="vs-choose-card">
+          <h3 class="vs-h3">Choose Solo when</h3>
+          <ul>
+            <li>You work locally on macOS or Windows and prefer a desktop window to a terminal UI.</li>
+            <li>Your dev stack has flaky workers or watchers that should restart on their own.</li>
+            <li>Your agents are set up around MCP and you want them to see process output and ports as tools.</li>
+            <li>You want shared todos, scratchpads and prompt templates for several agents.</li>
+          </ul>
+        </div>
+        <div class="vs-choose-card vs-choose-card--mmux">
+          <h3 class="vs-h3">Choose mmux when</h3>
+          <ul>
+            <li>You work on Linux, or on a remote machine over SSH.</li>
+            <li>Long agent runs must keep going after you close the laptop or lose the connection.</li>
+            <li>You want git commits and worktrees in the same tool as your agents.</li>
+            <li>You want a free, open source tool with no limit on projects or processes.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-section vs-prose" aria-labelledby="together">
+      <h2 class="vs-h2" id="together">Moving from Solo to mmux</h2>
+      <ol>
+        <li>Install mmux and run <code>mmux init</code> in the project. It writes an <code>mmux.yaml</code> and lets you pick your agent harnesses.</li>
+        <li>Copy each entry under <code>processes:</code> in <code>solo.yml</code> into <code>mmux.yaml</code>. <code>command</code> becomes <code>cmd</code> plus <code>args</code>, <code>working_dir</code> becomes <code>cwd</code>, <code>auto_start</code> becomes <code>autostart</code> (note that mmux defaults it to <code>false</code>, Solo to <code>true</code>), and <code>env</code> stays <code>env</code>.</li>
+        <li><code>auto_restart</code> and <code>restart_when_changed</code> have no mmux equivalent. If you need them, run the command under your own watcher.</li>
+        <li>Optionally add a <code>stop:</code> teardown such as <code>docker compose down</code>, which runs when you stop the process or quit mmux.</li>
+        <li>You can keep <code>solo.yml</code> committed for teammates who use Solo. mmux ignores it.</li>
+      </ol>
+      <p>A Solo process like <code>Web: { command: npm run dev }</code> becomes:</p>
+      <pre><code># mmux.yaml
+name: storefront
+processes:
+  - name: Web
+    cmd: npm
+    args: ["run", "dev"]
+    autostart: true</code></pre>
+      <p>Then open it, and give your agents the CLI they will use instead of Solo's MCP tools:</p>
+      <pre><code>mmux
+mmux read "Web" -n 80
+mmux restart "Web"</code></pre>
+    </section>
+
+    <section class="vs-section vs-faq" aria-labelledby="faq">
+      <h2 class="vs-h2" id="faq">FAQ</h2>
+      <details>
+        <summary>Is Solo open source?</summary>
+        <div class="vs-faq-a"><p>The Solo desktop app is a commercial product from Try Hard Studios. Its site states no license, and we found no public source repository for the app as of October 2026. The older <code>soloterm/solo</code> package, an Artisan command for Laravel projects by the same author, is open source under the MIT license. mmux is GPLv3.</p></div>
+      </details>
+      <details>
+        <summary>Does Solo run on Linux?</summary>
+        <div class="vs-faq-a"><p>Not yet. The download page for Solo 0.10.1 offers beta builds for macOS (Intel and Apple Silicon) and 64-bit Windows, and lists Linux (Ubuntu 22.04 or equivalent, x86-64, AppImage) as coming soon. mmux runs on macOS (Apple Silicon) and on Linux arm64 and x86_64.</p></div>
+      </details>
+      <details>
+        <summary>Can I use Solo over SSH or on a remote server?</summary>
+        <div class="vs-faq-a"><p>No. Solo's own comparison with tmux says it is a local desktop application, does not provide sessions that survive SSH disconnects and does not run on headless servers. mmux runs inside a tmux session on whatever machine you start it on, so you can SSH into a server, run <code>mmux</code> there, drop the connection and reattach later.</p></div>
+      </details>
+      <details>
+        <summary>Does mmux have an MCP server like Solo?</summary>
+        <div class="vs-faq-a"><p>No. mmux exposes a command line instead: every running mmux serves a private control socket, and commands such as <code>mmux ls</code>, <code>mmux read</code>, <code>mmux restart</code> and <code>mmux ask</code> let an agent read process output, restart processes and delegate to other agents through its normal shell tool. Solo offers an MCP server, a localhost HTTP API and a CLI.</p></div>
+      </details>
+      <details>
+        <summary>How much does Solo cost compared to mmux?</summary>
+        <div class="vs-faq-a"><p>Solo is free for up to 4 projects and 20 processes with all features. Solo Pro costs $99 per year for unlimited projects and processes on up to 3 devices, and team seats start at $99 per seat per year. mmux is free and open source with no project or process limits.</p></div>
+      </details>
+    </section>
+
+    <section class="vs-section vs-sources" aria-labelledby="sources">
+      <h2 class="vs-h2" id="sources">Sources</h2>
+      <ol>
+        <li><a href="https://soloterm.com/">Solo homepage: features, platforms, pricing, FAQ</a></li>
+        <li><a href="https://soloterm.com/download">Solo download page: version 0.10.1, macOS and Windows betas, Linux coming soon</a></li>
+        <li><a href="https://soloterm.com/changelog">Solo changelog: 0.10.1 (September 3, 2026) and earlier</a></li>
+        <li><a href="https://soloterm.com/docs/projects/solo-yml">Solo documentation: solo.yml overview</a></li>
+        <li><a href="https://soloterm.com/docs/mcp-tools/output">Solo documentation: Output MCP tools</a></li>
+        <li><a href="https://soloterm.com/docs/mcp-tools">Solo documentation: MCP tools</a></li>
+        <li><a href="https://soloterm.com/help">Solo help: what happens to processes on quit or crash, licensing</a></li>
+        <li><a href="https://soloterm.com/solo-vs-tmux">Solo vs tmux, published by Solo: SSH, headless use, platforms</a></li>
+        <li><a href="https://github.com/soloterm/solo">soloterm/solo on GitHub: the MIT-licensed Laravel package</a></li>
+        <li><a href="https://github.com/marvinvr/mmux/tree/main/docs">mmux documentation</a></li>
+      </ol>
+    </section>
+
+    <section class="vs-section" aria-labelledby="others">
+      <h2 class="vs-h2" id="others">Other comparisons</h2>
+      <ul class="vs-list">
+        <!-- vs:others -->
+      </ul>
+      <p class="vs-all"><a href="../">all comparisons</a></p>
+    </section>
+
+    <section class="vs-cta" aria-labelledby="try">
+      <h2 class="vs-h2" id="try">Try mmux</h2>
+      <p>One binary for macOS, Linux and WSL. Run <code>mmux</code> in any project directory.</p>
+      <pre><code>curl -fsSL https://mmux.org/install.sh | sh</code></pre>
+      <div class="vs-cta-actions">
+        <a class="btn btn-brand" href="../../">see it in action</a>
+        <a class="btn btn-ghost" href="https://github.com/marvinvr/mmux/tree/main/docs">read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer: same as the home page -->
+  <footer class="site-footer">
+    <span class="footer-brand">mmux</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <span class="footer-license">GPLv3</span>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux">github</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/marvinvr/mmux/tree/main/docs">docs</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="../">compare</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="https://marvinvr.ch">built by marvinvr</a>
+  </footer>
+</body>
+</html>
