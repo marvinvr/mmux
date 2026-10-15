@@ -629,11 +629,18 @@ impl App {
                         };
                         // A session another one started sits a step in under its spawner.
                         let indent = "  ".repeat(self.nest_depth(i));
+                        // A reload staged an edited command for the next restart: say so
+                        // quietly, ahead of the title, until a restart adopts it.
+                        let subtitle = match (s.pending.is_some(), s.subtitle()) {
+                            (true, Some(t)) => Some(format!("↻ {t}")),
+                            (true, None) => Some("↻".to_string()),
+                            (false, t) => t,
+                        };
                         entry_line(
                             &format!("{indent}{glyph} {}", s.name),
                             sel,
                             base,
-                            s.subtitle().as_deref(),
+                            subtitle.as_deref(),
                             false,
                             width,
                         )

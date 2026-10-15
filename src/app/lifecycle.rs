@@ -4,9 +4,10 @@
 use super::git::GitPanel;
 use super::nav::Nav;
 use super::overlay::{Confirmed, Overlay};
+use super::persist::split_instance;
 use super::picker::Picker;
 use super::procform::ProcForm;
-use super::session::{Kind, Recipe, Session, Status};
+use super::session::{Kind, Recipe, Refresh, Session, Status};
 use super::worktrees::human_duration;
 use super::{App, Focus, Project};
 use crate::config::{self, Config};
@@ -794,6 +795,7 @@ impl App {
         let mut next_procs: Vec<Session> = Vec::new();
         let mut added = 0usize;
         let mut restarted = 0usize;
+        let mut updated = 0usize;
         for (pi, ncfg) in new_cfgs.iter().enumerate() {
             let Some(ncfg) = ncfg else {
                 // Config failed to load: keep this project's processes untouched.
@@ -815,12 +817,10 @@ impl App {
                         // Only touch a live pane when the command genuinely changed — then
                         // respawn it so an edited command takes effect right away, instead
                         // of lingering on the old one until a manual restart.
-                        if item.recipe != recipe {
-                            item.recipe = recipe;
-                            if item.is_running() {
-                                item.spawn(rows, cols);
-                                restarted += 1;
-                            }
+                        match item.refresh(recipe, rows, cols) {
+                            Refresh::Restarted => restarted += 1,
+                            Refresh::Updated => updated += 1,
+                            Refresh::Unchanged | Refresh::Pending => {}
                         }
                         // The teardown command isn't part of the recipe (editing it must
                         // not restart a running process), so refresh it unconditionally.
@@ -853,8 +853,22 @@ impl App {
 
         // Agents: remap each project's "#N" counters by name so suffixes stay unique.
         let mut added_agents = 0usize;
+        let mut pending_agents = 0usize;
         for (pi, ncfg) in new_cfgs.iter().enumerate() {
             let Some(ncfg) = ncfg else { continue };
+            // A launcher kept its name but changed its definition: its instances take
+            // the new recipe (a running one on its next restart).
+            let edited = edited_agents(&self.projects[pi].cfg, ncfg);
+            for s in self.sessions.iter_mut() {
+                if s.kind != Kind::Agent || s.project != pi {
+                    continue;
+                }
+                match refresh_agent(s, &edited, rows, cols) {
+                    Refresh::Updated => updated += 1,
+                    Refresh::Pending => pending_agents += 1,
+                    Refresh::Unchanged | Refresh::Restarted => {}
+                }
+            }
             let old_names: Vec<String> = self.projects[pi]
                 .cfg
                 .agents
@@ -907,7 +921,9 @@ impl App {
         let notes: Vec<Option<String>> = (0..self.projects.len())
             .map(|pi| self.mmux_note(pi))
             .collect();
-        for s in self.sessions.iter_mut().filter(|s| s.agent.is_some()) {
+        // Every agent row, not just the resumable ones: a pending recipe may name a
+        // harness this one isn't yet, and the note must be there when it switches.
+        for s in self.sessions.iter_mut().filter(|s| s.kind == Kind::Agent) {
             s.mmux_note = notes[s.project].clone();
         }
 
@@ -975,8 +991,14 @@ impl App {
         if added_agents > 0 {
             parts.push(format!("+{added_agents} agent(s)"));
         }
+        if updated > 0 {
+            parts.push(format!("{updated} updated"));
+        }
         if restarted > 0 {
             parts.push(format!("{restarted} restarted"));
+        }
+        if pending_agents > 0 {
+            parts.push(format!("{pending_agents} agent(s) on next restart"));
         }
         if autostarted > 0 {
             parts.push(format!("{autostarted} autostarted"));
@@ -1085,5 +1107,167 @@ impl App {
         }
         self.clear_diff();
         removed_names
+    }
+}
+
+/// The agent launchers that kept their name across a reload but changed definition:
+/// `(name, recipe before, recipe after)`. Diffed template against template rather than
+/// against each instance — a restored agent's cwd is wherever its pane last was, which
+/// says nothing about whether the config changed.
+fn edited_agents<'a>(old: &Config, new: &'a Config) -> Vec<(&'a str, Recipe, Recipe)> {
+    new.agents
+        .iter()
+        .filter_map(|a| {
+            let before = old.agents.iter().find(|o| o.name == a.name)?;
+            let before = Recipe::agent(before, &old.dir);
+            let after = Recipe::agent(a, &new.dir);
+            (before != after).then_some((a.name.as_str(), before, after))
+        })
+        .collect()
+}
+
+/// Hand agent instance `s` (`Claude #2`) its launcher's edited recipe, if the reload
+/// changed it. The instance keeps its own cwd unless the launcher's `cwd:` is what
+/// changed. See [`Session::refresh`] for what happens to a running one.
+fn refresh_agent(
+    s: &mut Session,
+    edited: &[(&str, Recipe, Recipe)],
+    rows: u16,
+    cols: u16,
+) -> Refresh {
+    let Some((base, _)) = split_instance(&s.name) else {
+        return Refresh::Unchanged;
+    };
+    let Some((_, before, after)) = edited.iter().find(|(n, ..)| *n == base) else {
+        return Refresh::Unchanged;
+    };
+    let mut next = after.clone();
+    if before.cwd == after.cwd {
+        next.cwd = s.recipe.cwd.clone();
+    }
+    s.refresh(next, rows, cols)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(yaml: &str) -> Config {
+        let mut c: Config = serde_yaml::from_str(yaml).unwrap();
+        c.dir = std::env::temp_dir();
+        c
+    }
+
+    fn process(c: &Config) -> Session {
+        let recipe = Recipe::process(&c.processes[0], &c.dir);
+        Session::new("Dev".into(), Kind::Process, recipe, 0, &c.dir)
+    }
+
+    fn agent(c: &Config, name: &str) -> Session {
+        let recipe = Recipe::agent(&c.agents[0], &c.dir);
+        Session::new(name.into(), Kind::Agent, recipe, 0, &c.dir)
+    }
+
+    const OLD_PROC: &str =
+        "processes:\n  - name: Dev\n    cmd: sh\n    args: [\"-c\", \"sleep 30\"]\n";
+    const NEW_PROC: &str = "processes:\n  - name: Dev\n    cmd: sh\n    args: [\"-c\", \"sleep 31\"]\n    env: {PORT: \"4000\"}\n";
+    const OLD_AGENTS: &str = "agents:\n  - name: Bot\n    cmd: sh\n    args: [\"-c\", \"sleep 30\"]\n  - name: Other\n    cmd: sh\n";
+    const NEW_AGENTS: &str = "agents:\n  - name: Bot\n    cmd: sh\n    args: [\"-c\", \"sleep 31\"]\n  - name: Other\n    cmd: sh\n";
+
+    /// The reported bug: same name, edited command, `R` — and nothing seemed to take.
+    /// A stopped row must adopt it outright and then read as settled, not changed.
+    #[test]
+    fn edited_process_is_adopted_by_a_stopped_row() {
+        let (old, new) = (cfg(OLD_PROC), cfg(NEW_PROC));
+        let mut s = process(&old);
+        let next = Recipe::process(&new.processes[0], &new.dir);
+        assert_eq!(s.refresh(next.clone(), 24, 80), Refresh::Updated);
+        assert!(s.recipe == next);
+        assert!(s.pending.is_none());
+        // A second reload of the same file has nothing left to apply.
+        assert_eq!(s.refresh(next, 24, 80), Refresh::Unchanged);
+    }
+
+    #[test]
+    fn edited_process_restarts_a_running_row_onto_it() {
+        let (old, new) = (cfg(OLD_PROC), cfg(NEW_PROC));
+        let mut s = process(&old);
+        s.spawn(24, 80);
+        assert!(s.is_running(), "{:?}", s.error);
+        let next = Recipe::process(&new.processes[0], &new.dir);
+        assert_eq!(s.refresh(next.clone(), 24, 80), Refresh::Restarted);
+        assert!(s.is_running(), "{:?}", s.error);
+        assert!(s.recipe == next);
+        assert!(s.pending.is_none());
+        assert_eq!(s.refresh(next, 24, 80), Refresh::Unchanged);
+        s.kill();
+    }
+
+    #[test]
+    fn edited_agent_launcher_reaches_its_stopped_instances() {
+        let (old, new) = (cfg(OLD_AGENTS), cfg(NEW_AGENTS));
+        let edited = edited_agents(&old, &new);
+        let names: Vec<&str> = edited.iter().map(|(n, ..)| *n).collect();
+        assert_eq!(names, ["Bot"]); // `Other` is unchanged
+
+        let mut s = agent(&old, "Bot #2");
+        // Restored somewhere else: the instance keeps its own cwd.
+        let elsewhere = std::env::temp_dir().join("elsewhere");
+        s.recipe.cwd = elsewhere.clone();
+        assert_eq!(refresh_agent(&mut s, &edited, 24, 80), Refresh::Updated);
+        assert_eq!(s.recipe.args, ["-c", "sleep 31"]);
+        assert_eq!(s.recipe.cwd, elsewhere);
+        assert!(s.pending.is_none());
+        assert_eq!(refresh_agent(&mut s, &edited, 24, 80), Refresh::Unchanged);
+
+        // Instances of other launchers, and rows that aren't instances, are left alone.
+        let mut other = agent(&old, "Other #1");
+        assert_eq!(
+            refresh_agent(&mut other, &edited, 24, 80),
+            Refresh::Unchanged
+        );
+        assert!(edited_agents(&new, &new).is_empty());
+    }
+
+    /// A running agent isn't restarted under the user — the edit waits (shown as `↻`)
+    /// and the restart adopts it, after which nothing is pending any more.
+    #[test]
+    fn running_agent_takes_an_edited_launcher_on_its_next_restart() {
+        let (old, new) = (cfg(OLD_AGENTS), cfg(NEW_AGENTS));
+        let edited = edited_agents(&old, &new);
+        let mut s = agent(&old, "Bot #1");
+        s.spawn(24, 80);
+        assert!(s.is_running(), "{:?}", s.error);
+
+        assert_eq!(refresh_agent(&mut s, &edited, 24, 80), Refresh::Pending);
+        assert!(s.is_running());
+        assert_eq!(s.recipe.args, ["-c", "sleep 30"]);
+        assert!(s.pending.is_some());
+        // Reloading again doesn't report the same staged edit twice.
+        assert_eq!(refresh_agent(&mut s, &edited, 24, 80), Refresh::Unchanged);
+
+        s.spawn(24, 80); // `r`
+        assert!(s.is_running(), "{:?}", s.error);
+        assert_eq!(s.recipe.args, ["-c", "sleep 31"]);
+        assert!(s.pending.is_none());
+        s.kill();
+    }
+
+    #[test]
+    fn reverting_a_staged_edit_clears_it() {
+        let (old, new) = (cfg(OLD_AGENTS), cfg(NEW_AGENTS));
+        let mut s = agent(&old, "Bot #1");
+        s.spawn(24, 80);
+        assert_eq!(
+            refresh_agent(&mut s, &edited_agents(&old, &new), 24, 80),
+            Refresh::Pending
+        );
+        assert_eq!(
+            refresh_agent(&mut s, &edited_agents(&new, &old), 24, 80),
+            Refresh::Updated
+        );
+        assert!(s.pending.is_none());
+        assert_eq!(s.recipe.args, ["-c", "sleep 30"]);
+        s.kill();
     }
 }

@@ -126,12 +126,29 @@ impl Recipe {
     }
 }
 
+/// What [`Session::refresh`] did with a reloaded recipe — tallied into the reload's
+/// footer summary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refresh {
+    Unchanged,
+    /// Adopted for the next start (the session wasn't running).
+    Updated,
+    /// A running process restarted onto it.
+    Restarted,
+    /// Staged on a running agent until its next restart.
+    Pending,
+}
+
 pub struct Session {
     pub name: String,
     pub kind: Kind,
     pub pane: Option<Pane>,
     pub error: Option<String>,
     pub recipe: Recipe,
+    /// An edited config's recipe waiting for this session's next (re)spawn: what a
+    /// [reload](super::App::reload) leaves on a *running* agent, which it can't restart
+    /// under the user's feet. Adopted by [`spawn`](Self::spawn); shown as a dim `↻`.
+    pub pending: Option<Recipe>,
     /// Index of the workspace project (see [`crate::app`]) this session belongs to.
     /// Drives which sidebar group it lands in; the lifecycle is identical regardless.
     pub project: usize,
@@ -229,6 +246,7 @@ impl Session {
             pane: None,
             error: None,
             recipe,
+            pending: None,
             project,
             agent: None,
             stop: None,
@@ -322,6 +340,9 @@ impl Session {
     /// (Re)spawn the recipe at the given inner size, replacing any existing pane.
     /// This is both "start" and "restart": callers decide *when* to call it.
     pub fn spawn(&mut self, rows: u16, cols: u16) {
+        if let Some(next) = self.pending.take() {
+            self.adopt(next);
+        }
         self.screen_working = false;
         self.background = None;
         self.last_background_at = None;
@@ -365,6 +386,52 @@ impl Session {
                 self.error = Some(e.to_string());
             }
         }
+    }
+
+    /// Take `next` — the recipe a [reload](super::App::reload) derived from this
+    /// session's (possibly edited) config entry — and say what that meant. A stopped
+    /// session simply adopts it; a running process restarts onto it, so an edited
+    /// command takes effect right away; a running agent keeps working and stages it
+    /// as [`pending`](Self::pending) for its next restart instead of losing its turn.
+    pub fn refresh(&mut self, next: Recipe, rows: u16, cols: u16) -> Refresh {
+        if next == self.recipe {
+            // Edited back to what's already running: nothing is waiting any more.
+            let was_pending = self.pending.take().is_some();
+            return match was_pending {
+                true => Refresh::Updated,
+                false => Refresh::Unchanged,
+            };
+        }
+        if !self.is_running() {
+            self.pending = None;
+            self.adopt(next);
+            return Refresh::Updated;
+        }
+        match self.kind {
+            Kind::Process => {
+                self.adopt(next);
+                self.spawn(rows, cols);
+                Refresh::Restarted
+            }
+            _ if self.pending.as_ref() == Some(&next) => Refresh::Unchanged,
+            _ => {
+                self.pending = Some(next);
+                Refresh::Pending
+            }
+        }
+    }
+
+    /// Switch to `next` for the coming launches. An agent whose command now names a
+    /// different harness (or none) drops the old one's resume bookkeeping — its session
+    /// id means nothing to the new CLI.
+    fn adopt(&mut self, next: Recipe) {
+        if self.kind == Kind::Agent {
+            let tool = crate::agent::Tool::detect(&next.cmd);
+            if tool != self.agent.as_ref().map(|r| r.tool) {
+                self.agent = tool.map(crate::agent::Resume::new);
+            }
+        }
+        self.recipe = next;
     }
 
     /// The full argument list for the next launch: the recipe's args, then mmux's note

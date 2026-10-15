@@ -50,7 +50,9 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   **spinner** (rotating braille dots) before its name (a running terminal keeps a static `·`), a
   session that **crashed** (exited non-zero on its own) or **failed to launch** shows a red hollow
   `○`, and a session waiting on you lights up **green** (`●`). An agent **blocked on a question**
-  shows a bold yellow **`?`** instead (see below). So when you scan the sidebar, the only colored
+  shows a bold yellow **`?`** instead (see below). A dim **`↻`** after an agent's name means a
+  [reload](04-configuration.md#live-reload) changed its launcher's definition and the running
+  agent switches to it on its next restart (`r`). So when you scan the sidebar, the only colored
   agent is the one to go look at — and the spinning ones are still grinding. Unlike
   processes, agents and terminals **don't linger once they exit cleanly** — quitting an agent
   (`/quit`, Ctrl-D) or `exit`ing a terminal removes its row outright rather than leaving a dim

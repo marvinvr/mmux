@@ -444,14 +444,20 @@ config it just edited — to re-read every loaded project's `mmux.yaml` and the 
 **without losing running panes**:
 
 - newly added processes and agents appear;
-- an edited process command takes effect immediately: a process that's **running** is restarted
-  onto the new command (a stopped one just picks it up on its next start);
+- entries are matched **by name**, and an edited definition (`cmd`, `args`, `cwd`, `env`) of a
+  same-named entry is always taken over:
+  - a **process** that's **running** is restarted onto the new command right away (a stopped one
+    just picks it up on its next start);
+  - an **agent** launcher's instances (`Claude #1`, …) take it too — a stopped one immediately, a
+    **running** one on its next restart (`r`, or a reopen), since restarting it under you would cut
+    its turn short. Until then its row shows a dim `↻` before its title;
 - a process whose definition you removed keeps running as an "orphan" rather than being killed;
 - the git panel is gained or lost if the directory's repo status changed;
 - in a manifest workspace, newly listed folders are appended live with their normal project and
   `autostart` behavior, while removed folders and their live panes are dropped;
-- a one-line footer flash summarizes what changed (added / removed / restarted / orphaned /
-  unreadable). `mmux reload` prints that line too, and fails with each unreadable config's parse
+- a one-line footer flash summarizes what changed (added / removed / updated / restarted /
+  agents waiting for their next restart / orphaned / unreadable) — `no changes` means the files
+  really matched what was already live. `mmux reload` prints that line too, and fails with each unreadable config's parse
   error.
 
 Reload refreshes every retained project in place and reconciles workspace additions/removals.

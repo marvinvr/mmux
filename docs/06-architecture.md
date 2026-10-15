@@ -115,6 +115,7 @@ enum Kind { Agent, Terminal, Process }   // exactly three — there is no Panel 
 struct Session {
     name, kind, project,        // identity + which sidebar bucket / project
     recipe,                     // everything needed to (re)spawn identically
+    pending: Option<Recipe>,    // an edited config's recipe, adopted by the next spawn
     pane: Option<Pane>,         // the live PTY-backed terminal, if running
     error: Option<String>,
 }
@@ -127,6 +128,12 @@ struct Session {
     and restart**; callers decide *when*.
   - `stop()` kills the process but keeps the now-exited pane (so it reads as `Status::Exited`).
   - `kill()` kills and drops the pane entirely (back to `Status::Stopped`).
+  - `refresh(recipe)` is how a [live reload](04-configuration.md#live-reload) hands a row its
+    edited config entry (matched by name): a stopped row adopts it, a running process restarts onto
+    it, and a running agent stages it in `pending` (sidebar `↻`) for its next `spawn` instead of
+    being cut off mid-turn. Agent instances are matched to their launcher by the `Name #N` prefix,
+    and the launcher is diffed old-config-vs-new — not against the instance, whose restored cwd says
+    nothing about the config.
 - A config-defined **process** may carry an optional `stop:` **teardown** command
   (`Session.stop`, e.g. `docker compose down`) — a shell line run in its directory *after it
   stops*: on a manual `x` and, for every still-running process, at quit (`run_stop_commands_on_quit`

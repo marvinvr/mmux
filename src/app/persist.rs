@@ -94,9 +94,16 @@ impl App {
                 .as_ref()
                 .and_then(|p| p.cwd())
                 .unwrap_or_else(|| s.recipe.cwd.clone());
-            let (tool, session_id) = match &s.agent {
-                Some(r) => (Some(r.tool), r.id.clone()),
-                None => (None, None),
+            // A reopen is a restart: it launches what a reload staged, not the
+            // superseded recipe — and a staged switch of harness starts its own session.
+            let recipe = s.pending.as_ref().unwrap_or(&s.recipe);
+            let (tool, session_id) = match (&s.agent, &s.pending) {
+                (Some(r), Some(p)) if crate::agent::Tool::detect(&p.cmd) != Some(r.tool) => {
+                    (crate::agent::Tool::detect(&p.cmd), None)
+                }
+                (Some(r), _) => (Some(r.tool), r.id.clone()),
+                (None, Some(p)) => (crate::agent::Tool::detect(&p.cmd), None),
+                (None, None) => (None, None),
             };
             sessions.push(Snapshot {
                 name: s.name.clone(),
@@ -107,10 +114,10 @@ impl App {
                         .to_string_lossy()
                         .into_owned()
                 }),
-                cmd: s.recipe.cmd.clone(),
-                args: s.recipe.args.clone(),
+                cmd: recipe.cmd.clone(),
+                args: recipe.args.clone(),
                 cwd: cwd.to_string_lossy().into_owned(),
-                env: s.recipe.env.clone(),
+                env: recipe.env.clone(),
                 tool,
                 session_id,
                 parent: s
@@ -294,7 +301,7 @@ fn kind_tag(k: Kind) -> u8 {
 
 /// Split an instance name like `Claude #2` into `("Claude", 2)`; `None` for names
 /// without a ` #<n>` suffix (e.g. a `✎ file.rs` editor row).
-fn split_instance(name: &str) -> Option<(&str, usize)> {
+pub(super) fn split_instance(name: &str) -> Option<(&str, usize)> {
     let (base, num) = name.rsplit_once(" #")?;
     Some((base, num.parse().ok()?))
 }
