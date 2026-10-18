@@ -160,7 +160,8 @@ on the returned id, including a start queued behind another checkout's teardown.
 actual PTY exit status is printed: mmux returns `0` for success or `4` for any child failure,
 keeping timeout `2` distinct even if the child exits `2`. Signal exits use the PTY library's
 nonzero status (usually `1`). A timeout leaves the process running; the default is 10 minutes.
-A never-started/failed-spawn process, a removed target or a lost socket is an error (`1`).
+A never-started/failed-spawn process, a removed target or failure to connect is an error (`1`).
+A missing control reply after submission is an unknown outcome (`5`).
 `--tail N` adds the last N output lines (`0` = all retained output; JSON: `data.output`).
 An exited process retains its status/output until restarted. Configure `cmd: scripts/testflight.sh`
 to run a relative executable from the process's effective cwd; workspace members and worktrees
@@ -206,8 +207,9 @@ usage errors (missing target or prompt, bad `--cmd`/`--prompt` use) included.
 
 Exit codes: `0` success · `1` error or refusal (bad target, not running, busy, depth limit…) ·
 `2` `wait`/`ask` timed out · `3` `wait`/`ask` stopped because the agent needs input ·
-`4` process wait completed with child failure (actual status in `exit_code`). Process waits
-with `--json` retain status/output in `data` and set `ok: false` on child failure.
+`4` process wait completed with child failure (actual status in `exit_code`) ·
+`5` control request outcome unknown (`outcome_unknown: true` in JSON; check state before retrying).
+Process waits with `--json` retain status/output in `data` and set `ok: false` on child failure.
 
 ## Etiquette and safety
 
@@ -223,5 +225,7 @@ with `--json` retain status/output in `data` and set `ok: false` on child failur
 - **Clean up.** Use `ask --close` for throwaway questions, or `close` helpers when finished,
   unless the human may want to read them.
 - **Refusals are policy.** If you get "control from inside mmux panes is off here", the project set
-  `control: from-panes: false`; stop driving mmux there. "did not answer in time" means the TUI is
-  paused (e.g. native copy mode); retry later.
+  `control: from-panes: false`; stop driving mmux there. "did not answer in time" means no reply
+  arrived within the control socket's window: the UI may be busy with slow Git/worktree work or
+  paused (e.g. native copy mode). A request that already started may still finish. Check `mmux ls`
+  (with the same `-C`, if used) and relevant Git/worktree state before retrying a mutation.

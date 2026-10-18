@@ -443,9 +443,12 @@ CONTROL — drive a running session from scripts and agents
     Processes always wait for exit and drained output, even with --idle. The
     child's actual exit status is printed (JSON: data.exit_code); mmux exits 0
     for child success, 4 for child failure, 2 for timeout, or 1 for an error
-    (not started, removed, socket lost). --tail N adds the final N output lines
+    (not started, removed, can't connect). --tail N adds the final N output lines
     (0 = all, JSON: data.output). start/restart --wait use the same rules and
     flags. A timeout leaves the process running. Waits default to 10 minutes.
+    A control request without a definitive reply exits 5 (JSON: outcome_unknown:
+    true). The UI may be busy or paused; the request may still be applied. Check
+    `mmux ls` (with the same -C, if used) before retrying a mutation.
     Programs in mmux panes get MMUX_SOCKET, MMUX_SESSION (their own id),
     MMUX_PROJECT and MMUX_DEPTH; `mmux new` refuses at depth 3. Detected agents
     (Claude/Codex/Pi/Grok) get a short note appended to their system prompt

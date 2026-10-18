@@ -59,7 +59,9 @@ event-boundary repair plus cell/selection geometry (`cell_at`, `Selection::order
 `pane.rs` mouse-sequence encoding, notification latch and top-aligned-scroll-region history
 regression, the `prompt.rs` menu/`[y/n]` detection and answer planning,
 the `session.rs` relative executable spawning across effective project/cwd variants and live busy-control detection,
+`control.rs` queued-request expiry and late replies after a timeout,
 `ctl.rs` process completion/mapping plus polling over a mock control socket,
+`tests/control_outcome.rs` CLI exit codes/JSON against a fixture socket (no TUI),
 the `picker.rs` fuzzy score, `notify.rs` escape formatting, the `config/` module (the
 project-over-global `merge` precedence in `config/mod.rs` and the comment-preserving YAML splicer in
 `config/yaml.rs`), `git::parse_change` porcelain parsing

@@ -615,8 +615,9 @@ mmux wait TestFlight --tail 40 -t 1h -C ~/chesscam  # already started
 
 A process always waits for its child to exit and its final output to drain, even with `--idle`.
 The report includes the actual PTY exit status. mmux returns `0` for child success, `4` for any
-child failure, `2` for timeout, and `1` for an error (never started, spawn failed, removed, or lost
-socket). The failure mapping keeps a child's status `2` or `3` distinct from mmux's timeout or
+child failure, `2` for timeout, and `1` for an error (never started, spawn failed, removed, or unable
+to connect). A missing control reply after submission returns `5` (unknown outcome).
+The failure mapping keeps a child's status `2` or `3` distinct from mmux's timeout or
 agent-input codes. Signal termination uses the PTY library's nonzero status, usually `1`.
 The default timeout is 10 minutes; timing out leaves the process running. A completed process
 keeps its status and output until it is restarted. A worktree start queued behind another
@@ -743,7 +744,13 @@ is read.
 **For scripts and agents.** Every command takes `--json` and then prints the raw response
 (`{"ok": true, "data": …}` or `{"ok": false, "error": "…"}`); failures exit non-zero either way.
 `wait` and `ask` exit `2` when they time out and `3` when the agent needs input; process waits
-return `4` for child failure, with the actual exit status in the report. Flags may come before the verb (`mmux --json ls`,
+return `4` for child failure, with the actual exit status in the report.
+A control request without a definitive reply exits `5` (`outcome_unknown: true` in JSON).
+The UI may be busy with slow Git/worktree operations or paused in native copy mode; a reply
+timeout does not identify the cause. A request still queued after the 10-second reply window
+is dropped, but one that already started may still finish. Check `mmux ls` (using the same
+`-C <dir>`, if supplied) and the relevant Git/worktree state before retrying a mutation.
+Flags may come before the verb (`mmux --json ls`,
 `mmux -C ~/proj status s3`). An unknown command is an error, never a launch: bare `mmux` (which opens
 the TUI) refuses to run without an interactive terminal, so an agent can't accidentally start a
 session from its own shell. Programs in mmux panes get `MMUX_SOCKET`,

@@ -27,8 +27,8 @@ use std::time::{Duration, Instant};
 
 /// How long a connection may take to send its request line.
 const REQUEST_WAIT: Duration = Duration::from_secs(5);
-/// How long the listener waits for the UI thread to answer. The loop drains requests
-/// every frame, so this only runs out when it is frozen (native-copy mode waits for a key).
+/// How long the listener waits for the UI thread to answer. Synchronous Git and
+/// filesystem work or a paused UI (native-copy mode) can outlast this window.
 const REPLY_WAIT: Duration = Duration::from_secs(10);
 /// How long a client waits for the answer — a little past [`REPLY_WAIT`], so the
 /// server's own "did not answer" reply arrives rather than a bare timeout.
@@ -228,6 +228,9 @@ pub struct Response {
     pub ok: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// No definitive reply arrived; an operation that started may still finish.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub outcome_unknown: bool,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub data: Value,
 }
@@ -237,6 +240,7 @@ impl Response {
         Response {
             ok: true,
             error: None,
+            outcome_unknown: false,
             data,
         }
     }
@@ -245,10 +249,70 @@ impl Response {
         Response {
             ok: false,
             error: Some(msg.into()),
+            outcome_unknown: false,
             data: Value::Null,
         }
     }
+
+    pub fn into_result(self) -> Result<Value, CallError> {
+        if self.ok {
+            Ok(self.data)
+        } else {
+            Err(CallError {
+                message: self.error.unwrap_or_else(|| "failed".into()),
+                outcome_unknown: self.outcome_unknown,
+            })
+        }
+    }
 }
+
+/// Keep an uncertain outcome distinct from a refusal through multi-step CLI verbs.
+#[derive(Debug)]
+pub struct CallError {
+    pub message: String,
+    pub outcome_unknown: bool,
+}
+
+impl CallError {
+    fn unknown(reason: impl std::fmt::Display) -> Self {
+        Self {
+            message: format!(
+                "{reason}; the UI may be busy or paused. The request may still be applied; \
+                 check `mmux ls` (with the same -C, if used) before retrying"
+            ),
+            outcome_unknown: true,
+        }
+    }
+
+    pub fn response(self) -> Response {
+        let mut resp = Response::err(self.message);
+        resp.outcome_unknown = self.outcome_unknown;
+        resp
+    }
+}
+
+impl From<String> for CallError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            outcome_unknown: false,
+        }
+    }
+}
+
+impl From<&str> for CallError {
+    fn from(message: &str) -> Self {
+        message.to_string().into()
+    }
+}
+
+impl std::fmt::Display for CallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CallError {}
 
 /// One session, as every verb reports it.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -474,14 +538,13 @@ pub struct Hello {
 pub struct Incoming {
     pub req: Request,
     pub reply: Sender<Response>,
-    /// When the listener handed it over. One still queued past [`REPLY_WAIT`] (the loop
-    /// was frozen in native-copy mode) was already answered with a timeout, so it is
-    /// dropped rather than acted on behind its caller's back.
+    /// When the listener handed it over. A request still queued past [`REPLY_WAIT`]
+    /// is dropped. Expiry cannot cancel a handler that has already started.
     pub at: Instant,
 }
 
 impl Incoming {
-    /// Whether the caller has already been told this request timed out.
+    /// Whether it is too late to start this request.
     pub fn expired(&self) -> bool {
         self.at.elapsed() >= REPLY_WAIT
     }
@@ -517,7 +580,7 @@ impl Server {
                 let tx = tx.clone();
                 // One thread per connection, so a client that never finishes its
                 // request line can't hold up the next one.
-                thread::spawn(move || serve(stream, tx));
+                thread::spawn(move || serve(stream, tx, REPLY_WAIT));
             }
         });
         let _ = ADVERTISED.set(path.clone());
@@ -538,7 +601,7 @@ impl Drop for Server {
 
 /// Answer one connection: read its request line, pass it to the UI thread, write back
 /// whatever comes out (or why nothing did).
-fn serve(stream: UnixStream, tx: Sender<Incoming>) {
+fn serve(stream: UnixStream, tx: Sender<Incoming>, reply_wait: Duration) {
     let _ = stream.set_read_timeout(Some(REQUEST_WAIT));
     let mut line = String::new();
     match BufReader::new(&stream).read_line(&mut line) {
@@ -554,10 +617,8 @@ fn serve(stream: UnixStream, tx: Sender<Incoming>) {
             if tx.send(Incoming { req, reply, at }).is_err() {
                 Response::err("mmux is shutting down")
             } else {
-                answer.recv_timeout(REPLY_WAIT).unwrap_or_else(|_| {
-                    Response::err(
-                        "mmux did not answer in time (native copy mode waits for a key in the TUI)",
-                    )
+                answer.recv_timeout(reply_wait).unwrap_or_else(|_| {
+                    CallError::unknown("mmux did not answer in time").response()
                 })
             }
         }
@@ -568,7 +629,7 @@ fn serve(stream: UnixStream, tx: Sender<Incoming>) {
 }
 
 /// Send one request to the socket at `path` and read the answer.
-pub fn call(path: &Path, req: &Request) -> Result<Response, String> {
+pub fn call(path: &Path, req: &Request) -> Result<Response, CallError> {
     let mut stream =
         UnixStream::connect(path).map_err(|e| format!("can't reach {}: {e}", path.display()))?;
     let _ = stream.set_read_timeout(Some(CLIENT_WAIT));
@@ -576,15 +637,18 @@ pub fn call(path: &Path, req: &Request) -> Result<Response, String> {
     line.push('\n');
     stream
         .write_all(line.as_bytes())
-        .map_err(|e| format!("can't send to mmux: {e}"))?;
+        .map_err(|e| CallError::unknown(format!("can't send to mmux: {e}")))?;
     let mut answer = String::new();
     BufReader::new(stream)
         .read_line(&mut answer)
-        .map_err(|e| format!("no answer from mmux: {e}"))?;
+        .map_err(|e| CallError::unknown(format!("no answer from mmux: {e}")))?;
     if answer.trim().is_empty() {
-        return Err("mmux closed the connection without answering".into());
+        return Err(CallError::unknown(
+            "mmux closed the connection without answering",
+        ));
     }
-    serde_json::from_str(&answer).map_err(|e| format!("unreadable answer from mmux: {e}"))
+    serde_json::from_str(&answer)
+        .map_err(|e| CallError::unknown(format!("unreadable answer from mmux: {e}")))
 }
 
 /// Whether something is listening at `path` (a stale file refuses the connect).
@@ -735,6 +799,47 @@ mod tests {
         assert_eq!(e, r#"{"ok":false,"error":"nope"}"#);
         let ok = serde_json::to_string(&Response::ok(serde_json::json!({"a": 1}))).unwrap();
         assert_eq!(ok, r#"{"ok":true,"data":{"a":1}}"#);
+        let old: Response = serde_json::from_str(&e).unwrap();
+        assert!(!old.outcome_unknown);
+    }
+
+    #[test]
+    fn reply_timeout_leaves_started_work_with_no_reply_receiver() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let (tx, rx) = mpsc::channel();
+        let worker = thread::spawn(move || serve(server, tx, Duration::ZERO));
+        writeln!(client, r#"{{"cmd":"worktree-new","branch":"test"}}"#).unwrap();
+        let incoming = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(!incoming.expired());
+        // A handler can already own the request when the listener stops waiting.
+        let mut line = String::new();
+        BufReader::new(&client).read_line(&mut line).unwrap();
+        let resp: Response = serde_json::from_str(&line).unwrap();
+        assert!(!resp.ok);
+        assert!(resp.outcome_unknown);
+        let message = resp.error.as_deref().unwrap();
+        assert!(message.contains("may still be applied"));
+        assert!(message.contains("mmux ls"));
+        assert!(!message.contains("copy mode"));
+        // Nothing cancels that handler; only its eventual reply is lost.
+        assert!(incoming.reply.send(Response::ok(Value::Null)).is_err());
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn queued_requests_expire_before_they_can_start() {
+        let (reply, _answer) = mpsc::channel();
+        let mut incoming = Incoming {
+            req: serde_json::from_str(r#"{"cmd":"ls"}"#).unwrap(),
+            reply,
+            at: Instant::now(),
+        };
+        assert!(!incoming.expired());
+        incoming.at -= REPLY_WAIT;
+        assert!(incoming.expired());
     }
 
     #[test]
