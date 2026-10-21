@@ -29,6 +29,19 @@
 //! one finishes — `/tasks to see subagents` alone means finished ones. Lines above the
 //! input box (the transcript, `· 3 shells still running` on a done line) are history,
 //! never read. Pure functions over screen lines, so the parsing is tested directly.
+//!
+//! Grok (see [`parse_grok`]) wakes the same way, and lists its live work in collapsible
+//! sections stacked right on top of its input box, gone once the last entry ends:
+//!
+//! ```text
+//!      Worked for 8.9s                                   ← the transcript ends
+//!    ▾ Subagents 1
+//!    ⋅ Subagent Sleep 30 then report · Wait 30…   grok-4.7 20s
+//!    ▾ Tasks 1
+//!    ⋅ Run Sleep 35 seconds in background                    20s
+//!   ╭──────────────────────────────────────────╮
+//!   │ ❯                                        │
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -126,6 +139,36 @@ pub fn parse(lines: &[String]) -> Option<Background> {
     }
     // Sub-agents show in the tree, or (if it's hidden) in the pill — never both.
     bg.agents = tree_agents.max(pill_agents);
+    (bg != Background::default()).then_some(bg)
+}
+
+/// The background work Grok lists above its input box (see the module docs): each
+/// section's header carries its count, so a collapsed one counts as much as an open one.
+/// Only the run of section lines touching the box is read — the transcript above it is
+/// history.
+pub fn parse_grok(lines: &[String]) -> Option<Background> {
+    let input = lines
+        .iter()
+        .rposition(|l| l.trim_start().starts_with('╭'))?;
+    let mut bg = Background::default();
+    for line in lines[..input].iter().rev().map(|l| l.trim()) {
+        let label = line.trim_start_matches(|c: char| !c.is_alphanumeric());
+        // Blank lines and the scrollbar's `█` sit between the sections; text that
+        // starts flush, without a glyph, is the transcript.
+        if label.is_empty() {
+            continue;
+        }
+        if label.len() == line.len() {
+            break;
+        }
+        let header = line.starts_with(['▾', '▸', '▶', '▼', '►']);
+        match label.split_once(' ') {
+            Some(("Subagents", n)) if header => bg.agents += n.trim().parse().unwrap_or(0),
+            Some(("Tasks", n)) if header => bg.tasks += n.trim().parse().unwrap_or(0),
+            _ if header => break,
+            _ => {}
+        }
+    }
     (bg != Background::default()).then_some(bg)
 }
 
@@ -266,6 +309,49 @@ mod tests {
             "some later line",
         ]);
         assert_eq!(parse(&lines).unwrap().agents, 5);
+    }
+
+    /// Grok 1.0 at an idle prompt with a background sub-agent and shell, as `mmux read`
+    /// showed it, then after both finished and it woke to report.
+    #[test]
+    fn reads_grok_s_sections_above_its_input_box() {
+        let running: Vec<String> = [
+            "     ❯ Spawn ONE background subagent (run in background)      3:37 PM",
+            "     Worked for 8.9s",
+            "   ▾ Subagents 1",
+            "   ⋅ Subagent Sleep 30 then report · Wait 30 seconds…   grok-4.7 20s",
+            "   ▾ Tasks 1",
+            "   ⋅ Run Sleep 35 seconds in background                          20s",
+            "  ╭──────────────────────────────────────────────────────────────────╮",
+            "  │ ❯                                                                │",
+            "  ╰────────────────────────────── Grok 4.7 (xhigh) · always-approve ─╯",
+            "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+        ]
+        .map(String::from)
+        .to_vec();
+        let bg = parse_grok(&running).unwrap();
+        assert_eq!(bg.describe(), "1 agent, 1 task");
+        // A collapsed section still counts what it hides.
+        let mut collapsed = running.clone();
+        collapsed.splice(2..4, ["   ▸ Subagents 3".to_string()]);
+        assert_eq!(parse_grok(&collapsed).unwrap().agents, 3);
+
+        let done: Vec<String> = [
+            "     Worked for 14s",
+            "     ◈ Ran sleep 40s then write bg.txt",
+            "     bg finished                                                3:36 PM",
+            "     Worked for 4.8s                                                  █",
+            "  ╭──────────────────────────────────────────────────────────────────╮",
+            "  │ ❯                                                                │",
+            "  ╰────────────────────────────── Grok 4.7 (xhigh) · always-approve ─╯",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(parse_grok(&done), None);
+        // The transcript quoting a header isn't the live list.
+        let quoted = ["   ▾ Tasks 2", "     Worked for 3s", "  ╭───╮"].map(String::from);
+        assert_eq!(parse_grok(&quoted), None);
+        assert_eq!(parse_grok(&running[..6]), None, "no input box, no list");
     }
 
     #[test]

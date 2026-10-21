@@ -23,7 +23,18 @@
 //! ```
 //!
 //! Those are read by column instead: the options are the lines aligned with the cursor
-//! line's label, numbered 1… in order. The other shape is a plain `[y/N]` line. A
+//! line's label, numbered 1… in order. Grok draws radio buttons, its cursor only a
+//! highlight plain text doesn't carry, and picks an option the moment its key is typed:
+//!
+//! ```text
+//!  ┃  1 (○) Yes, and don't ask again for anything (always-approve mode)
+//!  ┃  2 (●) Yes, proceed
+//!  ┃  3 (○) No, reject (type to add feedback)
+//!
+//!  1/3:select  │  Tab:next option  │  Ctrl+c:cancel
+//! ```
+//!
+//! The other shape is a plain `[y/N]` line. A
 //! numbered list alone is not a menu — an agent echoes a numbered prompt it was sent,
 //! and answers in numbered lists — so a menu also needs a cursor on one of its options,
 //! numbering that runs from 1, a selection hint (`Esc to cancel`, `Enter to select`,
@@ -48,6 +59,8 @@ const MENU_HINTS: &[&str] = &[
     "press enter",
     "to navigate",
     "↑/↓",
+    ":select",
+    "enter:submit",
 ];
 /// How many screen lines from the bottom a prompt is looked for in.
 const WINDOW: usize = 40;
@@ -72,6 +85,13 @@ pub struct Prompt {
     /// A `[y/n]` line rather than a menu: answered by typing `y` or `n`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub yes_no: bool,
+    /// Typing an option's number picks it (Grok's radio menus), so no cursor to steer.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub keyed: bool,
+    /// The key of a keyed menu's free-text row (Grok's `z (○) Type your answer here`),
+    /// which opens an editor for an answer none of the choices give.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_in: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -93,6 +113,10 @@ pub struct Choice {
 pub enum Plan {
     /// Move the cursor `moves` options (negative: up), then press Enter.
     Select { moves: i32, choice: Choice },
+    /// Type the choice's number, which picks it.
+    Press(Choice),
+    /// Press a keyed menu's free-text key, type this text, then press Enter.
+    WriteIn { key: String, text: String },
     /// Type this text, then press Enter.
     Type(String),
 }
@@ -104,6 +128,7 @@ pub fn parse(lines: &[String]) -> Option<Prompt> {
     let rows = &rows[end.saturating_sub(WINDOW - 1)..=end];
     let lines: Vec<&str> = rows.iter().map(|&(_, l)| l).collect();
     menu(&lines)
+        .or_else(|| radio_menu(&lines))
         .or_else(|| bare_menu(rows))
         .or_else(|| yes_no(&lines))
 }
@@ -209,6 +234,90 @@ fn menu(lines: &[&str]) -> Option<Prompt> {
         question: question_above(&lines[..first]),
         choices,
         yes_no: false,
+        keyed: false,
+        write_in: None,
+    })
+}
+
+/// Grok's radio menu (see the module docs): `N (○) label` lines, `●` on the one Enter
+/// would pick, numbered from 1 near the bottom with a selection hint below. A free-text
+/// row keyed by a letter (`z (○) Type your answer here`) is left out.
+fn radio_menu(lines: &[&str]) -> Option<Prompt> {
+    let radio = |line: &str| -> Option<(bool, Option<u32>, String)> {
+        let (key, rest) = line.split_once(' ')?;
+        let (selected, label) = match rest.split_once(") ")? {
+            ("(●", label) => (true, label),
+            ("(○", label) => (false, label),
+            _ => return None,
+        };
+        let short = key.len() <= 2 && key.chars().all(|c| c.is_ascii_alphanumeric());
+        // The description column after a wide gap, and the scrollbar, aren't the label.
+        let label = label
+            .split("  ")
+            .next()?
+            .trim_end_matches(['█', '▐', '▌', ' ']);
+        (short && !label.is_empty()).then(|| (selected, key.parse().ok(), label.to_string()))
+    };
+    let last = lines.iter().rposition(|l| radio(l).is_some())?;
+    let mut found = Vec::new();
+    let mut write_in = None;
+    let mut gap = 0;
+    for i in (0..=last).rev() {
+        match radio(lines[i]) {
+            Some((selected, Some(n), label)) => {
+                found.push((i, Choice { n, label, selected }));
+                gap = 0;
+            }
+            Some(_) => {
+                write_in = lines[i].split_once(' ').map(|(key, _)| key.to_string());
+                gap = 0;
+            }
+            None if gap < MAX_GAP => gap += 1,
+            None => break,
+        }
+    }
+    found.reverse();
+    let first = found.first()?.0;
+    let numbered = found.iter().zip(1..).all(|((_, c), n)| c.n == n);
+    if found.len() < 2 || !numbered {
+        return None;
+    }
+    let below: Vec<&str> = lines[last + 1..]
+        .iter()
+        .copied()
+        .filter(|l| !l.is_empty())
+        .collect();
+    let hint = below.iter().any(|l| {
+        let l = l.to_lowercase();
+        MENU_HINTS.iter().any(|h| l.contains(h))
+    });
+    if below.len() >= NEAR_BOTTOM || !hint {
+        return None;
+    }
+    // A permission dialog has no question line: it names the tool call (`› Run tests`)
+    // over the command (`│ cargo test`), then a scope hint.
+    let above = &lines[..first];
+    let titled = above.iter().rposition(|l| l.starts_with('›')).map(|t| {
+        let title = above[t].trim_start_matches('›').trim();
+        match above.get(t + 1).and_then(|l| l.strip_prefix('│')) {
+            Some(cmd) => format!("{title}: {}", cmd.trim()),
+            None => title.to_string(),
+        }
+    });
+    let question = above
+        .iter()
+        .rev()
+        .take(8)
+        .find(|l| l.ends_with('?'))
+        .map(|l| l.to_string())
+        .or(titled)
+        .or_else(|| question_above(above));
+    Some(Prompt {
+        question,
+        choices: found.into_iter().map(|(_, c)| c).collect(),
+        yes_no: false,
+        keyed: true,
+        write_in,
     })
 }
 
@@ -281,6 +390,8 @@ fn bare_menu(rows: &[(usize, &str)]) -> Option<Prompt> {
         question: question_above(&above),
         choices,
         yes_no: false,
+        keyed: false,
+        write_in: None,
     })
 }
 
@@ -321,6 +432,8 @@ fn yes_no(lines: &[&str]) -> Option<Prompt> {
             question: Some(l.to_string()),
             choices: Vec::new(),
             yes_no: true,
+            keyed: false,
+            write_in: None,
         })
 }
 
@@ -374,6 +487,12 @@ Check the screen, then pick with `mmux keys` (Up/Down, Enter), or pass --text to
             .collect();
         match (hits.as_slice(), leading.as_slice()) {
             ([i], _) | (_, [i]) if !word.is_empty() => *i,
+            ([], _) if prompt.write_in.is_some() => {
+                return Ok(Plan::WriteIn {
+                    key: prompt.write_in.clone().unwrap_or_default(),
+                    text: answer.to_string(),
+                })
+            }
             ([], _) => {
                 return Err(format!(
                     "“{answer}” is none of the options — to type free text, use `mmux send`"
@@ -382,6 +501,9 @@ Check the screen, then pick with `mmux keys` (Up/Down, Enter), or pass --text to
             _ => return Err(format!("“{answer}” matches more than one option")),
         }
     };
+    if prompt.keyed && choices[pick].n <= 9 {
+        return Ok(Plan::Press(choices[pick].clone()));
+    }
     let at = choices.iter().position(|c| c.selected).unwrap_or(0);
     Ok(Plan::Select {
         moves: pick as i32 - at as i32,
@@ -501,6 +623,98 @@ mod tests {
 
 
 ";
+
+    /// Grok 1.0's permission dialog under its working footer, as `mmux read` showed it
+    /// (the scrollbar column trimmed): the `●` follows the cursor.
+    const GROK_PERMISSION: &str = "\
+     ◆ Running remove file and fetch example.com                                     █
+   ◆ Remove file and fetch example.com… 1.8s                      5.6s ⇣19.4k [↓][stop]
+  ┃
+  ┃  ›  Remove file and fetch example.com
+  ┃  │ rm -rf made_by_shell.txt && curl -s https://example.com -o ex.html
+  ┃  ← → narrow scope
+  ┃
+  ┃  1 (○) Yes, and don't ask again for anything (always-approve mode)
+  ┃  2 (●) Yes, proceed
+  ┃  3 (○) No, reject (type to add feedback)
+  ┃  4 (○) Never allow: rm -rf
+  ┃
+
+  1/4:select  │  Tab:next option  │  ←/→:scope  │  Ctrl+o:always-approve  │  Ctrl+c:cancel
+";
+
+    /// Grok's question tool: nothing marked, the cursor a highlight, a free-text row.
+    const GROK_QUESTION: &str = "\
+   ◆ Waiting on answers for Which color do you prefer?            8.8s ⇣21.2k [stop]
+  ┃
+  ┃  Which color do you prefer?
+  ┃
+  ┃
+  ┃  1 (○) Red (Recommended)  You prefer red.                                  █
+  ┃  2 (○) Green              You prefer green.                                █
+  ┃  3 (○) Blue               You prefer blue.                                 █
+  ┃  z (○) Type your answer here
+  ┃
+  ┃  ↑/↓ navigate · y copy                                            Enter:submit
+  ┃
+  Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
+";
+
+    #[test]
+    fn reads_and_answers_grok_s_radio_menus() {
+        let p = parse(&screen(GROK_PERMISSION)).unwrap();
+        assert!(p.keyed);
+        assert_eq!(
+            p.question.as_deref(),
+            Some("Remove file and fetch example.com: rm -rf made_by_shell.txt && curl -s https://example.com -o ex.html")
+        );
+        assert_eq!(
+            list(&p.choices),
+            "1. Yes, and don't ask again for anything (always-approve mode) · 2. Yes, proceed · \
+3. No, reject (type to add feedback) · 4. Never allow: rm -rf"
+        );
+        assert!(p.choices[1].selected);
+        // Its key picks an option outright, wherever the cursor is.
+        for (answer, n) in [("2", 2), ("no", 3), ("never", 4), ("yes, proceed", 2)] {
+            match plan(Some(&p), answer) {
+                Ok(Plan::Press(c)) => assert_eq!(c.n, n, "{answer}"),
+                other => panic!("{answer}: {other:?}"),
+            }
+        }
+
+        let q = parse(&screen(GROK_QUESTION)).unwrap();
+        assert_eq!(q.question.as_deref(), Some("Which color do you prefer?"));
+        assert_eq!(
+            list(&q.choices),
+            "1. Red (Recommended) · 2. Green · 3. Blue"
+        );
+        assert!(q.choices.iter().all(|c| !c.selected));
+        assert!(matches!(plan(Some(&q), "blue"), Ok(Plan::Press(c)) if c.n == 3));
+        // An answer none of its options give goes in through the free-text row; the
+        // permission dialog has none, so there it is refused.
+        assert_eq!(q.write_in.as_deref(), Some("z"));
+        assert_eq!(
+            plan(Some(&q), "Zurich"),
+            Ok(Plan::WriteIn {
+                key: "z".into(),
+                text: "Zurich".into()
+            })
+        );
+        assert!(plan(Some(&p), "Zurich").is_err());
+
+        // Once answered, the dialog is gone and the transcript's echo of it is no menu.
+        let done = "\
+     ◆ Ask Which color do you prefer?
+     You prefer blue.
+  ╭──────────────────╮
+  │ ❯                │
+  ╰── Grok 4.7 ──────╯
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+";
+        assert_eq!(parse(&screen(done)), None);
+        // Radio-looking lines with no selection hint below are output, not a menu.
+        assert_eq!(parse(&screen("1 (○) one\n2 (●) two\nDone.\n")), None);
+    }
 
     #[test]
     fn reads_claude_s_unnumbered_trust_dialog() {

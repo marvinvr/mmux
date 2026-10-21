@@ -1168,7 +1168,7 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     Block until the agent has finished working on
                                     what it was sent (--idle, the default), or
                                     with --exit until it ends. Exit 2 on timeout.
-                                    A Claude agent with background work running
+                                    A Claude/Grok agent with background work running
                                     (sub-agents, shells, monitors it will be woken
                                     by) isn't done until that's gone too;
                                     --no-background stops at its idle prompt.

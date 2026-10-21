@@ -724,7 +724,7 @@ impl App {
         // Always drain, even when disabled or focused, so the per-pane queues can't
         // grow without bound.
         let mut drained: Vec<(usize, Vec<Notify>)> = Vec::new();
-        for (i, s) in self.sessions.iter().enumerate() {
+        for (i, s) in self.sessions.iter_mut().enumerate() {
             let n = s.take_notifications();
             if !n.is_empty() {
                 drained.push((i, n));

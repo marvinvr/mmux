@@ -16,6 +16,12 @@ Either one emits a desktop notification. A rich escape (with a title/body) carri
 through; a bare bell shows `<session> — needs attention`. No notification fires for the pane you
 are currently looking at (see `only_when_unfocused`).
 
+**Grok** raises neither inside mmux: its own notifications are gated on its terminal reporting a
+loss of focus, which an mmux pane never does. So mmux raises them for a Grok agent: `needs input`
+(with the question) when a permission dialog or question appears on its screen, and `finished` when
+a turn ends — its `[stop]` footer goes — with no background work left to wake it. They go out like
+any other notification below, but don't mark the agent as asking; its screen does that.
+
 The bell also lights a **terminal** or **process** row **green** until you focus it. **Agent** rows
 use a different, more reliable cue for working/ready — explicit `OSC 9;4` progress state when the
 agent provides it, falling back to a quiet terminal title, with live footer controls (`[stop]`,

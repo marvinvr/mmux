@@ -214,9 +214,16 @@ pub struct Session {
     notice: Option<(Instant, bool)>,
     /// Persistent activity indicators on the live screen, sampled by `observe`.
     screen_working: bool,
-    /// The background work (sub-agents, shells, monitors) a Claude agent's footer
-    /// shows running, sampled by [`observe`](Self::observe). See [`crate::background`].
+    /// The background work (sub-agents, shells, monitors) a Claude or Grok agent's
+    /// screen shows running, sampled by [`observe`](Self::observe). See
+    /// [`crate::background`].
     pub background: Option<Background>,
+    /// Whether the last [`observe`](Self::observe) found a live busy control on this
+    /// agent's screen — the edge a Grok agent's "finished" notification fires on.
+    was_busy: bool,
+    /// Notifications mmux raises on an agent's behalf (see [`observe`](Self::observe)),
+    /// drained with the pane's own by [`take_notifications`](Self::take_notifications).
+    notes: Vec<Notify>,
     /// When background work was last seen running, stamped every tick — so `mmux wait`
     /// can tell "it just finished, the turn it wakes is about to start" from quiet.
     pub last_background_at: Option<Instant>,
@@ -265,6 +272,8 @@ impl Session {
             screen_working: false,
             background: None,
             last_background_at: None,
+            was_busy: false,
+            notes: Vec::new(),
         }
     }
 
@@ -474,11 +483,18 @@ impl Session {
 
     /// Sidebar subtitle: the program's terminal title, falling back to the last error.
     pub fn subtitle(&self) -> Option<String> {
-        self.pane
-            .as_ref()
-            .map(Pane::title)
-            .filter(|s| !s.is_empty())
-            .or_else(|| self.error.clone())
+        self.title().or_else(|| self.error.clone())
+    }
+
+    /// The program's terminal title as shown (sidebar, `mmux ls`/`status`), if it set one.
+    /// Grok's is trimmed of what the row already says — see [`grok_title`].
+    pub fn title(&self) -> Option<String> {
+        let title = self.pane.as_ref().map(Pane::title)?;
+        let title = match self.agent.as_ref().map(|r| r.tool) {
+            Some(Tool::Grok) => grok_title(&title).to_string(),
+            _ => title,
+        };
+        (!title.is_empty()).then_some(title)
     }
 
     pub fn attention(&self) -> bool {
@@ -499,15 +515,20 @@ impl Session {
             self.notice = None;
             self.screen_working = false;
             self.background = None;
+            self.was_busy = false;
             return;
         };
         let lines = pane.screen_lines();
         self.screen_working = screen_working(&lines);
-        // Only Claude wakes itself when background work finishes, and the footer read
-        // is in its wording.
-        let claude = self.agent.as_ref().is_some_and(|r| r.tool == Tool::Claude);
-        self.background = claude.then(|| crate::background::parse(&lines)).flatten();
+        // Claude and Grok wake themselves when background work finishes; each lists
+        // that work in its own place and wording.
+        self.background = match self.agent.as_ref().map(|r| r.tool) {
+            Some(Tool::Claude) => crate::background::parse(&lines),
+            Some(Tool::Grok) => crate::background::parse_grok(&lines),
+            _ => None,
+        };
         let found = crate::prompt::parse(&lines);
+        let new_prompt = found.is_some() && self.prompt.is_none();
         self.prompt = match (found, self.prompt.take()) {
             (Some(p), Some((_, since))) => Some((p, since)),
             (Some(p), None) => Some((p, Instant::now())),
@@ -519,6 +540,27 @@ impl Session {
             (Some(at), Some(seen)) if seen.0 == at => Some(seen),
             (Some(at), _) => Some((at, !reminder(at, self.last_working_at.or(self.launched_at)))),
         };
+        // Grok notifies only when its terminal reports losing focus, which an mmux pane
+        // never does, so mmux raises its notifications for it: when it asks, and when a
+        // turn ends with nothing left to wake it. A turn is its `[stop]` footer — its
+        // title also changes when an idle session is renamed.
+        if self.agent.as_ref().is_some_and(|r| r.tool == Tool::Grok) {
+            if new_prompt && self.notice.is_none() {
+                let question = self.prompt.as_ref().and_then(|(p, _)| p.question.clone());
+                self.notes.push(Notify {
+                    title: Some("needs input".into()),
+                    body: question,
+                });
+            }
+            let ended = self.was_busy && !self.screen_working;
+            if ended && self.prompt.is_none() && self.background.is_none() {
+                self.notes.push(Notify {
+                    title: None,
+                    body: Some("finished".into()),
+                });
+            }
+            self.was_busy = self.screen_working;
+        }
     }
 
     /// What this agent is waiting on someone for, if anything: a question on its screen
@@ -606,12 +648,38 @@ impl Session {
         }
     }
 
-    /// Drain notifications captured from this session's pane since the last call.
-    pub fn take_notifications(&self) -> Vec<Notify> {
-        self.pane
+    /// Drain notifications captured from this session's pane, and those raised on its
+    /// behalf, since the last call.
+    pub fn take_notifications(&mut self) -> Vec<Notify> {
+        let mut notes = self
+            .pane
             .as_ref()
             .map(Pane::take_notifications)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        notes.append(&mut self.notes);
+        notes
+    }
+}
+
+/// Grok's title (`⚠ Action Required - ⠧ - Run tests… - Fix the parser - grok`) less
+/// the alert, spinner and app name the sidebar row shows its own way: `Run tests… - Fix
+/// the parser`. Detection reads the raw title.
+fn grok_title(title: &str) -> &str {
+    let title = title.strip_prefix("⚠ Action Required - ").unwrap_or(title);
+    let title = match title.split_once(" - ") {
+        Some((spinner, rest))
+            if !spinner.is_empty()
+                && spinner
+                    .chars()
+                    .all(|c| ('\u{2800}'..='\u{28ff}').contains(&c)) =>
+        {
+            rest
+        }
+        _ => title,
+    };
+    match title {
+        "grok" => "",
+        _ => title.strip_suffix(" - grok").unwrap_or(title).trim(),
     }
 }
 
@@ -845,6 +913,56 @@ mod tests {
         }
     }
 
+    /// A Grok agent raises no notification of its own in mmux, so its session raises
+    /// one when a question appears and one when its turn's `[stop]` footer goes.
+    #[test]
+    fn a_grok_agent_is_notified_for_when_it_asks_and_when_it_finishes() {
+        let script = r#"printf '\033]0;grok\007   ◆ Waiting… [stop]\n  ┃  Proceed?\n  ┃  1 (●) Yes\n  ┃  2 (○) No\n\n  1/2:select\n'
+read answer
+printf '\033[2J\033[H   ◆ Running… [stop]\n'
+read again
+printf '\033[2J\033[H     Done.\n  ╭──╮\n  │ ❯│\n  ╰──╯\n'
+read last"#;
+        let recipe = Recipe {
+            cmd: "sh".into(),
+            args: vec!["-c".into(), script.into()],
+            cwd: std::env::temp_dir(),
+            env: BTreeMap::new(),
+        };
+        let mut s = Session::new("Grok".into(), Kind::Agent, recipe, 0, &std::env::temp_dir());
+        s.agent = Some(Resume::restored(Tool::Grok, None));
+        s.spawn(24, 100);
+        assert!(s.error.is_none(), "{:?}", s.error);
+        let observe_until = |s: &mut Session, done: &dyn Fn(&Session) -> bool| {
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while {
+                s.observe();
+                !done(s)
+            } {
+                assert!(Instant::now() < deadline, "fixture did not draw");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        observe_until(&mut s, &|s| s.prompt.is_some());
+        let notes = s.take_notifications();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title.as_deref(), Some("needs input"));
+        assert_eq!(notes[0].body.as_deref(), Some("Proceed?"));
+
+        // Answered, it works on — nothing to say until the footer goes.
+        s.pane.as_ref().unwrap().input(b"1\n".to_vec());
+        observe_until(&mut s, &|s| s.prompt.is_none() && s.screen_working);
+        assert!(s.take_notifications().is_empty());
+        s.pane.as_ref().unwrap().input(b"\n".to_vec());
+        observe_until(&mut s, &|s| !s.screen_working);
+        let notes = s.take_notifications();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].body.as_deref(), Some("finished"));
+        s.observe();
+        assert!(s.take_notifications().is_empty(), "once per turn");
+        s.kill();
+    }
+
     fn agent(cmd: &str, resume: Resume) -> Session {
         let recipe = Recipe {
             cmd: cmd.into(),
@@ -860,6 +978,29 @@ mod tests {
 
     /// The clock the idle-agent closer reads: life after launch resets it, start-up
     /// noise and input-less quiet don't, and a reopen's carry adds on.
+    #[test]
+    fn grok_titles_drop_what_the_row_already_shows() {
+        for (raw, shown) in [
+            (
+                "⚠ Action Required - ⠧ - Remove ex.html and fetch… - Shell touch - grok",
+                "Remove ex.html and fetch… - Shell touch",
+            ),
+            (
+                "⠋ - Wait 45 seconds… - Sleep then add subtract to calc.py - grok",
+                "Wait 45 seconds… - Sleep then add subtract to calc.py",
+            ),
+            (
+                "Sleep then add subtract to calc.py - grok",
+                "Sleep then add subtract to calc.py",
+            ),
+            ("grok", ""),
+            ("Fix - the - parser", "Fix - the - parser"),
+            ("Port to pygrok", "Port to pygrok"),
+        ] {
+            assert_eq!(grok_title(raw), shown, "{raw}");
+        }
+    }
+
     #[test]
     fn idle_for_ignores_startup_noise_and_counts_the_carry() {
         // Minutes, not hours, of `Instant` arithmetic: a freshly booted CI machine

@@ -454,7 +454,7 @@ impl App {
                 notification: a.notification,
                 screen: screen_tail(s, ASKING_LINES),
             }),
-            title: s.pane.as_ref().map(|p| p.title()).filter(|t| !t.is_empty()),
+            title: s.title(),
             error: s.error.clone(),
             idle_for_ms: match working {
                 true => Some(0),
@@ -559,7 +559,14 @@ impl App {
             "`mmux answer` needs an answer: a choice number, yes/no, an option's text, or --dismiss",
         )?;
         let plan = match text {
-            true => Ok(Plan::Type(answer.to_string())),
+            // A keyed menu would take typed letters for keys: write in through its row.
+            true => Ok(match prompt.as_ref().and_then(|p| p.write_in.clone()) {
+                Some(key) => Plan::WriteIn {
+                    key,
+                    text: answer.to_string(),
+                },
+                None => Plan::Type(answer.to_string()),
+            }),
             false => crate::prompt::plan(prompt.as_ref(), answer),
         };
         let plan = plan.map_err(|e| match prompt.as_ref() {
@@ -587,6 +594,21 @@ impl App {
                 self.sessions[i].last_input_at = Some(Instant::now());
                 self.flush_deferred_input();
                 format!("picked “{}. {}” for", choice.n, choice.label)
+            }
+            Plan::Press(choice) => {
+                self.queue_input(id, Duration::ZERO, choice.n.to_string().into_bytes());
+                self.sessions[i].last_input_at = Some(Instant::now());
+                self.flush_deferred_input();
+                format!("picked “{}. {}” for", choice.n, choice.label)
+            }
+            Plan::WriteIn { key, text } => {
+                let typed = pane.paste_input(&text);
+                self.queue_input(id, Duration::ZERO, key.into_bytes());
+                self.queue_input(id, ANSWER_GAP, typed);
+                self.queue_input(id, ENTER_DELAY, b"\r".to_vec());
+                self.sessions[i].last_input_at = Some(Instant::now());
+                self.flush_deferred_input();
+                format!("wrote in “{text}” for")
             }
             Plan::Type(text) => {
                 self.type_input(i, &text, true);

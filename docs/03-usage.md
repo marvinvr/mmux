@@ -66,7 +66,9 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
   started it, so a delegating agent and its helpers read as one group. Once the spawner is closed
   its helpers move back out to the top level; the nesting survives a reopen.
 - Every session row shows a dim **subtitle** — the terminal title the program sets (e.g. what
-  an agent is currently doing), falling back to its last error.
+  an agent is currently doing), falling back to its last error. Grok's is shown without the alert,
+  spinner and `- grok` it wraps around it (`⚠ Action Required - ⠧ - Run tests… - grok` reads
+  `Run tests…`); `mmux ls`/`status` show the same.
 - For an **agent**, an explicit `OSC 9;4` terminal-progress report drives the working/ready state
   when available (Claude Code and Pi emit indeterminate while working and clear it when done). For older
   agents, mmux falls back to the terminal title: once an animated title has been static for ~2s it
@@ -595,7 +597,7 @@ mmux reload                        # what `R` does: apply an edited mmux.yaml li
 | `mmux stop <t> [--force]` | Stops a process in place (running its `stop:` teardown, like `x`); on an agent or terminal it is `close` — refused while busy unless `--force`. |
 | `mmux close <t> [--force]` | Closes an agent or terminal. Refused while an agent is working or a terminal is running, unless `--force` — except `mmux close self`, which closes the caller's own pane without it. |
 | `mmux last <t>` | The agent's last reply. Claude, Codex, Pi and Grok answers come from the agent's own transcript (just the words, no TUI chrome); anything else falls back to the last ~40 lines of its screen. `--json` says which (`"source": "transcript"` or `"screen"`). |
-| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s] [--tail N] [--no-background]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest, and no background work (see *Background work* below) may be running (nor have finished within the settle time — it wakes the agent); `--no-background` stops at the idle prompt instead. `--exit` waits for the session to end instead. Processes always wait for exit and final output, and print the child's exit status. mmux returns `0` for success or `4` for failure. Exits `2` on timeout, and `3` when an agent [needs input](#answering-an-agent) for at least 0.5 s, printing what it asks. `--tail N` adds the final N output lines (`0` = all). |
+| `mmux wait <t> [--idle\|--exit] [-t 10m] [--settle 1.5s] [--tail N] [--no-background]` | Blocks until the agent is done (`--idle`, the default): not working, nothing queued for it, quiet for the settle time — and it either worked since the last input it was sent, or ignored that input for 20 s (only `send`, a first prompt, or `keys` with `Enter`/`C-m`/`C-j` count as input). For a Claude agent its transcript must also show the turn on that input has come to rest, and for a Claude or Grok agent no background work (see *Background work* below) may be running (nor have finished within the settle time — it wakes the agent); `--no-background` stops at the idle prompt instead. `--exit` waits for the session to end instead. Processes always wait for exit and final output, and print the child's exit status. mmux returns `0` for success or `4` for failure. Exits `2` on timeout, and `3` when an agent [needs input](#answering-an-agent) for at least 0.5 s, printing what it asks. `--tail N` adds the final N output lines (`0` = all). |
 | `mmux ask [--agent <template>] [-p project] [--to <t>] [-t 10m] [--close] <prompt…>` | [Ask an agent](#asking-an-agent) and print its answer. |
 | `mmux worktree new [branch] [-p project] [--agent <template>] [--prompt "…"]` | Cuts a [worktree](#worktrees) off the project's repository, like `w` (an existing branch is checked out; a new one branches from what the main checkout has out; no name = a generated one), without moving your view. Env files are copied and `worktrees.setup` runs as usual. With `--agent` or `--prompt` it also starts an agent in it (prints its id). Address the worktree afterwards by its branch: `-p <branch>`, `<branch>/<name>`. |
 | `mmux worktree rm <branch> [--force]` | Removes a worktree, like `X`: its sessions close, the checkout goes, and the branch is deleted only if it's merged (unmerged commits stay on the kept branch). Refused while it has uncommitted changes, an agent at work, or is the project in view — unless `--force`, which discards uncommitted changes. Run from inside the worktree being removed, the first try removes nothing: it explains that this closes the caller's own pane (and every other session there) and how to go through with it. |
@@ -677,7 +679,7 @@ answer: mmux answer s14 1-3, yes/no, or an option's text
 
 With `--json` that report is the `error`, and `data` carries the session's status, whose
 `needs_input` holds `since_ms`, `prompt` (`question`, `choices[]` of `n`/`label`/`selected`,
-`yes_no`), `notification` and `screen[]`. `mmux status` and `mmux ls` show the state too
+`yes_no`, `keyed`, `write_in`), `notification` and `screen[]`. `mmux status` and `mmux ls` show the state too
 (`needs-input 12s`).
 
 Answer it, then wait again:
@@ -693,7 +695,13 @@ mmux wait s14 && mmux last s14
 A choice is picked the way a person would: the menu's cursor moves to it with arrow keys and Enter
 confirms, so it works for any menu that draws a cursor. An unnumbered menu (Claude's trust dialog:
 `❯ No, exit` / `Yes, I trust this folder`) is numbered 1… top to bottom, so `2`, `yes` or `trust`
-all pick the second line. Text that matches no option (or several) is refused with the list of
+all pick the second line. Grok's radio menus (`1 (○) Yes, and don't ask again` / `2 (●) Yes, proceed`
+— its permission dialogs and its question tool) are `keyed`: Grok picks an option the moment its
+number is typed, so mmux types the number instead of steering a cursor it can't see (Grok's question
+cursor is only a highlight). Their free-text row (`z (○) Type your answer here`) isn't offered as a
+choice; an answer that matches no option goes in through it instead (`mmux answer s14 "Zurich"`
+presses `z`, types the text and Enter — `mmux send` would only submit the highlighted option).
+Text that matches no option (or several) is refused with the list of
 choices — to type free text into a menu, use `mmux send`. With **no prompt detected**, an answer that
 reads like a pick — a bare number, or one opening with a menu word such as `yes`/`no`/`allow`/`exit`
 (`"Yes, I trust this folder"`) — is refused too, printing the screen tail: typed into a menu mmux
@@ -719,17 +727,18 @@ the same name exists in several projects, or `self` for the pane you run in. An 
 the candidates.
 
 **Working, needs input, or idle.** An agent's state is `working` when its sidebar row spins or
-a Claude agent has background work running (below), `needs-input` while it shows the yellow `?` (with how long: `needs-input 12s`), and `idle`
+a Claude or Grok agent has background work running (below), `needs-input` while it shows the yellow `?` (with how long: `needs-input 12s`), and `idle`
 otherwise (`idle 42s`); `!` marks a bell nobody has looked at. Other sessions read `running`,
 `stopped`, `exited` or `failed`. The JSON adds `needs_input`, `idle_for_ms`, `input_age_ms`,
 `worked_since_input`, `input_pending`, `background` and `background_idle_ms` — the pieces
 `mmux wait` decides with — plus `exit_code` once a child has been reaped and `start_pending` during
 a process handover.
 
-**Background work.** A Claude agent can start work that outlives its turn — sub-agents, shells and
-monitors run with `run_in_background` — and is woken by it when it finishes, so an empty prompt
-doesn't mean it's done. mmux reads that work off the footer under Claude's input box (the
-`· 2 shells` task pill and the sub-agent tree under `main`), so the agent reads `working`, and
+**Background work.** A Claude or Grok agent can start work that outlives its turn — sub-agents,
+shells and monitors run in the background — and is woken by it when it finishes, so an empty prompt
+doesn't mean it's done. mmux reads that work off the screen: the footer under Claude's input box (the
+`· 2 shells` task pill and the sub-agent tree under `main`), and the `▾ Subagents 1` / `▾ Tasks 2`
+sections Grok stacks on top of its input box (counted as agents and tasks), so the agent reads `working`, and
 `mmux status` says what it's waiting on: `working (background: 2 agents, 1 shell)`; the JSON has
 `background` (`{"agents":2,"shells":1}`, also `monitors`, `tasks`) while it runs and
 `background_idle_ms` for how long ago it was last seen. `wait` and `ask` hold on until it's gone,
@@ -738,7 +747,7 @@ a wait runs into its timeout, and the timeout message says background work held 
 `--no-background` to stop at the idle prompt instead. The sidebar spinner, the close confirmation
 and the idle-agent closer don't count background work. Other agents don't wake themselves for
 background work (Codex's background terminals, for one, wait for it to poll them), so only Claude's
-is read.
+and Grok's is read.
 
 **For scripts and agents.** Every command takes `--json` and then prints the raw response
 (`{"ok": true, "data": …}` or `{"ok": false, "error": "…"}`); failures exit non-zero either way.
