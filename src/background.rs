@@ -31,7 +31,9 @@
 //! never read. Pure functions over screen lines, so the parsing is tested directly.
 //!
 //! Grok (see [`parse_grok`]) wakes the same way, and lists its live work in collapsible
-//! sections stacked right on top of its input box, gone once the last entry ends:
+//! sections stacked right on top of its input box, gone once the last entry ends.
+//! Grok 1.0.62 also puts a monitor there (`▾ Watchers N`, row `Monitor …`) and,
+//! when it summarises instead of listing, `◎ 1 monitor still running`:
 //!
 //! ```text
 //!      Worked for 8.9s                                   ← the transcript ends
@@ -39,6 +41,8 @@
 //!    ⋅ Subagent Sleep 30 then report · Wait 30…   grok-4.7 20s
 //!    ▾ Tasks 1
 //!    ⋅ Run Sleep 35 seconds in background                    20s
+//!    ▾ Watchers 1
+//!    : Monitor Watch the build until it finishes             44s
 //!   ╭──────────────────────────────────────────╮
 //!   │ ❯                                        │
 //! ```
@@ -145,12 +149,18 @@ pub fn parse(lines: &[String]) -> Option<Background> {
 /// The background work Grok lists above its input box (see the module docs): each
 /// section's header carries its count, so a collapsed one counts as much as an open one.
 /// Only the run of section lines touching the box is read — the transcript above it is
-/// history.
+/// history. A header this doesn't know ends that run, so every section Grok 1.0.62
+/// draws there is named below. `▾ Watchers` sits closest to the box, in front of
+/// `▾ Tasks`.
 pub fn parse_grok(lines: &[String]) -> Option<Background> {
     let input = lines
         .iter()
         .rposition(|l| l.trim_start().starts_with('╭'))?;
     let mut bg = Background::default();
+    let mut status = Background::default();
+    let mut saw_section = false;
+    let mut saw_watchers = false;
+    let mut monitor_rows = 0u32;
     for line in lines[..input].iter().rev().map(|l| l.trim()) {
         let label = line.trim_start_matches(|c: char| !c.is_alphanumeric());
         // Blank lines and the scrollbar's `█` sit between the sections; text that
@@ -161,11 +171,73 @@ pub fn parse_grok(lines: &[String]) -> Option<Background> {
         if label.len() == line.len() {
             break;
         }
-        let header = line.starts_with(['▾', '▸', '▶', '▼', '►']);
-        match label.split_once(' ') {
-            Some(("Subagents", n)) if header => bg.agents += n.trim().parse().unwrap_or(0),
-            Some(("Tasks", n)) if header => bg.tasks += n.trim().parse().unwrap_or(0),
-            _ if header => break,
+        if line.starts_with(['▾', '▸', '▶', '▼', '►']) {
+            let Some((name, n)) = label.split_once(' ') else {
+                break;
+            };
+            let n = n.trim().parse().unwrap_or(0);
+            match name {
+                "Subagents" => bg.agents += n,
+                // Tasks are background commands. Workflows and Loops are the other
+                // sections of the same list; each wakes Grok when it finishes.
+                "Tasks" | "Workflows" | "Loops" => bg.tasks += n,
+                "Watchers" => {
+                    bg.monitors += n;
+                    saw_watchers = true;
+                }
+                _ => break,
+            }
+            saw_section = true;
+            continue;
+        }
+        if let Some(parsed) = still_running(label) {
+            status = parsed;
+            continue;
+        }
+        // `⸬ Monitor …` / `: Monitor …` — the row under Watchers. The header's
+        // count is the whole section, including while it's collapsed, so a row
+        // counts only when that header isn't on screen.
+        if label
+            .split_once(' ')
+            .is_some_and(|(name, rest)| name == "Monitor" && !rest.is_empty())
+        {
+            monitor_rows += 1;
+        }
+    }
+    if !saw_watchers {
+        bg.monitors += monitor_rows;
+    }
+    if !saw_section {
+        bg.agents += status.agents;
+        bg.tasks += status.tasks;
+        if monitor_rows == 0 {
+            bg.monitors += status.monitors;
+        }
+    }
+    (bg != Background::default()).then_some(bg)
+}
+
+/// Grok's summary when it doesn't expand the list: `◎ 1 command · 2 monitors ·
+/// 1 loop · 1 subagent still running`, or `◎ 1 command still running · send a
+/// message to interrupt`.
+fn still_running(label: &str) -> Option<Background> {
+    if !label.contains("still running") {
+        return None;
+    }
+    let mut bg = Background::default();
+    for seg in label.split(['·', '•']) {
+        let Some((n, rest)) = seg.trim().split_once(' ') else {
+            continue;
+        };
+        let Ok(n) = n.parse::<u32>() else { continue };
+        let Some(word) = rest.split_whitespace().next() else {
+            continue;
+        };
+        match word {
+            "command" | "commands" => bg.tasks += n,
+            "monitor" | "monitors" => bg.monitors += n,
+            "loop" | "loops" => bg.tasks += n,
+            "subagent" | "subagents" => bg.agents += n,
             _ => {}
         }
     }
@@ -352,6 +424,90 @@ mod tests {
         let quoted = ["   ▾ Tasks 2", "     Worked for 3s", "  ╭───╮"].map(String::from);
         assert_eq!(parse_grok(&quoted), None);
         assert_eq!(parse_grok(&running[..6]), None, "no input box, no list");
+    }
+
+    /// Grok 1.0.62, captured with `mmux read` while a monitor and a background
+    /// command were running and the prompt was idle. `▾ Watchers` sits closest to
+    /// the box, with `▾ Tasks` above it.
+    #[test]
+    fn reads_a_monitor_on_a_captured_grok_screen() {
+        let captured: Vec<String> = [
+            "   ⠙ Run the suspect unit suites on a private… 9m2s        16m33s ⇣124k [stop]",
+            "",
+            "   ▾ Tasks 1",
+            "   : Run Run the suspect unit suites on a private simulator              9m49s",
+            "   ▾ Watchers 1",
+            "   : Monitor Watch suspect-suite xcodebuild until it finishes            9m41s",
+            "  ╭──────────────────────────────────────────────────────────────────╮",
+            "  │ ❯                                                                │",
+            "  ╰─────────────────────────────────────── Grok 4.7 (high) · always-approve ─╯",
+            "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+        ]
+        .map(String::from)
+        .to_vec();
+        let bg = parse_grok(&captured).unwrap();
+        assert_eq!(bg.describe(), "1 monitor, 1 task");
+        assert_eq!(
+            bg,
+            Background {
+                monitors: 1,
+                tasks: 1,
+                ..Background::default()
+            }
+        );
+        // The row's spinner frame changes (`:`, `⸬`, `⋅`); the header still counts,
+        // and a collapsed section counts what it hides.
+        let mut collapsed = captured.clone();
+        collapsed.splice(3..6, ["   ▸ Watchers 2".to_string()]);
+        assert_eq!(
+            parse_grok(&collapsed).unwrap().describe(),
+            "2 monitors, 1 task"
+        );
+
+        // The same row with no section header, as it showed above an idle prompt.
+        let row = [
+            "   ⸬ Monitor Watch suspect-suite xcodebuild until it finishes 44s",
+            "  ╭───╮",
+        ]
+        .map(String::from);
+        assert_eq!(parse_grok(&row).unwrap().monitors, 1);
+        // Quoted in the transcript, above the live band, it is history.
+        let quoted = [
+            "   ⸬ Monitor Watch the build",
+            "     Worked for 3s",
+            "  ╭───╮",
+        ]
+        .map(String::from);
+        assert_eq!(parse_grok(&quoted), None);
+
+        let summary = [
+            "   ◎ 1 command · 2 monitors · 1 loop · 1 subagent still running",
+            "  ╭───╮",
+        ]
+        .map(String::from);
+        assert_eq!(
+            parse_grok(&summary).unwrap().describe(),
+            "1 agent, 2 monitors, 2 tasks"
+        );
+        let interrupt = [
+            "   ◎ 1 command still running · send a message to interrupt",
+            "  ╭───╮",
+        ]
+        .map(String::from);
+        assert_eq!(parse_grok(&interrupt).unwrap().tasks, 1);
+        // A sleep, or work that already finished: no live count.
+        let waiting = ["   ◎ waiting · send a message to interrupt", "  ╭───╮"].map(String::from);
+        assert_eq!(parse_grok(&waiting), None);
+
+        // Workflows and Loops are sections of the same list, closest to the box here.
+        let workflows = [
+            "   ▾ Tasks 1",
+            "   ▾ Workflows 1",
+            "   ▸ Loops 2",
+            "  ╭───╮",
+        ]
+        .map(String::from);
+        assert_eq!(parse_grok(&workflows).unwrap().tasks, 4);
     }
 
     #[test]

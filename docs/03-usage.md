@@ -737,8 +737,10 @@ a process handover.
 **Background work.** A Claude or Grok agent can start work that outlives its turn — sub-agents,
 shells and monitors run in the background — and is woken by it when it finishes, so an empty prompt
 doesn't mean it's done. mmux reads that work off the screen: the footer under Claude's input box (the
-`· 2 shells` task pill and the sub-agent tree under `main`), and the `▾ Subagents 1` / `▾ Tasks 2`
-sections Grok stacks on top of its input box (counted as agents and tasks), so the agent reads `working`, and
+`· 2 shells` task pill and the sub-agent tree under `main`), and the `▾ Subagents 1` / `▾ Tasks 2` /
+`▾ Watchers 1` sections Grok stacks on top of its input box (agents, tasks, and monitors — a
+`Monitor …` row counts when its Watchers header is off screen, and `◎ 1 monitor still running`
+counts when Grok summarises instead of listing), so the agent reads `working`, and
 `mmux status` says what it's waiting on: `working (background: 2 agents, 1 shell)`; the JSON has
 `background` (`{"agents":2,"shells":1}`, also `monitors`, `tasks`) while it runs and
 `background_idle_ms` for how long ago it was last seen. `wait` and `ask` hold on until it's gone,

@@ -591,7 +591,7 @@ process itself.
   when its prompt lands) counts as "not yet", within the 20 s grace; an unreadable one, or an agent
   quiet for 30 s, falls back to the screen. A Claude or Grok agent's **background work** is a third gate:
   `observe` reads it off the screen each tick (`background.rs`: Claude's task pill and sub-agent tree
-  under its input box, Grok's `▾ Tasks N` sections on top of it) into `Session::background`, `track_activity` stamps `last_background_at`, and
+  under its input box, Grok's `▾ Tasks N` / `▾ Watchers N` sections on top of it) into `Session::background`, `track_activity` stamps `last_background_at`, and
   `SessionInfo` reports `background` and `background_idle_ms`. Unless `--no-background`, done also
   needs no background work for the settle time — the gap between the last task finishing and the
   turn its notification starts. It stays out of `busy()`, so the spinner, close confirmation and
