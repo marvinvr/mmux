@@ -529,9 +529,17 @@ process itself.
 - **Threading.** A listener thread (plus one per connection, so a half-sent request can't block the
   next) parses requests and hands each over an `mpsc` channel with a reply sender; `tick()` drains a
   bounded batch (`app/control.rs`) and runs it against the live `App` — the same worker-channel
-  shape as git jobs and the updater. The loop polls every 50 ms even while detached, so answers are
-  prompt; only native-copy mode (which blocks on a key) stalls them, and the listener then answers
-  with a timeout error — a request still queued past that is dropped, never acted on late.
+  shape as git jobs and the updater. The loop polls every 50 ms even while detached, but synchronous
+  handlers can take longer: worktree creation waits for `git worktree add`, copies env files and
+  adopts projects; removal waits for Git checks, pane teardown, `git worktree remove` and panel
+  refreshes. Native-copy mode also blocks the loop on a key. The listener waits 10 seconds, then
+  reports an unknown outcome (`outcome_unknown: true`, CLI exit `5`), without assuming a cause.
+  A request still queued past that window is dropped; expiry is checked only before dispatch,
+  so a handler already running continues and its eventual reply is lost. A client losing its
+  answer after submission also reports an unknown outcome. Callers must check state before
+  retrying mutations; raising the timeout alone would only move this ambiguity to a later point.
+  The CLI preserves uncertainty through transcript lookups in `wait`/`ask` and cleanup in
+  `ask --close`; an uncertain close retains the retrieved answer in JSON `data`.
 - **Identity.** Positional indices shift, so each `Session` carries a stable runtime `id` (`s<N>`,
   from a process-wide counter, not persisted). Targets resolve by id, name (case/space-insensitive,
   then prefix), `project/name`, or `self`; several matches narrow to the caller's project (its pane's,

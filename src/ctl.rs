@@ -11,8 +11,8 @@
 
 use crate::agent::Turn;
 use crate::control::{
-    self, Cmd, CommitDone, CommitThen, Done, LastInfo, Listing, NewKind, ReadOut, ReloadDone,
-    Reply, Request, Response, SessionInfo, StatusInfo, WorktreeDone,
+    self, CallError, Cmd, CommitDone, CommitThen, Done, LastInfo, Listing, NewKind, ReadOut,
+    ReloadDone, Reply, Request, Response, SessionInfo, StatusInfo, WorktreeDone,
 };
 use anyhow::{bail, Result};
 use serde_json::Value;
@@ -40,6 +40,8 @@ const EXIT_TIMEOUT: i32 = 2;
 const EXIT_NEEDS_INPUT: i32 = 3;
 /// Process failure has its own code so child exits 2/3 cannot look like timeout/input.
 const EXIT_PROCESS_FAILED: i32 = 4;
+/// A control request has no definitive reply and may still be applied.
+const EXIT_OUTCOME_UNKNOWN: i32 = 5;
 /// How long an agent must have been asking before `wait` stops for it, so a menu that
 /// only flashes past mid-turn doesn't end the wait.
 const ASK_SETTLE: Duration = Duration::from_millis(500);
@@ -193,16 +195,13 @@ pub fn run(args: &[String]) -> Result<()> {
         return Ok(());
     }
     if a.wait && !matches!(a.verb.as_str(), "start" | "restart") {
-        fail(&a, "`--wait` is for `start` or `restart`".into());
+        fail(&a, "`--wait` is for `start` or `restart`");
     }
     if a.no_background && !matches!(a.verb.as_str(), "wait" | "ask") {
-        fail(&a, "`--no-background` is for `wait` or `ask`".into());
+        fail(&a, "`--no-background` is for `wait` or `ask`");
     }
     if a.tail.is_some() && a.verb != "wait" && !a.wait {
-        fail(
-            &a,
-            "`--tail` requires `wait` or `start`/`restart --wait`".into(),
-        );
+        fail(&a, "`--tail` requires `wait` or `start`/`restart --wait`");
     }
     // The multi-step verbs check their own arguments; everything else is one request.
     let cmd = match a.verb.as_str() {
@@ -213,7 +212,7 @@ pub fn run(args: &[String]) -> Result<()> {
     if a.verb == "ask" && a.pos.is_empty() {
         fail(
             &a,
-            "`mmux ask` needs a prompt (or `-` to read it from stdin)".into(),
+            "`mmux ask` needs a prompt (or `-` to read it from stdin)",
         );
     }
     if matches!(a.verb.as_str(), "last" | "wait") && a.pos.is_empty() {
@@ -241,22 +240,16 @@ pub fn run(args: &[String]) -> Result<()> {
         Ok(r) => r,
         Err(e) => fail(&a, e),
     };
+    if !resp.ok {
+        fail_response(&a, resp, 1);
+    }
     if a.wait {
-        if !resp.ok {
-            fail(&a, resp.error.unwrap_or_else(|| "failed".into()));
-        }
         let done: Done = serde_json::from_value(resp.data)?;
         return run_wait_target(&a, &ctx, &done.session.id);
     }
     if a.json {
         println!("{}", serde_json::to_string_pretty(&resp)?);
-        if !resp.ok {
-            std::process::exit(1);
-        }
         return Ok(());
-    }
-    if !resp.ok {
-        fail(&a, resp.error.unwrap_or_else(|| "failed".into()));
     }
     print_human(&a, resp)
 }
@@ -411,21 +404,29 @@ fn stdin_text() -> Result<String> {
     Ok(text)
 }
 
-/// Report an error the way the caller asked for output, and exit 1.
-fn fail(a: &Args, msg: String) -> ! {
-    fail_with(a, msg, 1)
+/// Report a refusal or an uncertain outcome, preserving its machine-readable marker.
+fn fail(a: &Args, error: impl Into<CallError>) -> ! {
+    fail_response(a, error.into().response(), 1)
 }
 
 /// [`fail`], with a chosen exit status (a timeout is 2).
 fn fail_with(a: &Args, msg: String, code: i32) -> ! {
+    fail_response(a, Response::err(msg), code)
+}
+
+fn fail_response(a: &Args, resp: Response, code: i32) -> ! {
+    let code = if resp.outcome_unknown {
+        EXIT_OUTCOME_UNKNOWN
+    } else {
+        code
+    };
     if a.json {
-        let resp = Response::err(msg);
         println!(
             "{}",
             serde_json::to_string_pretty(&resp).unwrap_or_default()
         );
     } else {
-        eprintln!("mmux: {msg}");
+        eprintln!("mmux: {}", resp.error.unwrap_or_else(|| "failed".into()));
     }
     std::process::exit(code);
 }
@@ -474,24 +475,20 @@ impl Ctx {
     }
 
     /// One round trip; a refusal comes back as `Err` with mmux's own message.
-    fn call(&self, cmd: Cmd) -> Result<Value, String> {
-        let resp = control::call(&self.sock, &self.request(cmd))?;
-        match resp.ok {
-            true => Ok(resp.data),
-            false => Err(resp.error.unwrap_or_else(|| "failed".into())),
-        }
+    fn call(&self, cmd: Cmd) -> Result<Value, CallError> {
+        control::call(&self.sock, &self.request(cmd))?.into_result()
     }
 
-    fn status(&self, target: &str) -> Result<StatusInfo, String> {
+    fn status(&self, target: &str) -> Result<StatusInfo, CallError> {
         let data = self.call(Cmd::Status {
             target: target.to_string(),
         })?;
-        serde_json::from_value(data).map_err(|e| e.to_string())
+        serde_json::from_value(data).map_err(|e| e.to_string().into())
     }
 
     /// The agent's last reply: from its transcript when mmux knows which one, else
     /// its screen.
-    fn last(&self, target: &str) -> Result<Reply, String> {
+    fn last(&self, target: &str) -> Result<Reply, CallError> {
         let data = self.call(Cmd::Last {
             target: target.to_string(),
         })?;
@@ -610,7 +607,7 @@ fn wait_for(
     timeout: Duration,
     settle: Duration,
     background: bool,
-) -> Result<WaitEnd, String> {
+) -> Result<WaitEnd, CallError> {
     // An absurd `-t` overflows the clock: that is simply no deadline.
     let deadline = Instant::now().checked_add(timeout);
     let first = ctx.status(target)?;
@@ -619,10 +616,11 @@ fn wait_for(
     // Where an agent's transcript is: fixed for the session, so asked once. Only a
     // Claude agent's is read (see `turn_settled`); anything else ignores it.
     let transcript = match (exit, first.session.kind.as_str()) {
-        (false, "agent") => ctx
-            .call(Cmd::Last { target: id.clone() })
-            .ok()
-            .and_then(|d| serde_json::from_value::<LastInfo>(d).ok()),
+        (false, "agent") => match ctx.call(Cmd::Last { target: id.clone() }) {
+            Ok(data) => serde_json::from_value::<LastInfo>(data).ok(),
+            Err(e) if e.outcome_unknown => return Err(e),
+            Err(_) => None,
+        },
         _ => None,
     };
     let mut last = Some(first);
@@ -636,7 +634,8 @@ fn wait_for(
                         .as_ref()
                         .map(|e| format!(": {e}"))
                         .unwrap_or_default()
-                ));
+                )
+                .into());
             }
             // Blocked on a question, it will neither finish nor exit: say so, whichever
             // way the caller is waiting.
@@ -665,8 +664,11 @@ fn wait_for(
         last = match ctx.status(&id) {
             Ok(s) => Some(s),
             // Closed, or mmux itself went away: for `--exit` that is the answer.
-            Err(_) if exit && !process => return Ok(WaitEnd::Done(None)),
-            Err(e) => return Err(format!("{id}: {e}")),
+            Err(e) if exit && !process && !e.outcome_unknown => return Ok(WaitEnd::Done(None)),
+            Err(mut e) => {
+                e.message = format!("{id}: {e}");
+                return Err(e);
+            }
         };
     }
 }
@@ -774,7 +776,7 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
         prompt = stdin_text()?;
     }
     if prompt.trim().is_empty() {
-        fail(a, "the prompt is empty".into());
+        fail(a, "the prompt is empty");
     }
     // Typing a prompt into a shell would run it: check before sending anything, and
     // send to the id that check saw, so a name can't resolve differently in between.
@@ -801,7 +803,7 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
         }),
     };
     let done: Done =
-        match started.and_then(|d| serde_json::from_value(d).map_err(|e| e.to_string())) {
+        match started.and_then(|d| serde_json::from_value(d).map_err(|e| e.to_string().into())) {
             Ok(d) => d,
             Err(e) => fail(a, e),
         };
@@ -847,6 +849,11 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
             target: id.clone(),
             force: true,
         }) {
+            if e.outcome_unknown {
+                let mut response = e.response();
+                response.data = serde_json::to_value(&reply)?;
+                fail_response(a, response, 1);
+            }
             eprintln!("mmux: couldn't close {id}: {e}");
         }
     }
@@ -869,6 +876,7 @@ fn needs_input_exit(a: &Args, s: &StatusInfo, then: Option<&str>) -> ! {
         let resp = Response {
             ok: false,
             error: Some(report),
+            outcome_unknown: false,
             data: serde_json::to_value(s).unwrap_or_default(),
         };
         print_json(&resp);
@@ -1221,6 +1229,12 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
 An agent's state is `working`, `idle`, or `needs-input`: blocked on a question,
 a permission prompt or a notification it raised, until input reaches it.
 
+No definitive control reply: exit 5 (JSON: outcome_unknown: true). The UI may be
+busy or paused; a request that already started may still finish. Check `mmux ls`
+(with the same -C, if used) and relevant Git/worktree state before retrying.
+This includes wait/ask transcript lookups and ask --close cleanup. If only cleanup
+is uncertain, JSON retains the retrieved answer in data.
+
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get
 MMUX_SOCKET, MMUX_SESSION, MMUX_PROJECT and MMUX_DEPTH in their environment;
@@ -1390,7 +1404,7 @@ mod tests {
         replies: Vec<Response>,
         exit: bool,
         timeout: Duration,
-    ) -> Result<WaitEnd, String> {
+    ) -> Result<WaitEnd, CallError> {
         use std::io::{BufRead, BufReader, Write};
         use std::os::unix::net::UnixListener;
         let socket = PathBuf::from(format!("/tmp/mmux-wait-{}.sock", crate::agent::mint_uuid()));
@@ -1470,12 +1484,29 @@ mod tests {
             Duration::from_secs(3)
         )
         .unwrap_err()
+        .to_string()
         .contains("removed"));
         s.status = "stopped".into();
         s.exit_code = None;
         assert!(process_wait(vec![response(&s)], false, Duration::ZERO)
             .unwrap_err()
+            .to_string()
             .contains("not started"));
+    }
+
+    #[test]
+    fn exit_wait_does_not_mistake_an_unknown_reply_for_a_closed_agent() {
+        let running = Response::ok(
+            serde_json::to_value(StatusInfo {
+                session: agent(true, 0, None, false),
+                status_line: vec![],
+            })
+            .unwrap(),
+        );
+        let mut unknown = Response::err("no definitive reply");
+        unknown.outcome_unknown = true;
+        let error = process_wait(vec![running, unknown], true, Duration::from_secs(3)).unwrap_err();
+        assert!(error.outcome_unknown);
     }
 
     fn agent(working: bool, idle: u64, input_age: Option<u64>, worked: bool) -> SessionInfo {
