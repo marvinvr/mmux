@@ -538,6 +538,8 @@ process itself.
   so a handler already running continues and its eventual reply is lost. A client losing its
   answer after submission also reports an unknown outcome. Callers must check state before
   retrying mutations; raising the timeout alone would only move this ambiguity to a later point.
+  The CLI preserves uncertainty through transcript lookups in `wait`/`ask` and cleanup in
+  `ask --close`; an uncertain close retains the retrieved answer in JSON `data`.
 - **Identity.** Positional indices shift, so each `Session` carries a stable runtime `id` (`s<N>`,
   from a process-wide counter, not persisted). Targets resolve by id, name (case/space-insensitive,
   then prefix), `project/name`, or `self`; several matches narrow to the caller's project (its pane's,

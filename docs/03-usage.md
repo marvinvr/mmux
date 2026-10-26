@@ -746,6 +746,8 @@ is read.
 `wait` and `ask` exit `2` when they time out and `3` when the agent needs input; process waits
 return `4` for child failure, with the actual exit status in the report.
 A control request without a definitive reply exits `5` (`outcome_unknown: true` in JSON).
+This includes the transcript lookup during `wait`/`ask` and cleanup during `ask --close`.
+If only cleanup is uncertain, JSON keeps the retrieved answer in `data`.
 The UI may be busy with slow Git/worktree operations or paused in native copy mode; a reply
 timeout does not identify the cause. A request still queued after the 10-second reply window
 is dropped, but one that already started may still finish. Check `mmux ls` (using the same

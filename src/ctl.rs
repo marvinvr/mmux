@@ -616,10 +616,11 @@ fn wait_for(
     // Where an agent's transcript is: fixed for the session, so asked once. Only a
     // Claude agent's is read (see `turn_settled`); anything else ignores it.
     let transcript = match (exit, first.session.kind.as_str()) {
-        (false, "agent") => ctx
-            .call(Cmd::Last { target: id.clone() })
-            .ok()
-            .and_then(|d| serde_json::from_value::<LastInfo>(d).ok()),
+        (false, "agent") => match ctx.call(Cmd::Last { target: id.clone() }) {
+            Ok(data) => serde_json::from_value::<LastInfo>(data).ok(),
+            Err(e) if e.outcome_unknown => return Err(e),
+            Err(_) => None,
+        },
         _ => None,
     };
     let mut last = Some(first);
@@ -848,6 +849,11 @@ fn run_ask(a: &Args, ctx: &Ctx) -> Result<()> {
             target: id.clone(),
             force: true,
         }) {
+            if e.outcome_unknown {
+                let mut response = e.response();
+                response.data = serde_json::to_value(&reply)?;
+                fail_response(a, response, 1);
+            }
             eprintln!("mmux: couldn't close {id}: {e}");
         }
     }
@@ -1226,6 +1232,8 @@ a permission prompt or a notification it raised, until input reaches it.
 No definitive control reply: exit 5 (JSON: outcome_unknown: true). The UI may be
 busy or paused; a request that already started may still finish. Check `mmux ls`
 (with the same -C, if used) and relevant Git/worktree state before retrying.
+This includes wait/ask transcript lookups and ask --close cleanup. If only cleanup
+is uncertain, JSON retains the retrieved answer in data.
 
 Targets <t>: an id (s12), a name ("Claude #2", claude#2, or a unique prefix),
 project/name, or `self` (the pane you run in). Programs inside mmux get

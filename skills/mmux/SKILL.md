@@ -209,6 +209,8 @@ Exit codes: `0` success · `1` error or refusal (bad target, not running, busy, 
 `2` `wait`/`ask` timed out · `3` `wait`/`ask` stopped because the agent needs input ·
 `4` process wait completed with child failure (actual status in `exit_code`) ·
 `5` control request outcome unknown (`outcome_unknown: true` in JSON; check state before retrying).
+Unknown transcript lookups during `wait`/`ask` and unknown cleanup during `ask --close` also
+exit `5`; if only cleanup is uncertain, JSON retains the retrieved answer in `data`.
 Process waits with `--json` retain status/output in `data` and set `ok: false` on child failure.
 
 ## Etiquette and safety

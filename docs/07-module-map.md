@@ -74,7 +74,7 @@ One inherent `impl App`, split across files. `mod.rs` defines the struct; the ot
 | `docs/` | This documentation — the canonical source of truth. |
 | `README.md` | Short user-facing overview; points here. |
 | `AGENTS.md` | Agent/contributor orientation + the documentation covenant. `CLAUDE.md` is a symlink to it. |
-| `tests/control_outcome.rs` | CLI regression over a fixture control socket: unknown outcomes exit `5` in plain/JSON and chained commands, lost replies remain uncertain, ordinary refusals stay exit `1`. No TUI. |
+| `tests/control_outcome.rs` | CLI regressions over fixture control sockets: unknown outcomes exit `5` in plain/JSON and chained commands, including transcript lookups and `ask --close` cleanup; lost replies remain uncertain, ordinary refusals keep their existing failure or fallback behavior. No TUI. |
 | `mmux.yaml` | mmux's own config (build/dev processes — open this repo *with* mmux). |
 | `skills/mmux/SKILL.md` | Agent skill teaching the [control CLI](03-usage.md#controlling-mmux-from-scripts--agents) (`mmux ls`/`read`/`send`/`ask`/…); the README's install line fetches it from `main`. Keep it in step with `src/ctl.rs`. |
 | `.github/workflows/` | CI/CD. `_build.yml` (reusable: build + smoke each target on its native-arch runner, stamped `MMUX_RELEASE=1`), `ci.yml` (every commit: lint/test/build+smoke/boot-test), `release.yml` (tag: staged prerelease → parallel `verify` → gated `promote` to latest + tap bump → issue on failure), `healthcheck.yml` (weekly live-channel check → auto-`yank` on rot), `yank.yml` (demote release + revert tap). `.github/scripts/` renders/pushes the formula; `.github/homebrew/mmux.rb` is the template. See [contributing](08-contributing.md#release). |
