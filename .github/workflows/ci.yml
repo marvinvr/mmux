@@ -23,7 +23,7 @@ jobs:
     name: lint (shell)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: shellcheck + syntax
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
@@ -40,8 +40,8 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - run: cargo test --locked
 
   build:
@@ -53,8 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true # TTY tests are flake-prone; a signal, not a gate (yet)
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - run: sudo apt-get update && sudo apt-get install -y tmux
       - run: cargo build --locked
       - run: sh ci/boot-test.sh target/debug/mmux
@@ -76,7 +76,7 @@ jobs:
       # trailing \r ("set: Illegal option -"). Keep line endings exactly as committed (LF).
       - name: Keep LF line endings on checkout
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up WSL (Ubuntu)
         uses: Vampire/setup-wsl@v7
         with:
