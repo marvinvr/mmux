@@ -35,7 +35,8 @@ mmux send s12 "fix the failing test" # paste text, then Enter (--no-enter: don't
 mmux keys s12 Escape                 # press keys: Enter Escape Tab BTab BSpace Space Up Down Left Right
                                      #   Home End PageUp PageDown Delete Insert F1-F12, C-/M-/S- prefixes
 mmux answer s12 2                    # answer an agent that needs input: choice 2 of its prompt
-                                     #   (also: yes, no, an option's text, a reply; --dismiss)
+                                     #   (also: yes, no, an option's text, a notice's `continue`,
+                                     #   a reply; --dismiss)
 mmux new agent codex -p api --prompt "…"   # start an agent (template by name or command; default: first)
 mmux new terminal --cmd "npm test"   # start a terminal, type a command into it (stays open)
 mmux start|restart "Dev server"      # start anything not running / (re)start any session
@@ -60,7 +61,8 @@ mmux reload                          # reload the config live, like R — after 
 - States: an agent is `working` (its sidebar row spins, or — Claude — background work it started is
   still running and will wake it: `working (background: 2 agents, 1 shell)`, JSON `background`),
   `needs-input` (`needs-input 12s`: blocked
-  on a question, a permission prompt or a notification it raised, until input reaches it) or `idle`
+  on a question, a permission prompt, an optionless notice that blocks on Enter, or a
+  notification it raised, until input reaches it) or `idle`
   (`idle 42s`); others are `running`, `stopped`, `exited`, `failed`. A trailing `!` means it rang
   the bell.
 - Flags may go anywhere; use `--` before text that starts with a dash: `mmux send s3 -- --help`.

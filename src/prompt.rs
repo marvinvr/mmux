@@ -800,6 +800,17 @@ The dialog asks: Enter to continue · Esc to cancel
             )),
             None
         );
+        // A finished Grok agent quoting the pair in its last words: its mode line sits
+        // below the echo, so the pair is not the screen's last word.
+        let grok_done = "\
+     ◆ Ask Which color do you prefer?
+     The dialog says Enter to continue · Esc to cancel.
+  ╭──────────────────╮
+  │ ❯                │
+  ╰── Grok 4.7 ──────╯
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+";
+        assert_eq!(parse(&screen(grok_done)), None);
     }
 
     #[test]

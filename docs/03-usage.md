@@ -85,7 +85,9 @@ and the git panel. For how to configure what appears, see [Configuration](04-con
 - An agent **needs input** (yellow `?`) when it is blocked on someone: a **question or permission
   prompt on its screen** — a menu with a cursor and a selection hint (Claude Code's and Codex's
   approval prompts, Claude's multiple-choice questions, or the unnumbered folder-trust dialog Claude
-  shows before its first prompt in a folder it hasn't seen) or a `[y/n]` line — or a **bell / notification escape** it raised. This outranks every other signal: an agent
+  shows before its first prompt in a folder it hasn't seen), a `[y/n]` line, or an **optionless
+  notice** that blocks on Enter (`Enter to continue · Esc to cancel`, read while it is the screen's
+  last word-bearing line) — or a **bell / notification escape** it raised. This outranks every other signal: an agent
   that is asking is never shown (or reported) as working, whatever its progress state or title
   say, and the `?` stays — even while you view it — until **input reaches it** (your keys, a paste,
   a click, or `mmux send`/`keys`/`answer`). A notification from an agent that had already been
