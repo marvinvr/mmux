@@ -586,7 +586,10 @@ process itself.
   seen working). Before any of that, an agent that **needs input** (`Session::asking`, reported as
   `needs_input`) ends the wait with exit 3 in either mode, once it has held for 0.5 s: blocked on a
   question, it would otherwise never finish. `asking` is a prompt read off the live screen
-  (`prompt.rs`, sampled each tick by `Session::observe`) or the pane's notification latch, which
+  (`prompt.rs`, sampled each tick by `Session::observe`) — numbered, unnumbered, radio, `[y/n]`, or
+  an optionless notice that blocks on Enter (`Enter to continue · Esc to cancel`, recognized by
+  that hint pair while it is the screen's last word-bearing line, so an agent's own footer below
+  anything echoed keeps echoes from wearing it) — or the pane's notification latch, which
   only input clears (`Pane::input`, the path every keystroke, paste, click and control write takes —
   not wheel or motion forwarding, nor terminal replies). `observe` classifies a latch once, when it
   first appears: from an agent quiet for 30 s it is a reminder, not a question. `busy()` is false

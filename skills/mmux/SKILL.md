@@ -169,7 +169,8 @@ use their own project directories, and explicit `cwd` takes precedence.
 
 **Answering an agent that needs input**
 
-An agent blocked on a permission prompt, a multiple-choice question, a `[y/n]` line, or a
+An agent blocked on a permission prompt, a multiple-choice question, a `[y/n]` line, an optionless
+notice (`Enter to continue · Esc to cancel`), or a
 notification it raised is **not done**: `wait` and `ask` stop for it with **exit 3** and print what
 it asks — `asks:` (the question), `notification:`, `choices:` (`❯` marks the cursor), the last
 screen lines, and an `answer:` hint. Decide (or ask your user, if it's their call — e.g. a
@@ -180,6 +181,7 @@ mmux answer s14 1                    # pick choice 1 (moves the cursor, presses 
 mmux answer s14 no                   # the first choice starting with "No"
 mmux answer s14 "don't ask"          # the one choice whose label contains this text
 mmux answer s14 "use the v2 API"     # no choices on screen: typed as a reply + Enter
+mmux answer s14 continue             # an optionless notice: presses its Enter
 mmux wait s14 -t 30m && mmux last s14
 ```
 Text that matches no choice, or several, is refused with the list of choices (to type free text
@@ -187,10 +189,14 @@ into a menu, use `send`). Claude's folder-trust dialog (`❯ No, exit` / `Yes, I
 shown before a new agent's first prompt in an unknown folder) has no numbers; its lines count as
 1, 2 — `mmux answer s14 2` trusts. With no prompt detected, an answer that reads like a pick (`2`,
 `yes`, an option's label) is refused and the screen printed instead of typed blindly — check it,
-then use `keys` (Up/Down, Enter) or `--text` to type it anyway. If the report says no choices could be read, look at its screen lines;
+then use `keys` (Up/Down, Enter) or `--text` to type it anyway. An optionless notice (an
+announcement ending in `Enter to continue · Esc to cancel`, drawn over the input box) is answered
+with `continue` (or `enter`/`ok`/`yes`): mmux presses its Enter so the turn goes on — it never
+guesses a cancel, so send Escape yourself (`mmux keys s14 Escape`) if you want it gone. If the
+report says no choices could be read, look at its screen lines;
 if nothing is actually being asked, `mmux answer s14 --dismiss` clears the flag. `--json`: the
 report is `error`, and `data.needs_input` has `since_ms`, `prompt` (`question`, `choices[]` of
-`n`/`label`/`selected`, `yes_no`), `notification` and `screen[]`.
+`n`/`label`/`selected`, `yes_no`, `notice`), `notification` and `screen[]`.
 
 ## Scripting: `--json` and exit codes
 

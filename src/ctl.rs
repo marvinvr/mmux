@@ -924,6 +924,10 @@ fn needs_input_report(s: &SessionInfo) -> String {
             choices.last().map_or(1, |c| c.n)
         ),
         Some(p) if p.yes_no => "yes|no".to_string(),
+        Some(p) if p.notice => format!(
+            "continue (presses Enter), or `mmux keys {} Escape` to cancel",
+            s.id
+        ),
         _ => "\"<reply>\" (no choices could be read — check the screen above), or --dismiss if nothing is being asked".to_string(),
     };
     out.push_str(&format!("\nanswer: mmux answer {} {how}", s.id));
@@ -1645,6 +1649,21 @@ mod tests {
         assert!(report.contains("notification: Claude needs your permission"));
         assert!(report.contains("$ rm -rf build"));
         assert!(report.contains("mmux answer s1 1-2, yes/no"), "{report}");
+
+        // An optionless notice is answered by continuing: the report names that, and
+        // that cancelling stays a manual Escape.
+        let mut notice = asking(800);
+        notice.needs_input.as_mut().unwrap().prompt = crate::prompt::parse(&[
+            "Gateway notice: auto mode keeps working.".to_string(),
+            "Enter to continue · Esc to cancel".to_string(),
+        ]);
+        let report = needs_input_report(&notice);
+        assert!(report.contains("needs input"), "{report}");
+        assert!(
+            report
+                .contains("answer: mmux answer s1 continue (presses Enter), or `mmux keys s1 Escape` to cancel"),
+            "{report}"
+        );
     }
 
     #[test]

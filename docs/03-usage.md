@@ -589,7 +589,7 @@ mmux reload                        # what `R` does: apply an edited mmux.yaml li
 | `mmux status <t>` | One session's state and title plus its **status line** — the last few non-empty lines of its screen, where an agent keeps its own status and input box. |
 | `mmux read <t> [-n N]` | The last `N` lines (default 200, `0` = all) of its scrollback + screen as plain text. The way to read a dev server's errors. |
 | `mmux send <t> <text…>` | Types the text (as one bracketed paste when the program supports it), then presses Enter as a separate keystroke ~150 ms later so agent TUIs submit it. `--no-enter` skips the Enter; `-` as the text reads it from stdin (multi-line prompts). |
-| `mmux answer <t> <choice>` | [Answers an agent that needs input](#answering-an-agent): `2` picks option 2 of the prompt on its screen, `yes`/`no` the first option starting with that word, any other text the one option whose label contains it — mmux moves the menu's cursor there and presses Enter. A `[y/n]` line gets `y`/`n`; with no prompt on screen the answer is typed as a reply (+ Enter) — unless it reads like a pick (`2`, `yes`, an option label), which is refused with the screen shown; `--text` types it regardless. `--dismiss` clears a notification without typing anything. |
+| `mmux answer <t> <choice>` | [Answers an agent that needs input](#answering-an-agent): `2` picks option 2 of the prompt on its screen, `yes`/`no` the first option starting with that word, any other text the one option whose label contains it — mmux moves the menu's cursor there and presses Enter. A `[y/n]` line gets `y`/`n`; an optionless notice continues on Enter (`continue`, `enter`, `ok`, `yes`); with no prompt on screen the answer is typed as a reply (+ Enter) — unless it reads like a pick (`2`, `yes`, an option label), which is refused with the screen shown; `--text` types it regardless. `--dismiss` clears a notification without typing anything. |
 | `mmux keys <t> <key>…` | Presses keys, tmux-style: `Enter` `Escape` `Tab` `BTab` `BSpace` `Space` `Up`/`Down`/`Left`/`Right` `Home`/`End` `PageUp`/`PageDown` `Delete` `Insert` `F1`–`F12`, a single character, with `C-` (Ctrl), `M-` (Alt) and `S-` (Shift) prefixes (aliases like `Esc`, `Return`, `PgUp`, `Del` work too). Any other word is typed as text. |
 | `mmux new agent [template] [-p project] [--prompt "…"]` | Starts an agent from a template (by name or command, e.g. `claude`; default: the first), optionally with a first prompt (`-` reads it from stdin). |
 | `mmux new terminal [-p project] [--cmd "…"]` | Starts a terminal, optionally typing a command into it (the terminal stays open afterwards). `--cmd` is for terminals only, `--prompt` for agents only. |
@@ -661,7 +661,8 @@ agent that stops to ask something is **not** done — see below.
 ### Answering an Agent
 
 An agent that [needs input](#status-and-attention) — a permission prompt, a multiple-choice
-question, a `[y/n]` line, or a notification it raised — would otherwise hold a `wait` forever. So
+question, a `[y/n]` line, an optionless notice (`Enter to continue · Esc to cancel`), or a
+notification it raised — would otherwise hold a `wait` forever. So
 `wait` (and `ask`) stop for it and exit `3`, printing what it asks:
 
 ```text
@@ -680,7 +681,7 @@ answer: mmux answer s14 1-3, yes/no, or an option's text
 
 With `--json` that report is the `error`, and `data` carries the session's status, whose
 `needs_input` holds `since_ms`, `prompt` (`question`, `choices[]` of `n`/`label`/`selected`,
-`yes_no`, `keyed`, `write_in`), `notification` and `screen[]`. `mmux status` and `mmux ls` show the state too
+`yes_no`, `keyed`, `write_in`, `notice`), `notification` and `screen[]`. `mmux status` and `mmux ls` show the state too
 (`needs-input 12s`).
 
 Answer it, then wait again:
@@ -709,6 +710,13 @@ reads like a pick — a bare number, or one opening with a menu word such as `ye
 couldn't read, its Enter would choose whatever the cursor is on. Pick with `mmux keys` after
 checking the screen, or pass `--text` (or `--force`) to type it anyway. An answer counts as input,
 so the next `wait` waits for the work it starts.
+
+Claude Code also blocks mid-turn on optionless **notices** — account and gateway announcements
+ending in `Enter to continue · Esc to cancel`, with no options to pick. mmux reads one as needing
+input (it is drawn over the input box, and only while it is the screen's last word-bearing line, so
+echoed text can't wear the signature), and `mmux answer <t> continue` (`enter`, `ok`, `yes` work
+too) presses its Enter so the turn goes on. mmux never guesses a cancel: to dismiss it instead,
+send Escape yourself with `mmux keys <t> Escape`.
 
 A first prompt given to `mmux new agent --prompt` survives such a dialog: a detected agent (Claude,
 Codex, Pi, Grok) takes it on the command line — Claude starts on it once its trust dialog is

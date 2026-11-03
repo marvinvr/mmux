@@ -617,6 +617,15 @@ impl App {
                     None => format!("typed “{text}” (no prompt on screen) into"),
                 }
             }
+            // A notice's continue action: Enter alone, the only key mmux automates on
+            // it. It lets the agent get on with its turn, so it counts as input.
+            Plan::Continue => {
+                let enter = parse_key_name("Enter").map(|k| encode_key(&k, flags));
+                self.queue_input(id, Duration::ZERO, enter.unwrap_or_else(|| b"\r".to_vec()));
+                self.sessions[i].last_input_at = Some(Instant::now());
+                self.flush_deferred_input();
+                "continued".to_string()
+            }
         };
         self.control_done(i, &verb)
     }
