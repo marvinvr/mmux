@@ -314,7 +314,7 @@ fn build(a: &Args) -> Result<Cmd> {
             let answer = a.pos[1.min(a.pos.len())..].join(" ");
             if answer.trim().is_empty() && !a.dismiss {
                 bail!(
-                    "`mmux answer` needs a target and an answer: a choice number (2), yes/no, an option's text, or a reply — or --dismiss"
+                    "`mmux answer` needs a target and an answer: a choice number (2), yes/no, an option's text, a notice's `continue`, or a reply — or --dismiss"
                 );
             }
             Cmd::Answer {
@@ -924,6 +924,10 @@ fn needs_input_report(s: &SessionInfo) -> String {
             choices.last().map_or(1, |c| c.n)
         ),
         Some(p) if p.yes_no => "yes|no".to_string(),
+        Some(p) if p.notice => format!(
+            "continue (presses Enter), or `mmux keys {} Escape` to cancel",
+            s.id
+        ),
         _ => "\"<reply>\" (no choices could be read — check the screen above), or --dismiss if nothing is being asked".to_string(),
     };
     out.push_str(&format!("\nanswer: mmux answer {} {how}", s.id));
@@ -1023,7 +1027,12 @@ fn print_human(a: &Args, resp: Response) -> Result<()> {
                 if let Some(text) = &n.notification {
                     println!("notification: {text}");
                 }
-                println!("answer: mmux answer {} <choice|yes|no|text>", i.id);
+                let how = match p {
+                    Some(p) if p.notice => "continue (presses Enter)".to_string(),
+                    Some(p) if p.yes_no => "yes|no".to_string(),
+                    _ => "<choice|yes|no|text>".to_string(),
+                };
+                println!("answer: mmux answer {} {how}", i.id);
             }
             if let Some(e) = &i.error {
                 println!("error: {e}");
@@ -1153,12 +1162,15 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
     mmux answer <t> <2|yes|no|text> Answer an agent that needs input: pick a choice
                                     of the prompt on its screen by number, yes/no
                                     or option text (moves its cursor, presses
-                                    Enter); y/n for a [y/n] line; with no prompt
-                                    on screen, the text is typed as a reply —
-                                    refused if it reads like a choice (2, yes,
-                                    an option label), with the screen shown.
-                                    --text (or --force) types it regardless;
-                                    --dismiss clears its notification instead.
+                                    Enter); y/n for a [y/n] line; `continue`
+                                    (enter, ok, yes) for an optionless notice
+                                    that blocks on Enter — never its Esc; with
+                                    no prompt on screen, the text is typed as a
+                                    reply — refused if it reads like a choice
+                                    (2, yes, an option label), with the screen
+                                    shown. --text (or --force) types it
+                                    regardless; --dismiss clears its
+                                    notification instead.
     mmux new agent [template] [-p project] [--prompt "<first prompt>"]
     mmux new terminal [-p project] [--cmd "<command>"]
     mmux start <t> [--wait]         Start a session that isn't running (processes too)
@@ -1181,7 +1193,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     by) isn't done until that's gone too;
                                     --no-background stops at its idle prompt.
                                     Exit 3 when it needs input instead (a question
-                                    or permission prompt, or a notification): it
+                                    or permission prompt, an optionless notice
+                                    that blocks on Enter, or a notification): it
                                     prints the question, choices and screen —
                                     `mmux answer` it, then wait again.
                                     Processes always wait for exit + final output,
@@ -1227,7 +1240,8 @@ workspace member, or a worktree), or the one it runs inside ($MMUX_SOCKET).
                                     error if a config doesn't load.
 
 An agent's state is `working`, `idle`, or `needs-input`: blocked on a question,
-a permission prompt or a notification it raised, until input reaches it.
+a permission prompt, an optionless notice that blocks on Enter, or a
+notification it raised, until input reaches it.
 
 No definitive control reply: exit 5 (JSON: outcome_unknown: true). The UI may be
 busy or paused; a request that already started may still finish. Check `mmux ls`
@@ -1645,6 +1659,21 @@ mod tests {
         assert!(report.contains("notification: Claude needs your permission"));
         assert!(report.contains("$ rm -rf build"));
         assert!(report.contains("mmux answer s1 1-2, yes/no"), "{report}");
+
+        // An optionless notice is answered by continuing: the report names that, and
+        // that cancelling stays a manual Escape.
+        let mut notice = asking(800);
+        notice.needs_input.as_mut().unwrap().prompt = crate::prompt::parse(&[
+            "Gateway notice: auto mode keeps working.".to_string(),
+            "Enter to continue · Esc to cancel".to_string(),
+        ]);
+        let report = needs_input_report(&notice);
+        assert!(report.contains("needs input"), "{report}");
+        assert!(
+            report
+                .contains("answer: mmux answer s1 continue (presses Enter), or `mmux keys s1 Escape` to cancel"),
+            "{report}"
+        );
     }
 
     #[test]

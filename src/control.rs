@@ -101,8 +101,9 @@ pub enum Cmd {
     /// Press named keys (`Enter`, `C-c`, `Escape`, `Up`, …); unknown words are typed.
     Keys { target: String, keys: Vec<String> },
     /// Answer what an agent is asking: pick a choice of the prompt on its screen by
-    /// number, `yes`/`no` or its text (cursor keys + Enter), answer a `[y/n]` line, or —
-    /// with no prompt on screen — type `answer` as a reply, unless it reads like a pick
+    /// number, `yes`/`no` or its text (cursor keys + Enter), answer a `[y/n]` line,
+    /// continue an optionless notice with a bare Enter (`continue`), or — with no
+    /// prompt on screen — type `answer` as a reply, unless it reads like a pick
     /// (see [`crate::prompt::plan`]). `text` types it as a reply whatever is on screen;
     /// `dismiss` instead clears its notification without typing anything.
     Answer {

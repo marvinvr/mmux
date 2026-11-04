@@ -91,6 +91,22 @@ fn unknown_response() -> Option<Value> {
     }))
 }
 
+/// A running agent blocked on Claude Code's optionless notice (T-0076's reproduction):
+/// the server has read it into `needs_input` — `wait` must stop for it, not settle.
+fn notice_blocked_agent() -> Option<Value> {
+    let mut data = idle_agent();
+    data["needs_input"] = json!({
+        "since_ms": 800,
+        "prompt": {
+            "question": "We're changing auto mode to no longer charge for classifier requests.",
+            "notice": true
+        },
+        "screen": ["Enter to continue · Esc to cancel"]
+    });
+    data["status_line"] = json!([]);
+    Some(json!({"ok": true, "data": data}))
+}
+
 fn assert_unknown(output: &Output, json: bool) {
     assert_eq!(output.status.code(), Some(5), "{output:?}");
     if json {
@@ -114,6 +130,44 @@ fn wait_reports_unknown_or_lost_transcript_replies() {
             assert_unknown(&output, json);
         }
     }
+}
+
+/// An agent blocked on an optionless notice ends the wait with exit 3 and a report
+/// naming continue as the answer — the idle agent beside it still finishes with 0.
+#[test]
+fn wait_stops_with_needs_input_for_a_blocked_notice_and_real_done_still_returns() {
+    let output = run_sequence(
+        &["wait", "s1"],
+        vec![notice_blocked_agent(), last_response()],
+    );
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(out.contains("needs input"), "{out}");
+    assert!(out.contains("Enter to continue · Esc to cancel"), "{out}");
+    assert!(
+        out.contains(
+            "answer: mmux answer s1 continue (presses Enter), or `mmux keys s1 Escape` to cancel"
+        ),
+        "{out}"
+    );
+
+    // The same agent without the notice: genuine completion still returns 0.
+    let done = run_sequence(&["wait", "s1"], vec![status_response(), last_response()]);
+    assert_eq!(done.status.code(), Some(0), "{done:?}");
+    assert!(
+        String::from_utf8_lossy(&done.stdout).contains("idle"),
+        "{done:?}"
+    );
+
+    // …and in JSON the blocked wait carries the session state as `data`.
+    let json = run_sequence(
+        &["wait", "s1", "--json"],
+        vec![notice_blocked_agent(), last_response()],
+    );
+    assert_eq!(json.status.code(), Some(3), "{json:?}");
+    let response: Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(response["ok"], false);
+    assert_eq!(response["data"]["needs_input"]["prompt"]["notice"], true);
 }
 
 #[test]

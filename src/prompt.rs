@@ -39,8 +39,20 @@
 //! and answers in numbered lists — so a menu also needs a cursor on one of its options,
 //! numbering that runs from 1, a selection hint (`Esc to cancel`, `Enter to select`,
 //! `(esc)`, …) and to sit at the bottom of the screen, where a prompt waiting for an
-//! answer is drawn. Pure functions over screen lines, so the heuristics are tested
-//! directly.
+//! answer is drawn. Claude Code also blocks mid-turn on optionless notices — account
+//! and gateway announcements that continue on Enter and cancel on Esc, with no options
+//! and no cursor:
+//!
+//! ```text
+//!  We're changing auto mode to no longer charge for classifier requests.
+//!
+//!  Enter to continue · Esc to cancel
+//! ```
+//!
+//! Those are recognized by the hint pair alone, and only while it is the screen's last
+//! word-bearing line: while an agent works or sits idle its own footer is drawn below
+//! anything echoed, so echoed text can't wear the signature. Pure functions over screen
+//! lines, so the heuristics are tested directly.
 
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +84,14 @@ const NEAR_BOTTOM: usize = 12;
 /// its last option: with no numbering to go by, a hint further off (or none) leaves a
 /// multi-line message echoed after a `❯` looking just like one.
 const BARE_HINT_WITHIN: usize = 3;
+/// What a [`Prompt`] with no options blocks on: an optionless notice is one only when
+/// an Enter-*continuing* hint and an Esc-canceling one share its last word-bearing line
+/// (`Enter to continue · Esc to cancel`). Only continuation phrasing qualifies — a
+/// `confirm`/`select` hint implies an option the cursor sits on, and if the menu shapes
+/// above failed to read it, pressing its Enter would pick that option blind (Claude's
+/// trust dialog: "No, exit").
+const ENTER_HINTS: &[&str] = &["enter to continue"];
+const ESC_HINTS: &[&str] = &["esc to cancel", "esc to exit", "esc to go back", "(esc)"];
 
 /// A question on an agent's screen.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -92,6 +112,10 @@ pub struct Prompt {
     /// which opens an editor for an answer none of the choices give.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub write_in: Option<String>,
+    /// An optionless notice that blocks on Enter (continue) or Esc (cancel) —
+    /// answered by continuing, never by typed text. See the module docs.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub notice: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -119,6 +143,9 @@ pub enum Plan {
     WriteIn { key: String, text: String },
     /// Type this text, then press Enter.
     Type(String),
+    /// Press Enter on a notice: its continue action, the only one mmux automates
+    /// (cancelling is a guess at Esc — send that with `mmux keys` if wanted).
+    Continue,
 }
 
 /// The prompt at the bottom of `lines` (the visible screen, top to bottom), if any.
@@ -131,6 +158,7 @@ pub fn parse(lines: &[String]) -> Option<Prompt> {
         .or_else(|| radio_menu(&lines))
         .or_else(|| bare_menu(rows))
         .or_else(|| yes_no(&lines))
+        .or_else(|| notice(&lines))
 }
 
 /// A row with any box border stripped (`│ text │`), trimmed, and the column its text
@@ -236,6 +264,7 @@ fn menu(lines: &[&str]) -> Option<Prompt> {
         yes_no: false,
         keyed: false,
         write_in: None,
+        notice: false,
     })
 }
 
@@ -318,6 +347,7 @@ fn radio_menu(lines: &[&str]) -> Option<Prompt> {
         yes_no: false,
         keyed: true,
         write_in,
+        notice: false,
     })
 }
 
@@ -392,6 +422,7 @@ fn bare_menu(rows: &[(usize, &str)]) -> Option<Prompt> {
         yes_no: false,
         keyed: false,
         write_in: None,
+        notice: false,
     })
 }
 
@@ -434,6 +465,29 @@ fn yes_no(lines: &[&str]) -> Option<Prompt> {
             yes_no: true,
             keyed: false,
             write_in: None,
+            notice: false,
+        })
+}
+
+/// Claude Code's optionless notice (see the module docs): a modal that blocks the turn
+/// on Enter (continue) or Esc (cancel), drawn over the input box with no options and no
+/// cursor. Signed by the hint pair on the screen's last word-bearing line — the one
+/// place neither an echo nor a quiet agent can wear it, since the agent draws its own
+/// footer below everything while working or idle, and dialogs with options are read by
+/// the shapes above. Borders and blank rows may sit below the hint.
+fn notice(lines: &[&str]) -> Option<Prompt> {
+    let at = lines
+        .iter()
+        .rposition(|l| l.chars().any(char::is_alphanumeric))?;
+    let lower = lines[at].to_lowercase();
+    (ENTER_HINTS.iter().any(|h| lower.contains(h)) && ESC_HINTS.iter().any(|h| lower.contains(h)))
+        .then(|| Prompt {
+            question: question_above(&lines[..at]),
+            choices: Vec::new(),
+            yes_no: false,
+            keyed: false,
+            write_in: None,
+            notice: true,
         })
 }
 
@@ -447,6 +501,22 @@ pub fn plan(prompt: Option<&Prompt>, answer: &str) -> Result<Plan, String> {
     let word = answer.to_lowercase();
     let yes = matches!(word.as_str(), "yes" | "y");
     let no = matches!(word.as_str(), "no" | "n");
+    // A notice has nothing to pick or type into: it continues on Enter, and that is
+    // the only answering mmux automates — anything else would be a guess.
+    if prompt.is_some_and(|p| p.notice) {
+        return if yes
+            || matches!(
+                word.as_str(),
+                "continue" | "enter" | "ok" | "okay" | "proceed"
+            ) {
+            Ok(Plan::Continue)
+        } else {
+            Err(format!(
+                "the screen shows a notice that continues on Enter — answer “continue” to press \
+it; to cancel it instead, send Escape yourself (`mmux keys <session> Escape`)"
+            ))
+        };
+    }
     let Some(prompt) = prompt.filter(|p| p.yes_no || !p.choices.is_empty()) else {
         if looks_like_a_pick(answer) {
             return Err(format!(
@@ -659,6 +729,89 @@ mod tests {
   ┃
   Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
 ";
+
+    /// Claude Code's auto-mode-classifier billing notice, as T-0076's live
+    /// reproduction showed it (2026-11-03, v0.13.17): a modal with no options and no
+    /// cursor, drawn over the input box mid-turn while a Bash call waited — and
+    /// `mmux wait` read the blocked agent as idle-done because nothing on this screen
+    /// was recognized.
+    const NOTICE: &str = "\
+● Bash(git remote -v && git log --oneline -3)
+  ⎿  Waiting…
+
+────────────────────────────────────────────────────────────────────────────────
+  We're changing auto mode to no longer charge for classifier requests in Claude
+  Code.
+
+  However, this session isn't eligible because your requests go through
+  www.cs.technik.fhnw.ch, which isn't compatible with this update.
+
+  Nothing breaks: auto mode keeps working, and its classifier requests are billed as
+  before.
+
+  To fix it and access the new version of auto mode, ask your gateway to implement:
+  https://code.claude.com/docs/en/auto-mode-classifier-billing
+
+  Enter to continue · Esc to cancel
+";
+
+    #[test]
+    fn reads_claude_s_optionless_notice_dialog() {
+        let p = parse(&screen(NOTICE))
+            .unwrap_or_else(|| panic!("the blocking notice must be detected as needing input"));
+        assert!(p.notice && p.choices.is_empty());
+        // Continuing is the one answer a notice takes; cancelling is mmux's no.
+        assert_eq!(plan(Some(&p), "continue"), Ok(Plan::Continue));
+        assert_eq!(plan(Some(&p), "Enter"), Ok(Plan::Continue));
+        assert_eq!(plan(Some(&p), "yes"), Ok(Plan::Continue));
+        assert!(plan(Some(&p), "no").is_err());
+        assert!(plan(Some(&p), "explain").is_err());
+        // Borders and blank rows may sit below the hint line.
+        let bordered = format!("{NOTICE}╰────────────────────────────────────────────╯\n\n\n");
+        assert!(parse(&screen(&bordered)).unwrap().notice);
+    }
+
+    #[test]
+    fn an_echoed_or_footered_hint_pair_is_not_a_notice() {
+        // Echoed while idle: the agent's own input box and footer sit below the echo,
+        // so the pair is not the screen's last word.
+        let echoed = "\
+See the dialog (Enter to continue · Esc to cancel) for details.
+────────────────────
+❯
+────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)
+";
+        assert_eq!(parse(&screen(echoed)), None);
+        // Echoed while working: the working footer is below it.
+        let working = "\
+The dialog asks: Enter to continue · Esc to cancel
+⠋ Thinking… [stop]
+";
+        assert_eq!(parse(&screen(working)), None);
+        // One family alone is no notice.
+        assert_eq!(parse(&screen("Done.\nPress enter to continue\n")), None);
+        assert_eq!(parse(&screen("Done.\nEsc to cancel any time\n")), None);
+        // A confirm hint implies an option the cursor sits on: never blind-Entered as
+        // a notice, even optionless (the menu shapes own those screens).
+        assert_eq!(
+            parse(&screen(
+                "Codex wants to run:\n$ cargo test\n\nPress enter to confirm or esc to cancel\n"
+            )),
+            None
+        );
+        // A finished Grok agent quoting the pair in its last words: its mode line sits
+        // below the echo, so the pair is not the screen's last word.
+        let grok_done = "\
+     ◆ Ask Which color do you prefer?
+     The dialog says Enter to continue · Esc to cancel.
+  ╭──────────────────╮
+  │ ❯                │
+  ╰── Grok 4.7 ──────╯
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+";
+        assert_eq!(parse(&screen(grok_done)), None);
+    }
 
     #[test]
     fn reads_and_answers_grok_s_radio_menus() {

@@ -35,7 +35,8 @@ mmux send s12 "fix the failing test" # paste text, then Enter (--no-enter: don't
 mmux keys s12 Escape                 # press keys: Enter Escape Tab BTab BSpace Space Up Down Left Right
                                      #   Home End PageUp PageDown Delete Insert F1-F12, C-/M-/S- prefixes
 mmux answer s12 2                    # answer an agent that needs input: choice 2 of its prompt
-                                     #   (also: yes, no, an option's text, a reply; --dismiss)
+                                     #   (also: yes, no, an option's text, a notice's `continue`,
+                                     #   a reply; --dismiss)
 mmux new agent codex -p api --prompt "…"   # start an agent (template by name or command; default: first)
 mmux new terminal --cmd "npm test"   # start a terminal, type a command into it (stays open)
 mmux start|restart "Dev server"      # start anything not running / (re)start any session
@@ -60,7 +61,8 @@ mmux reload                          # reload the config live, like R — after 
 - States: an agent is `working` (its sidebar row spins, or — Claude — background work it started is
   still running and will wake it: `working (background: 2 agents, 1 shell)`, JSON `background`),
   `needs-input` (`needs-input 12s`: blocked
-  on a question, a permission prompt or a notification it raised, until input reaches it) or `idle`
+  on a question, a permission prompt, an optionless notice that blocks on Enter, or a
+  notification it raised, until input reaches it) or `idle`
   (`idle 42s`); others are `running`, `stopped`, `exited`, `failed`. A trailing `!` means it rang
   the bell.
 - Flags may go anywhere; use `--` before text that starts with a dash: `mmux send s3 -- --help`.
@@ -169,7 +171,8 @@ use their own project directories, and explicit `cwd` takes precedence.
 
 **Answering an agent that needs input**
 
-An agent blocked on a permission prompt, a multiple-choice question, a `[y/n]` line, or a
+An agent blocked on a permission prompt, a multiple-choice question, a `[y/n]` line, an optionless
+notice (`Enter to continue · Esc to cancel`), or a
 notification it raised is **not done**: `wait` and `ask` stop for it with **exit 3** and print what
 it asks — `asks:` (the question), `notification:`, `choices:` (`❯` marks the cursor), the last
 screen lines, and an `answer:` hint. Decide (or ask your user, if it's their call — e.g. a
@@ -180,6 +183,7 @@ mmux answer s14 1                    # pick choice 1 (moves the cursor, presses 
 mmux answer s14 no                   # the first choice starting with "No"
 mmux answer s14 "don't ask"          # the one choice whose label contains this text
 mmux answer s14 "use the v2 API"     # no choices on screen: typed as a reply + Enter
+mmux answer s14 continue             # an optionless notice: presses its Enter
 mmux wait s14 -t 30m && mmux last s14
 ```
 Text that matches no choice, or several, is refused with the list of choices (to type free text
@@ -187,10 +191,14 @@ into a menu, use `send`). Claude's folder-trust dialog (`❯ No, exit` / `Yes, I
 shown before a new agent's first prompt in an unknown folder) has no numbers; its lines count as
 1, 2 — `mmux answer s14 2` trusts. With no prompt detected, an answer that reads like a pick (`2`,
 `yes`, an option's label) is refused and the screen printed instead of typed blindly — check it,
-then use `keys` (Up/Down, Enter) or `--text` to type it anyway. If the report says no choices could be read, look at its screen lines;
+then use `keys` (Up/Down, Enter) or `--text` to type it anyway. An optionless notice (an
+announcement ending in `Enter to continue · Esc to cancel`, drawn over the input box) is answered
+with `continue` (or `enter`/`ok`/`yes`): mmux presses its Enter so the turn goes on — it never
+guesses a cancel, so send Escape yourself (`mmux keys s14 Escape`) if you want it gone. If the
+report says no choices could be read, look at its screen lines;
 if nothing is actually being asked, `mmux answer s14 --dismiss` clears the flag. `--json`: the
 report is `error`, and `data.needs_input` has `since_ms`, `prompt` (`question`, `choices[]` of
-`n`/`label`/`selected`, `yes_no`), `notification` and `screen[]`.
+`n`/`label`/`selected`, `yes_no`, `notice`), `notification` and `screen[]`.
 
 ## Scripting: `--json` and exit codes
 

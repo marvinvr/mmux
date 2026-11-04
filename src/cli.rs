@@ -193,7 +193,8 @@ CONTROL (drive a running session from scripts/agents; add --json for JSON):
     mmux ls                     Projects and sessions with ids (s3), state, title
     mmux status|read <t>        A session's state + status line / its output
     mmux send <t> <text>        Type a prompt and press Enter  ·  mmux keys <t> C-c …
-    mmux answer <t> <2|yes|no|text>  Answer an agent's question/permission prompt (--text: type it)
+    mmux answer <t> <2|yes|no|text>  Answer an agent's question/permission prompt or a
+                                     blocking notice — `continue` presses its Enter (--text: type it)
     mmux new agent|terminal     Start one (-p project, template, --prompt, --cmd)
     mmux start|restart <t> [--wait]   Start/restart, optionally wait (-t, --tail N)
     mmux stop|close <t>         Stop a process / close an agent or terminal
@@ -410,7 +411,9 @@ CONTROL — drive a running session from scripts and agents
       mmux send s12 "fix the failing test"   # type a prompt + Enter (`-` = stdin)
       mmux keys s12 Escape           # press keys: Enter C-c Up Tab …
       mmux answer s12 2              # pick option 2 of its question/permission
-                                     #   prompt (yes/no/option text work too)
+                                     #   prompt (yes/no/option text work too;
+                                     #   `continue` presses a blocking notice's
+                                     #   Enter)
       mmux start|stop|restart "Dev server"   # stop on an agent/terminal = close
       mmux close s12 [--force]       # close an agent/terminal (busy ⇒ --force)
       mmux wait s12                  # block until the agent has finished working
@@ -433,11 +436,13 @@ CONTROL — drive a running session from scripts and agents
     while background work it started (sub-agents, shells, monitors) still runs —
     it'll wake up when that finishes: `working (background: 2 agents, 1 shell)`,
     JSON `background`. `needs-input` (a yellow `?`) when it waits on a question,
-    a permission prompt or a notification it raised — until input reaches it —
+    a permission prompt, an optionless notice that blocks on Enter, or a
+    notification it raised — until input reaches it —
     and `idle` otherwise. `wait`/`ask` treat an agent as done once it stops
     working on what it was sent and has no background work left (--no-background:
     at its idle prompt), and stop with exit 3 and the question, its choices and
-    the screen when it needs input; `mmux answer` picks a choice. `new agent --prompt "…"` starts one with a first prompt.
+    the screen when it needs input; `mmux answer` picks a choice (`continue`
+    presses a blocking notice's Enter). `new agent --prompt "…"` starts one with a first prompt.
     Persistent footer indicators ([stop], esc to interrupt, Working (...)) keep
     Grok/Codex working during long tool calls and intermediate commentary.
     Processes always wait for exit and drained output, even with --idle. The
