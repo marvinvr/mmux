@@ -1,6 +1,6 @@
 # mmux.org static site — nginx serving plain HTML/CSS/JS.
 # Pinned to a recent stable alpine release.
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
 
 # Static assets (per DESIGN.md §8). DESIGN.md / README.md are NOT copied.
 COPY index.html styles.css tui.js scenes.js /usr/share/nginx/html/
