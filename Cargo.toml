@@ -36,7 +36,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # sixel-enabled) renders sixel natively for capable terminals — so where the terminal
 # supports it we get an actually-legible picture; elsewhere we fall back to half-blocks.
 # A standalone encoder — lighter than pulling the whole ratatui-image widget stack.
-icy_sixel = "0.5"
+icy_sixel = "0.7"
 # Syntax highlighting for the git diff preview. `default-fancy` selects the pure-Rust
 # `fancy-regex` backend (no oniguruma C dep) so the release cross-builds stay simple; it
 # still bundles the default syntax + theme sets we load lazily on the first diff.
