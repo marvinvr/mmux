@@ -43,7 +43,7 @@ jobs:
       - name: Checksums
         run: cd dist && sha256sum *.tar.gz > checksums.txt
       - name: Create staged prerelease
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
             dist/*.tar.gz
