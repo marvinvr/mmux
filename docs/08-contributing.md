@@ -114,7 +114,15 @@ distributed, so a broken build never reaches users. Pushing a `v*` tag (e.g.
 4. **`promote`** — only if every verify leg passed: flips the release to `latest` and pushes the
    `marvinvr/homebrew-mmux` tap formula bump (macOS binaries; Linux installs via the script, so the
    tap builds Linux from source). This is the single point where the new version becomes live.
-5. **`notify-failure`** — if build/publish/verify failed (so nothing was promoted), opens an issue
+5. **`npm`** — after `promote`, and only when the repo variable `NPM_PUBLISH` is `'true'`
+   (otherwise the job shows as *skipped*, never failed): `scripts/npm-package.sh` repackages the
+   same verified tarballs into `mmux-darwin-arm64`, `mmux-linux-x64`, `mmux-linux-arm64` (binary
+   + `os`/`cpu`) and the `mmux` shim package (exact-version `optionalDependencies`), then publishes
+   them platform-first via npm Trusted Publishing (`npm publish --provenance --access public`, GitHub
+   OIDC — no token secret). Versions already on the registry are skipped, so re-running the job
+   finishes a half-done publish. A failure here doesn't open an issue (the release is already live
+   on every other channel) — re-run the job.
+6. **`notify-failure`** — if build/publish/verify failed (so nothing was promoted), opens an issue
    assigned to the maintainer. Users are unaffected; fix forward with a new patch tag.
 
 The formula render is shared by `.github/scripts/render-formula.sh` (used by both the verify job's
@@ -126,6 +134,33 @@ platforms + distro containers. If a live channel has rotted, it auto-invokes
 `.github/workflows/yank.yml`, which demotes the release to a prerelease — so `releases/latest` (and
 therefore install.sh + the self-updater) fall back to the last good version with no rebuild — and
 reverts the tap. `yank.yml` can also be run manually (`workflow_dispatch`) against any tag.
+
+`yank.yml` does **not** touch npm (npm versions can't be un-published after 72 h); to steer npm
+users off a bad version, `npm deprecate mmux@<version> "<reason>"` and publish a fixed patch.
+
+### npm Publishing (one-time setup)
+
+Nothing is published to npm until this is done:
+
+1. **Reserve the four names** (all unscoped — no npm org needed): `mmux`, `mmux-darwin-arm64`,
+   `mmux-linux-x64`, `mmux-linux-arm64`. Trusted Publishing can only be configured on a package
+   that already exists, so publish a `0.0.0` placeholder of each once: `npm login`, then
+   `scripts/npm-placeholders.sh` (skips any name that's already published).
+2. **Configure a Trusted Publisher for each of the four packages** (package → Settings → Trusted
+   Publisher → GitHub Actions): owner `marvinvr`, repository `mmux`, workflow `release.yml`, no
+   environment. Optionally then set "require two-factor authentication and disallow tokens".
+3. **Set the repo variable** `NPM_PUBLISH=true` (Settings → Secrets and variables → Actions →
+   Variables). The next tag publishes.
+
+Dry-run the packaging locally against any release's assets:
+
+```sh
+d="$(mktemp -d)"
+gh release download v0.13.19 -D "$d/dist" -p '*.tar.gz'
+scripts/npm-package.sh "$d/dist" 0.13.19 "$d/out"      # assemble + npm pack, no publish
+npm install -g --prefix "$d/prefix" "$d/out/mmux-0.13.19.tgz" "$d/out/mmux-darwin-arm64-0.13.19.tgz"
+"$d/prefix/bin/mmux" --version                          # pick the tarball for your platform
+```
 
 `mmux.yaml` also defines a "Build (all platforms)" process for producing `dist/` binaries
 locally (macOS arm64 native + a static Linux musl build via `cargo-zigbuild`).
