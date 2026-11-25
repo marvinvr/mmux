@@ -2,7 +2,7 @@
 //! (focus routing, hamburger buttons, scrollback wheel) and paste.
 
 use super::git::Section;
-use super::keymap::encode_key;
+use super::keymap::{encode_key, KeyModes};
 use super::nav::Nav;
 use super::overlay::Overlay;
 use super::procform::Step;
@@ -193,8 +193,8 @@ impl App {
         }
         // The `Ctrl-b` leader is handled globally in `on_key` before we reach here, so a
         // focused pane only has to translate the keystroke to bytes for the program.
-        let kitty_flags = self.focused_pane().map(|p| p.kitty_flags()).unwrap_or(0);
-        let bytes = encode_key(&k, kitty_flags);
+        let modes = self.focused_pane().map(KeyModes::of).unwrap_or_default();
+        let bytes = encode_key(&k, modes);
         if !bytes.is_empty() {
             // Typing snaps back to the live view if we'd scrolled into history.
             if let Some(p) = self.focused_pane() {

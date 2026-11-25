@@ -3,10 +3,28 @@
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// Encode a crossterm key event into the bytes to send to the PTY. `kitty_flags`
-/// is the progressive-keyboard mode requested by the program in that pane.
+/// The input modes a pane's program has negotiated, which change how keys encode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyModes {
+    /// Kitty progressive-keyboard flags (`CSI > n u`); zero is legacy encoding.
+    pub kitty_flags: u8,
+    /// DECCKM (`CSI ? 1 h`, e.g. `tput smkx`): unmodified cursor keys send SS3.
+    pub app_cursor: bool,
+}
+
+impl KeyModes {
+    pub fn of(pane: &crate::pane::Pane) -> Self {
+        Self {
+            kitty_flags: pane.kitty_flags(),
+            app_cursor: pane.application_cursor(),
+        }
+    }
+}
+
+/// Encode a crossterm key event into the bytes to send to the PTY, honoring the
+/// [`KeyModes`] the program in that pane requested.
 /// Returns an empty vec for keys mmux doesn't forward.
-pub fn encode_key(k: &KeyEvent, kitty_flags: u8) -> Vec<u8> {
+pub fn encode_key(k: &KeyEvent, modes: KeyModes) -> Vec<u8> {
     use KeyCode::*;
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
     let alt = k.modifiers.contains(KeyModifiers::ALT);
@@ -17,10 +35,32 @@ pub fn encode_key(k: &KeyEvent, kitty_flags: u8) -> Vec<u8> {
     // legacy behavior (all Enter variants are CR).
     if k.code == Enter {
         let modifier = kitty_modifier(k.modifiers);
-        if kitty_flags & 1 != 0 && modifier != 1 {
+        if modes.kitty_flags & 1 != 0 && modifier != 1 {
             return format!("\x1b[13;{modifier}u").into_bytes();
         }
         return vec![b'\r'];
+    }
+
+    // Cursor keys, xterm-style: a modified key is always `CSI 1 ; mod X` (so the
+    // modifier isn't lost, and Alt is in `mod` rather than an ESC prefix); an
+    // unmodified one is `SS3 X` under DECCKM — readline/zle bind those after
+    // `smkx` — and `CSI X` otherwise.
+    let cursor = match k.code {
+        Up => Some(b'A'),
+        Down => Some(b'B'),
+        Right => Some(b'C'),
+        Left => Some(b'D'),
+        Home => Some(b'H'),
+        End => Some(b'F'),
+        _ => None,
+    };
+    if let Some(final_byte) = cursor {
+        let modifier = kitty_modifier(k.modifiers);
+        if modifier != 1 {
+            return format!("\x1b[1;{modifier}{}", final_byte as char).into_bytes();
+        }
+        let intro = if modes.app_cursor { b'O' } else { b'[' };
+        return vec![27, intro, final_byte];
     }
 
     let mut out: Vec<u8> = match k.code {
@@ -42,12 +82,6 @@ pub fn encode_key(k: &KeyEvent, kitty_flags: u8) -> Vec<u8> {
         Tab => vec![b'\t'],
         BackTab => vec![27, 91, 90],
         Esc => vec![27],
-        Left => vec![27, 91, 68],
-        Right => vec![27, 91, 67],
-        Up => vec![27, 91, 65],
-        Down => vec![27, 91, 66],
-        Home => vec![27, 91, 72],
-        End => vec![27, 91, 70],
         PageUp => vec![27, 91, 53, 126],
         PageDown => vec![27, 91, 54, 126],
         Delete => vec![27, 91, 51, 126],
@@ -131,8 +165,8 @@ pub fn parse_key_name(name: &str) -> Option<KeyEvent> {
     Some(KeyEvent::new(code, mods))
 }
 
-/// Kitty numbers modifiers as one plus a bitset: Shift, Alt, Ctrl, Super,
-/// Hyper, Meta. Keep this local to the protocol-specific path above.
+/// Kitty (and xterm, for its `CSI 1 ; mod` keys) number modifiers as one plus
+/// a bitset: Shift, Alt, Ctrl, Super, Hyper, Meta.
 fn kitty_modifier(modifiers: KeyModifiers) -> u8 {
     1 + u8::from(modifiers.contains(KeyModifiers::SHIFT))
         + 2 * u8::from(modifiers.contains(KeyModifiers::ALT))
@@ -147,6 +181,19 @@ mod tests {
     use super::*;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+    const LEGACY: KeyModes = KeyModes {
+        kitty_flags: 0,
+        app_cursor: false,
+    };
+    const KITTY: KeyModes = KeyModes {
+        kitty_flags: 1,
+        app_cursor: false,
+    };
+    const APP_CURSOR: KeyModes = KeyModes {
+        kitty_flags: 0,
+        app_cursor: true,
+    };
+
     fn key(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, mods)
     }
@@ -154,7 +201,7 @@ mod tests {
     #[test]
     fn plain_char() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), LEGACY),
             b"a"
         );
     }
@@ -162,7 +209,7 @@ mod tests {
     #[test]
     fn ctrl_c_is_0x03() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), 0),
+            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), LEGACY),
             vec![0x03]
         );
     }
@@ -170,7 +217,7 @@ mod tests {
     #[test]
     fn ctrl_b_is_0x02() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('b'), KeyModifiers::CONTROL), 0),
+            encode_key(&key(KeyCode::Char('b'), KeyModifiers::CONTROL), LEGACY),
             vec![0x02]
         );
     }
@@ -178,11 +225,11 @@ mod tests {
     #[test]
     fn enter_is_carriage_return() {
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 1),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), KITTY),
             b"\r"
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 0),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), LEGACY),
             b"\r"
         );
     }
@@ -190,17 +237,17 @@ mod tests {
     #[test]
     fn modified_enter_uses_negotiated_kitty_encoding() {
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 1),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), KITTY),
             b"\x1b[13;2u"
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::ALT), 1),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::ALT), KITTY),
             b"\x1b[13;3u"
         );
         assert_eq!(
             encode_key(
                 &key(KeyCode::Enter, KeyModifiers::SHIFT | KeyModifiers::CONTROL),
-                1
+                KITTY
             ),
             b"\x1b[13;6u"
         );
@@ -209,7 +256,7 @@ mod tests {
     #[test]
     fn backspace_is_del() {
         assert_eq!(
-            encode_key(&key(KeyCode::Backspace, KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Backspace, KeyModifiers::NONE), LEGACY),
             vec![0x7f]
         );
     }
@@ -217,26 +264,65 @@ mod tests {
     #[test]
     fn arrows_are_csi() {
         assert_eq!(
-            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), LEGACY),
             vec![27, 91, 65]
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Down, KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Down, KeyModifiers::NONE), LEGACY),
             vec![27, 91, 66]
         );
     }
 
     #[test]
+    fn cursor_keys_follow_deckm() {
+        let enc = |code, modes| encode_key(&key(code, KeyModifiers::NONE), modes);
+        for (code, fin) in [
+            (KeyCode::Up, b'A'),
+            (KeyCode::Down, b'B'),
+            (KeyCode::Right, b'C'),
+            (KeyCode::Left, b'D'),
+            (KeyCode::Home, b'H'),
+            (KeyCode::End, b'F'),
+        ] {
+            assert_eq!(enc(code, LEGACY), vec![27, b'[', fin], "{code:?} normal");
+            assert_eq!(
+                enc(code, APP_CURSOR),
+                vec![27, b'O', fin],
+                "{code:?} DECCKM"
+            );
+        }
+        // Keys outside DECCKM's set don't change.
+        assert_eq!(enc(KeyCode::PageUp, APP_CURSOR), b"\x1b[5~");
+        assert_eq!(enc(KeyCode::Delete, APP_CURSOR), b"\x1b[3~");
+    }
+
+    #[test]
+    fn modified_cursor_keys_are_csi_in_both_modes() {
+        for modes in [LEGACY, APP_CURSOR] {
+            let enc = |code, mods| encode_key(&key(code, mods), modes);
+            assert_eq!(enc(KeyCode::Up, KeyModifiers::SHIFT), b"\x1b[1;2A");
+            assert_eq!(enc(KeyCode::Down, KeyModifiers::ALT), b"\x1b[1;3B");
+            assert_eq!(enc(KeyCode::Left, KeyModifiers::CONTROL), b"\x1b[1;5D");
+            assert_eq!(
+                enc(KeyCode::Right, KeyModifiers::CONTROL | KeyModifiers::SHIFT),
+                b"\x1b[1;6C"
+            );
+            assert_eq!(enc(KeyCode::Home, KeyModifiers::SHIFT), b"\x1b[1;2H");
+            assert_eq!(enc(KeyCode::End, KeyModifiers::CONTROL), b"\x1b[1;5F");
+        }
+    }
+
+    #[test]
     fn alt_prefixes_esc() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('x'), KeyModifiers::ALT), 0),
+            encode_key(&key(KeyCode::Char('x'), KeyModifiers::ALT), LEGACY),
             vec![27, b'x']
         );
     }
 
     #[test]
     fn parses_tmux_style_key_names() {
-        let enc = |n: &str| encode_key(&parse_key_name(n).unwrap(), 0);
+        let enc = |n: &str| encode_key(&parse_key_name(n).unwrap(), LEGACY);
         assert_eq!(enc("Enter"), b"\r");
         assert_eq!(enc("C-c"), vec![0x03]);
         assert_eq!(enc("Escape"), vec![27]);
@@ -262,6 +348,6 @@ mod tests {
 
     #[test]
     fn unmapped_key_is_empty() {
-        assert!(encode_key(&key(KeyCode::F(20), KeyModifiers::NONE), 0).is_empty());
+        assert!(encode_key(&key(KeyCode::F(20), KeyModifiers::NONE), LEGACY).is_empty());
     }
 }

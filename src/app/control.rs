@@ -18,7 +18,7 @@
 //! `status`) tell "finished what I sent" from "hasn't started on it yet".
 
 use super::commit::ScheduleAction;
-use super::keymap::{encode_key, parse_key_name};
+use super::keymap::{encode_key, parse_key_name, KeyModes};
 use super::nav::Nav;
 use super::session::{Kind, Session, Status};
 use super::{App, Focus};
@@ -545,7 +545,7 @@ impl App {
                 s.name
             ));
         }
-        let (id, flags) = (s.id, pane.kitty_flags());
+        let (id, modes) = (s.id, KeyModes::of(pane));
         let prompt = crate::prompt::parse(&pane.screen_lines());
         if dismiss {
             pane.dismiss();
@@ -585,11 +585,11 @@ impl App {
                 let key = if moves < 0 { "Up" } else { "Down" };
                 let mut gap = Duration::ZERO;
                 for _ in 0..moves.unsigned_abs() {
-                    let bytes = parse_key_name(key).map(|k| encode_key(&k, flags));
+                    let bytes = parse_key_name(key).map(|k| encode_key(&k, modes));
                     self.queue_input(id, gap, bytes.unwrap_or_default());
                     gap = ANSWER_GAP;
                 }
-                let enter = parse_key_name("Enter").map(|k| encode_key(&k, flags));
+                let enter = parse_key_name("Enter").map(|k| encode_key(&k, modes));
                 self.queue_input(id, gap, enter.unwrap_or_else(|| b"\r".to_vec()));
                 self.sessions[i].last_input_at = Some(Instant::now());
                 self.flush_deferred_input();
@@ -620,7 +620,7 @@ impl App {
             // A notice's continue action: Enter alone, the only key mmux automates on
             // it. It lets the agent get on with its turn, so it counts as input.
             Plan::Continue => {
-                let enter = parse_key_name("Enter").map(|k| encode_key(&k, flags));
+                let enter = parse_key_name("Enter").map(|k| encode_key(&k, modes));
                 self.queue_input(id, Duration::ZERO, enter.unwrap_or_else(|| b"\r".to_vec()));
                 self.sessions[i].last_input_at = Some(Instant::now());
                 self.flush_deferred_input();
@@ -637,13 +637,13 @@ impl App {
                 self.sessions[i].name
             ));
         };
-        let flags = pane.kitty_flags();
+        let modes = KeyModes::of(pane);
         let id = self.sessions[i].id;
         let mut gap = Duration::ZERO;
         for key in keys {
             // Like tmux send-keys: a key name is pressed, anything else is typed.
             let bytes = match parse_key_name(key) {
-                Some(k) => encode_key(&k, flags),
+                Some(k) => encode_key(&k, modes),
                 None => key.clone().into_bytes(),
             };
             if !bytes.is_empty() {
