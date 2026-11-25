@@ -464,6 +464,14 @@ impl Pane {
             .unwrap_or(0)
     }
 
+    /// Whether this pane's program set DECCKM (application cursor keys, `CSI ? 1 h`).
+    pub fn application_cursor(&self) -> bool {
+        self.parser
+            .lock()
+            .ok()
+            .is_some_and(|p| p.screen().application_cursor())
+    }
+
     pub fn resize(&mut self, rows: u16, cols: u16) {
         let rows = rows.max(1);
         let cols = cols.max(1);
