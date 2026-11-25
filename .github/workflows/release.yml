@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14 # Apple silicon
+          - os: macos-15 # Apple silicon
             kind: mac
           - os: ubuntu-latest # x86_64
             kind: linux
