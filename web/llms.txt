@@ -31,9 +31,9 @@ curl -fsSL https://mmux.org/install.sh | sh
 ```
 
 On macOS you can install with Homebrew instead (`brew install marvinvr/mmux/mmux`); a brew
-install notifies you of updates and applies them with one confirmation. With Node, `npm install -g mmux`
+install notifies you of updates and applies them with one confirmation. With Node, `npm install -g mmux-cli`
 ships the same prebuilt binaries (macOS Apple Silicon, Linux arm64/x86_64); it notifies you of
-updates and you apply them with `npm update -g mmux`. From source with Rust:
+updates and you apply them with `npm update -g mmux-cli`. From source with Rust:
 `cargo install --path .`. Then run `mmux` in any project directory. `mmux init` runs an
 interactive setup (agents and start commands); `mmux attach` rejoins a running
 session from anywhere; `mmux workspace` creates or manages a directory-level workspace with an

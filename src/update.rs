@@ -9,10 +9,10 @@
 //! - **Self-managed** (the `mmux.org/install.sh` binary, typically in `~/.local/bin`): a
 //!   release binary we can atomically replace ourselves. Here the update is silent —
 //!   downloaded and staged in the background, exactly like the old brew flow.
-//! - **npm** (`npm install -g mmux`): the binary lives inside `node_modules`, owned by npm.
+//! - **npm** (`npm install -g mmux-cli`): the binary lives inside `node_modules`, owned by npm.
 //!   A newer release is only *announced* — overwriting the file would desync npm's own
 //!   bookkeeping, and npm upgrades can't be run safely for the user (global prefixes often
-//!   need sudo or a version manager), so applying tells the user to run `npm update -g mmux`.
+//!   need sudo or a version manager), so applying tells the user to run `npm update -g mmux-cli`.
 //!
 //! Both kinds share one version check: follow the GitHub `releases/latest` redirect and
 //! read the tag (a plain web redirect — no REST API, no rate limit, no token, no hosting).
@@ -54,12 +54,12 @@ pub enum InstallKind {
     /// in place ourselves, no confirmation needed.
     SelfManaged,
     /// Installed from npm (the binary sits under `node_modules`): never touched in place —
-    /// the user upgrades with `npm update -g mmux`, which a restart then picks up.
+    /// the user upgrades with `npm update -g mmux-cli`, which a restart then picks up.
     Npm,
 }
 
 /// What an npm install tells the user to run (shown on the badge click and About card).
-pub const NPM_UPDATE_CMD: &str = "npm update -g mmux";
+pub const NPM_UPDATE_CMD: &str = "npm update -g mmux-cli";
 
 /// One finished background step, sent from a worker thread to the app's tick loop.
 pub enum UpdateMsg {
@@ -199,7 +199,7 @@ fn install_kind() -> Option<InstallKind> {
 }
 
 /// Whether this binary was installed by npm — the running exe lives inside a
-/// `node_modules` tree (the `mmux-<platform>` package the `mmux` shim execs).
+/// `node_modules` tree (the `mmux-<platform>` package the `mmux-cli` shim execs).
 fn is_npm_managed() -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn detects_npm_installs_by_path() {
         assert!(in_node_modules(Path::new(
-            "/usr/local/lib/node_modules/mmux/node_modules/mmux-darwin-arm64/bin/mmux"
+            "/usr/local/lib/node_modules/mmux-cli/node_modules/mmux-darwin-arm64/bin/mmux"
         )));
         assert!(in_node_modules(Path::new(
             "/home/u/.nvm/versions/node/v22/lib/node_modules/mmux-linux-x64/bin/mmux"

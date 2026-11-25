@@ -11,7 +11,7 @@
 #   <out-dir>   staging dir: packages are assembled under <out-dir>/pkg/, tarballs packed
 #               into <out-dir>/ (`npm pack`)
 #   --publish   also `npm publish --provenance --access public` each one — platform packages
-#               first, the main `mmux` package last (so its optionalDependencies already
+#               first, the main `mmux-cli` package last (so its optionalDependencies already
 #               resolve). A version that's already on the registry is skipped, so a re-run
 #               of a half-finished publish just completes it.
 #
@@ -20,7 +20,7 @@
 #     os/cpu so npm installs only the matching one. No `libc` field: the Linux binaries are
 #     static musl and run on glibc and musl distros alike, so restricting libc would only
 #     wrongly exclude one of them.
-#   mmux — npm/mmux/bin/mmux.js (resolves + runs the platform binary) with the platform
+#   mmux-cli — npm/mmux-cli/bin/mmux.js (resolves + runs the platform binary; installs the `mmux` command) with the platform
 #     packages as exact-version optionalDependencies. No postinstall, no downloads.
 set -euo pipefail
 
@@ -64,7 +64,7 @@ for row in $TARGETS; do
 {
   "name": "$name",
   "version": "$VERSION",
-  "description": "The mmux binary for $os ($cpu). Install \`mmux\` instead.",
+  "description": "The mmux binary for $os ($cpu). Install \`mmux-cli\` instead.",
   "license": "GPL-3.0-or-later",
   "homepage": "$HOMEPAGE",
   "repository": { "type": "git", "url": "$REPO_URL" },
@@ -74,21 +74,21 @@ for row in $TARGETS; do
   "preferUnplugged": true
 }
 JSON
-	printf '%s\n' "This is the $os-$cpu binary for [mmux]($HOMEPAGE). Install \`mmux\` instead: \`npm install -g mmux\`." >"$dir/README.md"
+	printf '%s\n' "This is the $os-$cpu binary for [mmux]($HOMEPAGE). Install \`mmux-cli\` instead: \`npm install -g mmux-cli\`." >"$dir/README.md"
 	order+=("$dir")
 	optdeps="${optdeps:+$optdeps,
 }    \"$name\": \"$VERSION\""
 done
 
-main="$OUT/pkg/mmux"
+main="$OUT/pkg/mmux-cli"
 mkdir -p "$main/bin"
-cp "$ROOT/npm/mmux/bin/mmux.js" "$main/bin/mmux.js"
+cp "$ROOT/npm/mmux-cli/bin/mmux.js" "$main/bin/mmux.js"
 chmod 755 "$main/bin/mmux.js"
-cp "$ROOT/npm/mmux/README.md" "$main/README.md"
+cp "$ROOT/npm/mmux-cli/README.md" "$main/README.md"
 cp "$ROOT/LICENSE" "$main/LICENSE"
 cat >"$main/package.json" <<JSON
 {
-  "name": "mmux",
+  "name": "mmux-cli",
   "version": "$VERSION",
   "description": "A persistent terminal multiplexer for AI agents and dev processes",
   "license": "GPL-3.0-or-later",

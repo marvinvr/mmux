@@ -442,7 +442,7 @@ cleanly along the inner/outer grain:
     for the user (letting brew's implicit auto-update find the freshly-pushed formula), then lands
     on `Ready`.
   - **npm** (`is_npm_managed`: the canonical exe path has a `node_modules` component — the
-    `mmux-<platform>` package the `mmux` Node shim runs). Checked *first*: a brew-installed Node
+    `mmux-<platform>` package the `mmux-cli` Node shim runs). Checked *first*: a brew-installed Node
     keeps its global `node_modules` under brew's prefix, and a user-owned npm prefix is writable, so
     either other test would claim it and overwrite npm's file. A found update parks in
     `UpdateState::Available` like brew, but mmux never applies it — running `npm update -g` for

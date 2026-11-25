@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The `mmux` npm package's entry point. It ships no binary itself: npm installs exactly one
+// The `mmux-cli` npm package's entry point (installed as the `mmux` command). It ships no binary itself: npm installs exactly one
 // `mmux-<platform>` optionalDependency (picked by its os/cpu fields) holding the prebuilt
 // release binary, and this shim finds it and runs it. No postinstall, no downloads.
 "use strict";
@@ -39,9 +39,9 @@ try {
   bin = require.resolve(`${pkg}/bin/mmux`);
 } catch {
   fail(
-    `the platform package ${pkg} is not installed. It is an optional dependency of mmux, ` +
+    `the platform package ${pkg} is not installed. It is an optional dependency of mmux-cli, ` +
       `so it is skipped by --omit=optional / --no-optional. Reinstall with:\n` +
-      `  npm install -g mmux\nSee ${DOCS}`,
+      `  npm install -g mmux-cli\nSee ${DOCS}`,
   );
 }
 

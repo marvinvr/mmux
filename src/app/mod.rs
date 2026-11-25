@@ -73,7 +73,7 @@ pub(crate) enum Focus {
 /// self-managed (native binary) install downloads a found update in the background and goes
 /// straight to `Ready`; a Homebrew install parks in `Available` until the user confirms the
 /// `brew upgrade`; an npm install parks there too, and applying just tells the user to run
-/// `npm update -g mmux`. Either way the badge then invites an in-place restart to apply it.
+/// `npm update -g mmux-cli`. Either way the badge then invites an in-place restart to apply it.
 pub(crate) enum UpdateState {
     /// Nothing known/in flight. The periodic timer may start a check from here.
     Idle,

@@ -117,7 +117,7 @@ distributed, so a broken build never reaches users. Pushing a `v*` tag (e.g.
 5. **`npm`** — after `promote`, and only when the repo variable `NPM_PUBLISH` is `'true'`
    (otherwise the job shows as *skipped*, never failed): `scripts/npm-package.sh` repackages the
    same verified tarballs into `mmux-darwin-arm64`, `mmux-linux-x64`, `mmux-linux-arm64` (binary
-   + `os`/`cpu`) and the `mmux` shim package (exact-version `optionalDependencies`), then publishes
+   + `os`/`cpu`) and the `mmux-cli` shim package (exact-version `optionalDependencies`), then publishes
    them platform-first via npm Trusted Publishing (`npm publish --provenance --access public`, GitHub
    OIDC — no token secret). Versions already on the registry are skipped, so re-running the job
    finishes a half-done publish. A failure here doesn't open an issue (the release is already live
@@ -136,13 +136,13 @@ therefore install.sh + the self-updater) fall back to the last good version with
 reverts the tap. `yank.yml` can also be run manually (`workflow_dispatch`) against any tag.
 
 `yank.yml` does **not** touch npm (npm versions can't be un-published after 72 h); to steer npm
-users off a bad version, `npm deprecate mmux@<version> "<reason>"` and publish a fixed patch.
+users off a bad version, `npm deprecate mmux-cli@<version> "<reason>"` and publish a fixed patch.
 
 ### npm Publishing (one-time setup)
 
 Nothing is published to npm until this is done:
 
-1. **Reserve the four names** (all unscoped — no npm org needed): `mmux`, `mmux-darwin-arm64`,
+1. **Reserve the four names** (all unscoped — no npm org needed): `mmux-cli`, `mmux-darwin-arm64`,
    `mmux-linux-x64`, `mmux-linux-arm64`. Trusted Publishing can only be configured on a package
    that already exists, so publish a `0.0.0` placeholder of each once: `npm login`, then
    `scripts/npm-placeholders.sh` (skips any name that's already published).
@@ -158,7 +158,7 @@ Dry-run the packaging locally against any release's assets:
 d="$(mktemp -d)"
 gh release download v0.13.19 -D "$d/dist" -p '*.tar.gz'
 scripts/npm-package.sh "$d/dist" 0.13.19 "$d/out"      # assemble + npm pack, no publish
-npm install -g --prefix "$d/prefix" "$d/out/mmux-0.13.19.tgz" "$d/out/mmux-darwin-arm64-0.13.19.tgz"
+npm install -g --prefix "$d/prefix" "$d/out/mmux-cli-0.13.19.tgz" "$d/out/mmux-darwin-arm64-0.13.19.tgz"
 "$d/prefix/bin/mmux" --version                          # pick the tarball for your platform
 ```
 

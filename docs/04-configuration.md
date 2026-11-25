@@ -331,7 +331,7 @@ session already upgraded** the on-disk binary and skips straight to offering the
   update`. (If you run `brew upgrade mmux` yourself in another terminal, mmux notices and offers the
   restart too.)
 - **npm installs only notify.** The binary belongs to npm, so mmux never replaces it. It shows
-  `↻ update available`; pressing **`U`** (or clicking it) tells you to run `npm update -g mmux` and
+  `↻ update available`; pressing **`U`** (or clicking it) tells you to run `npm update -g mmux-cli` and
   re-checks — once you've run it, the badge becomes `↻ restart to update`.
 
 Either way:

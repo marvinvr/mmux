@@ -36,8 +36,8 @@ curl -fsSL https://mmux.org/install.sh | sh
 ```
 
 On macOS you can use Homebrew instead (`brew install marvinvr/mmux/mmux`), or build from source
-with [Rust](https://rustup.rs) (`cargo install --path .`). It's also on npm (`npm install -g mmux`,
-same prebuilt binaries; update with `npm update -g mmux`).
+with [Rust](https://rustup.rs) (`cargo install --path .`). It's also on npm (`npm install -g mmux-cli`,
+same prebuilt binaries; update with `npm update -g mmux-cli`).
 
 mmux needs **tmux** on your `PATH` (Homebrew installs it for you). The git panel uses `git`; the
 `Ctrl+P` file picker opens files in your `$EDITOR`. See [Installation](docs/02-installation.md)

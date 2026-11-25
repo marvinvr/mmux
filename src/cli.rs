@@ -487,7 +487,7 @@ FIELD REFERENCE
                 checks on start and every 6 hours. A script install downloads it in the
                 background and shows "restart to update"; a brew install shows "update
                 available" and runs `brew upgrade` on confirm; an npm install shows "update
-                available" and asks you to run `npm update -g mmux`. Off for source/dev
+                available" and asks you to run `npm update -g mmux-cli`. Off for source/dev
                 builds or with MMUX_NO_UPDATE=1)
     (* required. cwd is relative to the project directory. Omitted lists/maps are empty.)
     Bare cmd names use PATH. A cmd containing / resolves against its effective cwd:

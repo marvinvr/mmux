@@ -156,7 +156,7 @@ jobs:
 
   # The npm channel — an EXTRA install path on top of everything above. Repackages the very
   # tarballs `build` produced and `verify` proved (no rebuild) into the mmux-<platform>
-  # binary packages + the `mmux` shim package, and publishes them via npm Trusted
+  # binary packages + the `mmux-cli` shim package, and publishes them via npm Trusted
   # Publishing (GitHub OIDC — no npm token secret). Runs only after `promote`, so npm never
   # gets a version the other channels don't. Skipped (not failed) unless the repo variable
   # NPM_PUBLISH is 'true' — see docs/08-contributing.md → "npm Publishing (one-time setup)".

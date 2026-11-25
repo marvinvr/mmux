@@ -6,7 +6,7 @@
 # See docs/08-contributing.md → "npm Publishing (one-time setup)".
 set -euo pipefail
 
-NAMES="mmux mmux-darwin-arm64 mmux-linux-x64 mmux-linux-arm64"
+NAMES="mmux-cli mmux-darwin-arm64 mmux-linux-x64 mmux-linux-arm64"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 npm whoami >/dev/null 2>&1 || { echo "not logged in to npm — run \`npm login\` first" >&2; exit 1; }
@@ -26,13 +26,13 @@ for name in $NAMES; do
 {
   "name": "$name",
   "version": "0.0.0",
-  "description": "Placeholder reserving the name for mmux (https://mmux.org). Real releases follow; install with: npm install -g mmux",
+  "description": "Placeholder reserving the name for mmux (https://mmux.org). Real releases follow; install with: npm install -g mmux-cli",
   "license": "GPL-3.0-or-later",
   "homepage": "https://mmux.org",
   "repository": { "type": "git", "url": "git+https://github.com/marvinvr/mmux.git" }
 }
 JSON
-	printf '%s\n' "# $name" "" "Placeholder reserving this name for [mmux](https://mmux.org). Install the real thing with \`npm install -g mmux\`." >"$dir/README.md"
+	printf '%s\n' "# $name" "" "Placeholder reserving this name for [mmux](https://mmux.org). Install the real thing with \`npm install -g mmux-cli\`." >"$dir/README.md"
 	echo "publishing placeholder $name@0.0.0"
 	npm publish "$dir" --access public
 done
