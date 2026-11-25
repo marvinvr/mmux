@@ -72,16 +72,17 @@ pub(crate) enum Focus {
 /// Driven by [`crate::update`]: a check runs at startup (and every few hours after). A
 /// self-managed (native binary) install downloads a found update in the background and goes
 /// straight to `Ready`; a Homebrew install parks in `Available` until the user confirms the
-/// `brew upgrade`. Either way the badge then invites an in-place restart to apply it.
+/// `brew upgrade`; an npm install parks there too, and applying just tells the user to run
+/// `npm update -g mmux-cli`. Either way the badge then invites an in-place restart to apply it.
 pub(crate) enum UpdateState {
     /// Nothing known/in flight. The periodic timer may start a check from here.
     Idle,
     /// A version check is running.
     Checking,
-    /// A newer `version` exists but needs the user to act — only a Homebrew install rests
-    /// here (self-managed installs auto-download instead). Applying it opens the confirm
-    /// that runs `brew upgrade mmux`.
-    Available(String),
+    /// A newer `version` exists but needs the user to act — only Homebrew and npm installs
+    /// rest here (self-managed installs auto-download instead). Applying it opens the
+    /// confirm that runs `brew upgrade mmux` (brew), or flashes the `npm update` hint (npm).
+    Available(String, InstallKind),
     /// A newer `version` is being downloaded/installed in the background.
     Installing(String),
     /// `version` is installed and staged; the badge offers the restart.
@@ -609,8 +610,8 @@ impl App {
                         update::spawn_install(self.update_tx.clone(), version.clone(), kind);
                         self.update = UpdateState::Installing(version);
                     }
-                    InstallKind::Brew => {
-                        self.update = UpdateState::Available(version);
+                    InstallKind::Brew | InstallKind::Npm => {
+                        self.update = UpdateState::Available(version, kind);
                     }
                 },
                 // Installed and ready: light the badge and announce it once via the flash.
@@ -659,13 +660,27 @@ impl App {
     /// Act on the current update, if any. A staged update ([`UpdateState::Ready`]) restarts
     /// in place onto the new binary (sets the flag the event loop unwinds on to re-exec —
     /// which necessarily ends the live panes). A brew update pending confirmation
-    /// ([`UpdateState::Available`]) opens the confirm that runs `brew upgrade mmux`.
-    /// Harmless in any other state. Shared by the About card `u`, the sidebar `U`, and the
+    /// ([`UpdateState::Available`]) opens the confirm that runs `brew upgrade mmux`. An npm
+    /// one only flashes the command to run (mmux never touches npm's files) and re-checks,
+    /// so once the user has run it the check sees the newer on-disk binary and offers the
+    /// restart. Harmless in any other state. Shared by the About card `u`, the sidebar `U`, and the
     /// footer badge click.
     pub(crate) fn apply_update(&mut self) {
         match &self.update {
             UpdateState::Ready(_) => self.restart = true,
-            UpdateState::Available(v) => {
+            UpdateState::Available(v, InstallKind::Npm) => {
+                let v = v.clone();
+                self.flash(format!(
+                    "v{v} available — run `{}` in a terminal, then press U to restart",
+                    update::NPM_UPDATE_CMD
+                ));
+                if update::permitted(self.root_cfg().auto_update_enabled()) {
+                    self.last_update_check = Instant::now();
+                    self.update = UpdateState::Checking;
+                    update::spawn_check(self.update_tx.clone());
+                }
+            }
+            UpdateState::Available(v, _) => {
                 let v = v.clone();
                 self.overlay = Some(overlay::Overlay::confirm(
                     "Update mmux",
@@ -682,7 +697,7 @@ impl App {
     /// in [`apply_update`](Self::apply_update)). Guarded on the state so a stale confirm is a
     /// no-op; the result flows back through [`poll_update`](Self::poll_update) to `Ready`.
     pub(crate) fn start_brew_upgrade(&mut self, version: String) {
-        if matches!(self.update, UpdateState::Available(_)) {
+        if matches!(self.update, UpdateState::Available(_, InstallKind::Brew)) {
             update::spawn_install(self.update_tx.clone(), version.clone(), InstallKind::Brew);
             self.update = UpdateState::Installing(version);
         }

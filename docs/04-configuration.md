@@ -311,9 +311,9 @@ control:
 
 ## Auto-Update
 
-When mmux was installed a way it can update — via the [install script](02-installation.md#install-script-recommended)
-or [Homebrew](02-installation.md#homebrew-macos) — it keeps an eye out for new releases in the
-background. Two behaviors, depending on how it was installed:
+When mmux was installed a way it can update — via the [install script](02-installation.md#install-script-recommended),
+[Homebrew](02-installation.md#homebrew-macos), or [npm](02-installation.md#npm) — it keeps an eye
+out for new releases in the background. Three behaviors, depending on how it was installed:
 
 **On startup, and every 6 hours** thereafter (sessions can run for days), it checks for a newer
 release. The timer runs from each session's startup, so independent sessions stagger their checks.
@@ -330,6 +330,9 @@ session already upgraded** the on-disk binary and skips straight to offering the
   `brew upgrade mmux` for you in the background; once it's done, the badge becomes `↻ restart to
   update`. (If you run `brew upgrade mmux` yourself in another terminal, mmux notices and offers the
   restart too.)
+- **npm installs only notify.** The binary belongs to npm, so mmux never replaces it. It shows
+  `↻ update available`; pressing **`U`** (or clicking it) tells you to run `npm update -g mmux-cli` and
+  re-checks — once you've run it, the badge becomes `↻ restart to update`.
 
 Either way:
 

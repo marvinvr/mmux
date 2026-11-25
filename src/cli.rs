@@ -483,11 +483,12 @@ FIELD REFERENCE
     control     enabled (bool, default true) · from-panes (bool, default true)
     close-idle-agents  how long an agent may idle before it's closed — only when its
                 project's working tree is clean: 36h default, 2d, 90m, or `off`
-    auto-update enabled (bool, default true; Homebrew + script-installed binaries —
+    auto-update enabled (bool, default true; Homebrew, npm + script-installed binaries —
                 checks on start and every 6 hours. A script install downloads it in the
                 background and shows "restart to update"; a brew install shows "update
-                available" and runs `brew upgrade` on confirm. Off for source/dev builds
-                or with MMUX_NO_UPDATE=1)
+                available" and runs `brew upgrade` on confirm; an npm install shows "update
+                available" and asks you to run `npm update -g mmux-cli`. Off for source/dev
+                builds or with MMUX_NO_UPDATE=1)
     (* required. cwd is relative to the project directory. Omitted lists/maps are empty.)
     Bare cmd names use PATH. A cmd containing / resolves against its effective cwd:
     scripts/testflight.sh works just like ./scripts/testflight.sh, in workspace

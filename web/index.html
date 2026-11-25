@@ -114,7 +114,7 @@
         <code class="hero-install-cmd">curl -fsSL https://mmux.org/install.sh | sh</code>
         <button type="button" class="copy" data-copy="curl -fsSL https://mmux.org/install.sh | sh">copy</button>
       </div>
-      <a class="hero-install-alt" href="#install">macOS, Linux, WSL &amp; arm — or install with Homebrew ↓</a>
+      <a class="hero-install-alt" href="#install">macOS, Linux, WSL &amp; arm — or install with Homebrew or npm ↓</a>
 
       <ul class="hero-meta">
         <li class="hero-chip">runs in any terminal</li>
@@ -300,17 +300,18 @@ workspace:
     </section>
 
     <!-- =================================================================== -->
-    <!-- §4.7 install — one-line CTA; script default, Homebrew behind a tab   -->
+    <!-- §4.7 install — one-line CTA; script default, Homebrew/npm in tabs   -->
     <!-- =================================================================== -->
     <section id="install">
       <p class="kicker">// get it</p>
       <h2 class="section-h2">install in <span class="grad">one line.</span></h2>
 
-      <!-- tabs: script is the default; Homebrew is the macOS alternative. The panels
+      <!-- tabs: script is the default; Homebrew (macOS) and npm are alternatives. The panels
            reuse the copy chip; tui.js (§11) toggles which one is shown. -->
       <div class="install-tabs" role="tablist" aria-label="install method">
         <button type="button" class="install-tab is-active" role="tab" aria-selected="true" data-tab="script">script</button>
         <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="brew">Homebrew</button>
+        <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="npm">npm</button>
       </div>
 
       <div class="install-row" data-panel="script">
@@ -322,6 +323,11 @@ workspace:
         <span class="install-row-prompt" aria-hidden="true">$</span>
         <code class="install-row-cmd">brew install marvinvr/mmux/mmux</code>
         <button type="button" class="copy" data-copy="brew install marvinvr/mmux/mmux">copy</button>
+      </div>
+      <div class="install-row" data-panel="npm" hidden>
+        <span class="install-row-prompt" aria-hidden="true">$</span>
+        <code class="install-row-cmd">npm install -g mmux-cli</code>
+        <button type="button" class="copy" data-copy="npm install -g mmux-cli">copy</button>
       </div>
 
       <p class="install-platforms">macOS, Linux, WSL &amp; arm.</p>

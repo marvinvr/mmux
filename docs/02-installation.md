@@ -86,6 +86,28 @@ The [install script](#install-script-recommended) picks the right one automatica
 hand, download and extract the `mmux` binary onto your `PATH`, and (on macOS) re-sign it as shown
 above.
 
+## npm
+
+If you already manage CLI tools with Node:
+
+```sh
+npm install -g mmux-cli
+```
+
+The package is `mmux-cli` (npm rejected the bare name `mmux` as too close to existing packages);
+the command it installs is still `mmux`.
+
+Same platforms as the prebuilt binaries (macOS Apple Silicon, Linux arm64/x86_64) — in fact the
+same binaries: the `mmux-cli` package pulls in exactly one `mmux-<platform>` optional dependency
+holding the release binary for your machine, and a tiny Node shim runs it. There are no install
+scripts and nothing is downloaded at install time. Don't install with `--omit=optional` (that skips
+the binary). On other platforms (Windows, Intel Macs, Node running under Rosetta) the `mmux`
+command exits with a pointer back to this page.
+
+An npm install **doesn't update itself**: mmux never overwrites a file npm owns. It still tells you
+when a new version is out (`↻ update available`); run `npm update -g mmux-cli`, then press `U` to
+restart onto it. See [Auto-Update](04-configuration.md#auto-update).
+
 ## Verify
 
 ```sh

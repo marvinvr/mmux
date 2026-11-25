@@ -31,7 +31,9 @@ curl -fsSL https://mmux.org/install.sh | sh
 ```
 
 On macOS you can install with Homebrew instead (`brew install marvinvr/mmux/mmux`); a brew
-install notifies you of updates and applies them with one confirmation. From source with Rust:
+install notifies you of updates and applies them with one confirmation. With Node, `npm install -g mmux-cli`
+ships the same prebuilt binaries (macOS Apple Silicon, Linux arm64/x86_64); it notifies you of
+updates and you apply them with `npm update -g mmux-cli`. From source with Rust:
 `cargo install --path .`. Then run `mmux` in any project directory. `mmux init` runs an
 interactive setup (agents and start commands); `mmux attach` rejoins a running
 session from anywhere; `mmux workspace` creates or manages a directory-level workspace with an
@@ -42,7 +44,7 @@ a self-contained setup guide.
 
 - [Overview](https://github.com/marvinvr/mmux/blob/main/docs/00-overview.md): what mmux is and the problem it solves
 - [Quick Start](https://github.com/marvinvr/mmux/blob/main/docs/01-quick-start.md): first run, init, attach
-- [Installation](https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md): the install script, Homebrew, prebuilt binaries, the macOS code-signing note
+- [Installation](https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md): the install script, Homebrew, npm, prebuilt binaries, the macOS code-signing note
 - [Usage](https://github.com/marvinvr/mmux/blob/main/docs/03-usage.md): the interface, every keybinding, the git panel, the mouse
 - [Configuration](https://github.com/marvinvr/mmux/blob/main/docs/04-configuration.md): the YAML schema, the global + per-project merge, workspace manifests, auto-update
 - [Notifications](https://github.com/marvinvr/mmux/blob/main/docs/05-notifications.md): bells, notification escapes, desktop notifications over SSH

@@ -418,8 +418,8 @@ runs on the UI thread) and re-encoded/re-rasterized only when the pane's cell si
 ## Self-Update
 
 `update.rs` keeps mmux current without interrupting your work, and `restore.rs` +
-`app/persist.rs` make *applying* an update feel like nothing happened. It serves the two managed
-install paths — Homebrew and the `mmux.org/install.sh` native binary — from one flow that splits
+`app/persist.rs` make *applying* an update feel like nothing happened. It serves the managed
+install paths — Homebrew, the `mmux.org/install.sh` native binary, and npm — from one flow that splits
 cleanly along the inner/outer grain:
 
 - **One version check for both.** A check runs at startup and every 6 hours thereafter (timed from
@@ -441,6 +441,14 @@ cleanly along the inner/outer grain:
     `UpdateState::Available` and waits. Applying it opens a confirm that runs `brew upgrade mmux`
     for the user (letting brew's implicit auto-update find the freshly-pushed formula), then lands
     on `Ready`.
+  - **npm** (`is_npm_managed`: the canonical exe path has a `node_modules` component — the
+    `mmux-<platform>` package the `mmux-cli` Node shim runs). Checked *first*: a brew-installed Node
+    keeps its global `node_modules` under brew's prefix, and a user-owned npm prefix is writable, so
+    either other test would claim it and overwrite npm's file. A found update parks in
+    `UpdateState::Available` like brew, but mmux never applies it — running `npm update -g` for
+    the user is unsafe (sudo-owned prefixes, version managers) — so applying flashes the command
+    and re-checks; once the user has run it, the local sibling-upgrade test sees the newer binary
+    at the same `current_exe()` path and lands on `Ready`.
 
   Everything runs on throwaway threads reporting over an `mpsc` channel drained in `tick()` — the
   same shape as the git panel's pull/push jobs.

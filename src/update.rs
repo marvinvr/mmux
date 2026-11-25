@@ -9,6 +9,10 @@
 //! - **Self-managed** (the `mmux.org/install.sh` binary, typically in `~/.local/bin`): a
 //!   release binary we can atomically replace ourselves. Here the update is silent —
 //!   downloaded and staged in the background, exactly like the old brew flow.
+//! - **npm** (`npm install -g mmux-cli`): the binary lives inside `node_modules`, owned by npm.
+//!   A newer release is only *announced* — overwriting the file would desync npm's own
+//!   bookkeeping, and npm upgrades can't be run safely for the user (global prefixes often
+//!   need sudo or a version manager), so applying tells the user to run `npm update -g mmux-cli`.
 //!
 //! Both kinds share one version check: follow the GitHub `releases/latest` redirect and
 //! read the tag (a plain web redirect — no REST API, no rate limit, no token, no hosting).
@@ -49,7 +53,13 @@ pub enum InstallKind {
     /// A release binary in a user-writable location: download the new tarball and swap it
     /// in place ourselves, no confirmation needed.
     SelfManaged,
+    /// Installed from npm (the binary sits under `node_modules`): never touched in place —
+    /// the user upgrades with `npm update -g mmux-cli`, which a restart then picks up.
+    Npm,
 }
+
+/// What an npm install tells the user to run (shown on the badge click and About card).
+pub const NPM_UPDATE_CMD: &str = "npm update -g mmux-cli";
 
 /// One finished background step, sent from a worker thread to the app's tick loop.
 pub enum UpdateMsg {
@@ -130,6 +140,9 @@ pub fn spawn_install(tx: Sender<UpdateMsg>, version: String, kind: InstallKind) 
         let result = match kind {
             InstallKind::Brew => run_brew_upgrade(),
             InstallKind::SelfManaged => run_self_install(&version),
+            // Never reached (the app doesn't install for npm), but refuse rather than
+            // overwrite a binary npm owns.
+            InstallKind::Npm => Err(format!("installed via npm — run `{NPM_UPDATE_CMD}`")),
         };
         let _ = tx.send(match result {
             Ok(()) => UpdateMsg::Installed(version),
@@ -165,11 +178,17 @@ fn resolve_exe() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("mmux"))
 }
 
-/// Classify this install, or `None` if the updater can't act on it. Brew wins first (it may
-/// build its Linux fallback from source, so the release stamp isn't required there); a
-/// stamped release binary in a user-writable dir on a target we ship for is self-managed;
-/// everything else (source builds, root-owned installs, unshipped targets) stays inert.
+/// Classify this install, or `None` if the updater can't act on it. npm wins first: a
+/// brew-installed node puts its global `node_modules` under brew's prefix, and a user-owned
+/// npm prefix is writable — either would otherwise misclassify it and overwrite npm's file.
+/// Brew next (it may build its Linux fallback from source, so the release stamp isn't
+/// required there); a stamped release binary in a user-writable dir on a target we ship for
+/// is self-managed; everything else (source builds, root-owned installs, unshipped targets)
+/// stays inert.
 fn install_kind() -> Option<InstallKind> {
+    if is_npm_managed() {
+        return Some(InstallKind::Npm);
+    }
     if is_brew_managed() {
         return Some(InstallKind::Brew);
     }
@@ -177,6 +196,21 @@ fn install_kind() -> Option<InstallKind> {
         return Some(InstallKind::SelfManaged);
     }
     None
+}
+
+/// Whether this binary was installed by npm — the running exe lives inside a
+/// `node_modules` tree (the `mmux-<platform>` package the `mmux-cli` shim execs).
+fn is_npm_managed() -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    in_node_modules(&exe)
+}
+
+/// The pure path test behind [`is_npm_managed`].
+fn in_node_modules(p: &Path) -> bool {
+    p.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 /// Whether this binary is managed by Homebrew — `brew` is on PATH and the running exe
@@ -447,6 +481,18 @@ mod tests {
             parse_tag_version("https://github.com/marvinvr/mmux/releases"),
             None
         );
+    }
+
+    #[test]
+    fn detects_npm_installs_by_path() {
+        assert!(in_node_modules(Path::new(
+            "/usr/local/lib/node_modules/mmux-cli/node_modules/mmux-darwin-arm64/bin/mmux"
+        )));
+        assert!(in_node_modules(Path::new(
+            "/home/u/.nvm/versions/node/v22/lib/node_modules/mmux-linux-x64/bin/mmux"
+        )));
+        assert!(!in_node_modules(Path::new("/home/u/.local/bin/mmux")));
+        assert!(!in_node_modules(Path::new("/opt/my_node_modules_x/mmux")));
     }
 
     #[test]

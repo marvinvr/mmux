@@ -384,9 +384,10 @@ impl App {
     fn render_update_badge(&mut self, f: &mut Frame, area: Rect) {
         use super::UpdateState;
         let (text, style, clickable) = match &self.update {
-            // A brew update the user hasn't applied yet: clicking opens the confirm that
-            // runs `brew upgrade mmux` (see `apply_update`).
-            UpdateState::Available(v) => (
+            // A brew/npm update the user hasn't applied yet: clicking opens the confirm
+            // that runs `brew upgrade mmux`, or flashes the `npm update` hint (see
+            // `apply_update`).
+            UpdateState::Available(v, _) => (
                 format!(" ↻ update available → v{v} "),
                 Style::default()
                     .fg(Color::Black)

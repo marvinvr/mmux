@@ -317,8 +317,16 @@ pub(crate) fn render_about(
                 Style::default().fg(Color::Gray),
                 Some("c check"),
             ),
+            // npm install: mmux can't apply it, so name the command instead of a key.
+            UpdateState::Available(v, crate::update::InstallKind::Npm) => (
+                format!("↻ v{v} available — run `{}`", crate::update::NPM_UPDATE_CMD),
+                Style::default()
+                    .fg(super::theme::ATTN)
+                    .add_modifier(Modifier::BOLD),
+                None,
+            ),
             // Brew install with an update pending confirmation — `u` runs `brew upgrade`.
-            UpdateState::Available(v) => (
+            UpdateState::Available(v, _) => (
                 format!("↻ v{v} available"),
                 Style::default()
                     .fg(super::theme::ATTN)

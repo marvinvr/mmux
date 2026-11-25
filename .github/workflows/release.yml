@@ -6,8 +6,10 @@ name: Release
 #
 # The release is STAGED, verified, and only then distributed:
 #
-#   build+smoke ─► publish-prerelease ─► verify ─► promote
-#     (×4 arches)   (assets, NOT latest)  (×N)     (latest + Homebrew tap bump)
+#   build+smoke ─► publish-prerelease ─► verify ─► promote ─► npm
+#     (×3 arches)   (assets, NOT latest)  (×N)     (latest +    (optional extra channel,
+#                                           │       Homebrew     gated on vars.NPM_PUBLISH)
+#                                           │       tap bump)
 #                                           └─ any leg fails ─► notify; never promoted
 #
 # Because the release is created as a prerelease, GitHub's `releases/latest` keeps pointing
@@ -151,6 +153,35 @@ jobs:
           TAG: ${{ github.ref_name }}
           GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
         run: bash .github/scripts/bump-formula.sh
+
+  # The npm channel — an EXTRA install path on top of everything above. Repackages the very
+  # tarballs `build` produced and `verify` proved (no rebuild) into the mmux-<platform>
+  # binary packages + the `mmux-cli` shim package, and publishes them via npm Trusted
+  # Publishing (GitHub OIDC — no npm token secret). Runs only after `promote`, so npm never
+  # gets a version the other channels don't. Skipped (not failed) unless the repo variable
+  # NPM_PUBLISH is 'true' — see docs/08-contributing.md → "npm Publishing (one-time setup)".
+  npm:
+    needs: promote
+    if: vars.NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm Trusted Publishing + provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      # Trusted Publishing needs npm >= 11.5.1.
+      - name: Update npm
+        run: npm install -g npm@^11.5.1
+      - name: Assemble + publish
+        run: bash scripts/npm-package.sh dist "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/npm" --publish
 
   # Fires if the build, publish, or verify stage failed — i.e. the release was NOT promoted,
   # so users are unaffected. Opens an issue assigned to the maintainer.
