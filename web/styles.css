@@ -1255,10 +1255,10 @@ section {
 .video-play:disabled .video-play-len { display: none; }
 
 /* ============================================================================
- * install — single command, brew only
+ * install — single command; script / Homebrew / npm tabs
  * ========================================================================== */
 #install { text-align: center; }
-/* install-method tabs: script (default) + Homebrew. One panel shown at a time, so the
+/* install-method tabs: script (default) + Homebrew + npm. One panel shown at a time, so the
  * section never shows more than a single command line. Toggled by tui.js (§11). */
 .install-tabs {
   display: flex;
@@ -1298,7 +1298,7 @@ section {
 }
 /* Required: `display: inline-flex` above beats the UA `[hidden] { display: none }`, so the
    inactive panel stays visible without this (same pattern as .tw-panel[hidden] etc.). This
-   is what makes the script/Homebrew tab toggle actually hide the other panel. */
+   is what makes the script/Homebrew/npm tab toggle actually hide the other panels. */
 .install-row[hidden] { display: none; }
 .install-row-prompt { color: var(--green); font-weight: 700; }
 .install-row-cmd {

@@ -37,7 +37,7 @@ here and nowhere else.
   shape; Codex the real boxed banner; the shell a real zsh + cargo run; vite the real banner; the
   git panel mirrors `src/app/view/git.rs`. No placeholder/abstract content, ever (§8).
 - **Install is ONE command:** `curl -fsSL https://mmux.org/install.sh | sh` (the hero). The
-  `#install` section adds a Homebrew tab as the macOS alternative — no cargo, no from-source.
+  `#install` section adds Homebrew (macOS) and npm tabs as alternatives — no cargo, no from-source.
 - **`prefers-reduced-motion`** fully honored (no scrub/typing/streaming; land on finished states).
 - **Accessible:** landmarks, heading order, keyboard operable, visible focus, AA contrast,
   decorative bits `aria-hidden`, a visually-hidden live region for the sandbox.
@@ -134,10 +134,10 @@ the 16:9 box stay and the chip becomes a disabled `video unavailable` note.
 
 ### 4.7 `<section id="install">`
 kicker `// get it`, h2 **install in one line.** A centered `.install-tabs` strip (`script` default
-+ `Homebrew`) sits on its own line above the command and toggles which `.install-row[data-panel]`
++ `Homebrew` + `npm`) sits on its own line above the command and toggles which `.install-row[data-panel]`
 shows — one command line at a time, reusing the copy chip (toggle in tui.js §11). Then `then, in any
-project directory: mmux`, ghost buttons → github + the docs. Script default, Homebrew alternative;
-no cargo.
+project directory: mmux`, ghost buttons → github + the docs. Script default, Homebrew and npm
+alternatives; no cargo.
 
 ### 4.8 `<footer class="site-footer">`
 `mmux · GPLv3 · github · docs · compare · built by marvinvr` (`compare` → `/vs/`, §12).
@@ -380,7 +380,7 @@ web/
 - [ ] The terminal is a mac window hosting a faithful ratatui TUI; every pane shows real,
       syntax-colored content per §8 — including the workspace-manifest scene.
 - [ ] Hero shows the one-line script install; the `#install` section tabs it (script default,
-      Homebrew alternative). No cargo / from-source on the page.
+      Homebrew + npm alternatives). No cargo / from-source on the page.
 - [ ] Scroll demo scrubs 10 scenes; the closer plays
       disconnect → reattach and rests on the green frame.
 - [ ] Sandbox is click/keyboard-playable, focus-trapped only while engaged, escapable, announced
