@@ -486,10 +486,10 @@ mod tests {
     #[test]
     fn detects_npm_installs_by_path() {
         assert!(in_node_modules(Path::new(
-            "/usr/local/lib/node_modules/mmux-cli/node_modules/mmux-darwin-arm64/bin/mmux"
+            "/usr/local/lib/node_modules/mmux-cli/node_modules/mmux-cli-darwin-arm64/bin/mmux"
         )));
         assert!(in_node_modules(Path::new(
-            "/home/u/.nvm/versions/node/v22/lib/node_modules/mmux-linux-x64/bin/mmux"
+            "/home/u/.nvm/versions/node/v22/lib/node_modules/mmux-cli-linux-x64/bin/mmux"
         )));
         assert!(!in_node_modules(Path::new("/home/u/.local/bin/mmux")));
         assert!(!in_node_modules(Path::new("/opt/my_node_modules_x/mmux")));

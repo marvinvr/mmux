@@ -10,9 +10,9 @@ const DOCS = "https://github.com/marvinvr/mmux/blob/main/docs/02-installation.md
 
 // `${process.platform}-${process.arch}` → the package carrying that binary.
 const PACKAGES = {
-  "darwin-arm64": "mmux-darwin-arm64",
-  "linux-x64": "mmux-linux-x64",
-  "linux-arm64": "mmux-linux-arm64",
+  "darwin-arm64": "mmux-cli-darwin-arm64",
+  "linux-x64": "mmux-cli-linux-x64",
+  "linux-arm64": "mmux-cli-linux-arm64",
 };
 
 function fail(msg) {

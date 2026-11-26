@@ -16,7 +16,7 @@
 #               of a half-finished publish just completes it.
 #
 # Layout (the esbuild/Biome pattern):
-#   mmux-darwin-arm64, mmux-linux-x64, mmux-linux-arm64 — just the binary, gated by
+#   mmux-cli-darwin-arm64, mmux-cli-linux-x64, mmux-cli-linux-arm64 — just the binary, gated by
 #     os/cpu so npm installs only the matching one. No `libc` field: the Linux binaries are
 #     static musl and run on glibc and musl distros alike, so restricting libc would only
 #     wrongly exclude one of them.
@@ -54,7 +54,7 @@ for row in $TARGETS; do
 	IFS='|' read -r target suffix os cpu <<<"$row"
 	tarball="$DIST/mmux-$target.tar.gz"
 	[ -f "$tarball" ] || { echo "missing $tarball" >&2; exit 1; }
-	name="mmux-$suffix"
+	name="mmux-cli-$suffix"
 	dir="$OUT/pkg/$suffix"
 	mkdir -p "$dir/bin"
 	tar -xzf "$tarball" -C "$dir/bin" mmux

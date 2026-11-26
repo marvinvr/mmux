@@ -6,7 +6,7 @@
 # See docs/08-contributing.md → "npm Publishing (one-time setup)".
 set -euo pipefail
 
-NAMES="mmux-cli mmux-darwin-arm64 mmux-linux-x64 mmux-linux-arm64"
+NAMES="mmux-cli mmux-cli-darwin-arm64 mmux-cli-linux-x64 mmux-cli-linux-arm64"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 npm whoami >/dev/null 2>&1 || { echo "not logged in to npm — run \`npm login\` first" >&2; exit 1; }
